@@ -40,7 +40,7 @@ enum class SystemSettingField : uint8_t {
   Language, KeySound, Brightness, ScreenSleep, KeepOnPrinting,
   EncoderDirection, PirStart, PirStop, LightOnStart, LightOffStop,
   BeepOnStart, BeepOnStop, HeaterCurrent, HeaterFan, HeaterProtection,
-  TouchCalibration, FactoryReset, Count
+  TouchCalibration, FactoryReset, Version, Count
 };
 
 struct UiSettings {

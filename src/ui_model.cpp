@@ -26,6 +26,7 @@ void UiModel::adjustSystemSetting(int direction, ChamberController &controller) 
   case SystemSettingField::HeaterProtection: s.heaterBoardLimitC = constrain((int)s.heaterBoardLimitC + d, 40, 180); break;
   case SystemSettingField::TouchCalibration:
   case SystemSettingField::FactoryReset:
+  case SystemSettingField::Version: // 只读展示,不参与修改,也不置脏。
   case SystemSettingField::Count: return;
   }
   controller.setPirDelays(s.pirStartSeconds * 1000UL, s.pirStopSeconds * 1000UL);
