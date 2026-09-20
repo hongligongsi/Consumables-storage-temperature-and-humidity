@@ -26,6 +26,32 @@ pio run -t upload
 pio device monitor -b 115200
 ```
 
+### 直接烧录预编译固件
+
+`firmware/firmware.bin` 是随仓库提供的应用镜像，对应提交 `a4140db`（RAM 16.1%、Flash 14.4%）。
+
+`esptool.py` 未加入系统 PATH，需通过 PlatformIO 调用，或直接改用 `pio run -t upload`。以下命令把 `COM3` 换成实际串口。
+
+**只更新应用**（板上已有可用的 bootloader 与分区表，例如日常升级）：
+
+```powershell
+pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32s3 --port COM3 write_flash 0x10000 firmware/firmware.bin
+```
+
+**从空片全新烧录**（需要完整四件套；`bootloader.bin` 与 `partitions.bin` 由 `pio run` 生成于 `.pio/build/esp32-s3-n16r8/`）：
+
+```powershell
+pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32s3 --port COM3 --baud 921600 write_flash `
+  0x0     .pio/build/esp32-s3-n16r8/bootloader.bin `
+  0x8000  .pio/build/esp32-s3-n16r8/partitions.bin `
+  0xe000  "$env:USERPROFILE\.platformio\packages\framework-arduinoespressif32@3.20016.0\tools\partitions\boot_app0.bin" `
+  0x10000 firmware/firmware.bin
+```
+
+偏移量取自 `default_16MB.csv` 分区表：`bootloader` 在 `0x0`、分区表在 `0x8000`、`otadata` 在 `0xe000`、`app0` 在 `0x10000`。首次上电若设备进入配置热点，说明烧录成功。
+
+> 注意：`firmware.bin` 是纯应用镜像，**不能**单独烧到 `0x0`，否则设备无法启动。
+
 ## 重要硬件核对
 
 Gerber 飞针网表确认本板上的 ST7796 为 SPI 连接：`RST=GPIO9`、`MISO=10`、`MOSI=11`、`SCLK=12`、`DC=13`、`CS=14`、`BL=21`；电阻触摸为 `YD=4`、`XR=5`、`YU=6`、`XL=7`。`TftUi` 已使用 TFT_eSPI 提供横屏主页面：耗材导航、三项自动控制、八格仪表及五个底部入口。电阻触摸坐标须在实机上校准后加入。
