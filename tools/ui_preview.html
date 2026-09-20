@@ -210,6 +210,103 @@
       padding-top: 12px;
     }
 
+    /* 屏下条目说明:一屏内看到全部 18 项,并高亮屏内当前选中项 */
+    .legend {
+      margin-top: 18px;
+    }
+
+    .legend h2 {
+      font-size: 14px;
+      margin: 0 0 4px;
+    }
+
+    .legend .tip {
+      font-size: 12px;
+      color: var(--page-muted);
+      margin: 0 0 10px;
+    }
+
+    .legend ol {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 8px;
+    }
+
+    .legend li {
+      display: flex;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--chip-border);
+      border-radius: 8px;
+      background: var(--chip-bg);
+      cursor: pointer;
+    }
+
+    .legend li:hover {
+      border-color: var(--chip-on-border);
+    }
+
+    .legend li.on {
+      border-color: var(--chip-on-border);
+      background: var(--chip-on-bg);
+    }
+
+    .legend .no {
+      flex: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: var(--page-bg);
+      color: var(--page-muted);
+      font: 600 11px/22px Consolas, monospace;
+      text-align: center;
+    }
+
+    .legend li.on .no {
+      background: var(--chip-on-border);
+      color: #ffffff;
+    }
+
+    .legend .body {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .legend .head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .legend .name {
+      font-weight: 600;
+    }
+
+    .legend .val {
+      margin-left: auto;
+      flex: none;
+      font: 600 12px/1.6 Consolas, monospace;
+      color: var(--chip-on-text);
+    }
+
+    .legend .desc,
+    .legend .meta {
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .legend .desc {
+      color: var(--page-muted);
+    }
+
+    .legend .meta {
+      color: var(--page-muted);
+      opacity: 0.8;
+    }
+
     /* SVG 主题绑定 */
     .fill-bg {
       fill: var(--bg);
@@ -361,6 +458,12 @@
       <span id="cap-mode">—</span>
     </div>
 
+    <section class="legend">
+      <h2>系统设置 · 18 项条目说明</h2>
+      <p class="tip">真机每屏只显示 5 行,靠旋转滚动查看全部 18 项。下表把 18 项一次列全,并实时高亮屏内当前选中项;点击任一条目可直接把屏内光标跳到该项。</p>
+      <ol id="legend-list"></ol>
+    </section>
+
     <p class="note">
       说明:夜间为固件实际配色;日间为设计提案(固件未实现)。仪表数值为演示数据,PIR/故障由上方开关模拟硬件输入;
       系统设置与耗材参数在“长按保存返回”后写入浏览器本地存储,与真机写入 NVS 对应,刷新页面仍保留。
@@ -445,26 +548,100 @@
         localStorage.removeItem('chamber-ui-sim-v1');
       }
 
-      /* ---------------- 系统设置字段元数据(顺序 = SystemSettingField 枚举) ---------------- */
+      /* ---------------- 系统设置字段元数据(顺序 = SystemSettingField 枚举) ----------------
+       * desc = 屏下说明区展示的条目含义;range = 取值范围/步长,由真机设定推导。
+       * ---------------------------------------------------------------- */
       var F = [
-        { zh: '系统语言', en: 'LANGUAGE', type: 'lang' },
-        { zh: '按键声音', en: 'KEY SOUND', type: 'bool', key: 'keySound' },
-        { zh: '屏幕亮度', en: 'BRIGHTNESS', type: 'num', key: 'brightness', step: 5, min: 1, max: 100, unit: '%' },
-        { zh: '屏幕休眠时间', en: 'SCREEN SLEEP', type: 'num', key: 'screenSleep', step: 15, min: 0, max: 3600, unit: 's' },
-        { zh: '打印时保持屏幕开启', en: 'KEEP ON PRINTING', type: 'bool', key: 'keepOnPrinting' },
-        { zh: 'EC11编码器方向', en: 'ENCODER DIRECTION', type: 'enc' },
-        { zh: 'PIR启动延时', en: 'PIR START DELAY', type: 'num', key: 'pirStart', step: 1, min: 1, max: 300, unit: 's' },
-        { zh: 'PIR关闭延时', en: 'PIR STOP DELAY', type: 'num', key: 'pirStop', step: 5, min: 10, max: 900, unit: 's' },
-        { zh: '启动后自动开灯', en: 'LIGHT ON START', type: 'bool', key: 'lightOnPrinting' },
-        { zh: '关闭后自动关灯', en: 'LIGHT OFF STOP', type: 'bool', key: 'lightOffAfterPrinting' },
-        { zh: '启动后蜂鸣提示', en: 'BEEP ON START', type: 'bool', key: 'beepOnStart' },
-        { zh: '关闭后蜂鸣提示', en: 'BEEP ON STOP', type: 'bool', key: 'beepOnStop' },
-        { zh: '发热板限流', en: 'HEATER CURRENT', type: 'num', key: 'heaterCurrent', step: 1, min: 1, max: 12, unit: 'A' },
-        { zh: '发热板风扇风速', en: 'HEATER FAN', type: 'num', key: 'heaterFan', step: 5, min: 20, max: 100, unit: '%' },
-        { zh: '发热板温度保护', en: 'HEATER PROTECTION', type: 'num', key: 'heaterProtection', step: 1, min: 40, max: 180, unit: 'C' },
-        { zh: '触摸屏校准', en: 'TOUCH CALIBRATION', type: 'touch' },
-        { zh: '恢复出厂配置', en: 'FACTORY RESET', type: 'reset' },
-        { zh: '固件版本', en: 'FIRMWARE VERSION', type: 'version' }
+        {
+          zh: '系统语言', en: 'LANGUAGE', type: 'lang',
+          desc: '切换界面语言,目前支持中文和英文。',
+          range: '中文 / English'
+        },
+        {
+          zh: '按键声音', en: 'KEY SOUND', type: 'bool', key: 'keySound',
+          desc: '打开或关闭编码器操作时的蜂鸣提示音。',
+          range: '开 / 关'
+        },
+        {
+          zh: '屏幕亮度', en: 'BRIGHTNESS', type: 'num', key: 'brightness', step: 5, min: 1, max: 100, unit: '%',
+          desc: '调节屏幕背光亮度。',
+          range: '1 ~ 100 %,步长 5'
+        },
+        {
+          zh: '屏幕休眠时间', en: 'SCREEN SLEEP', type: 'num', key: 'screenSleep', step: 15, min: 0, max: 3600, unit: 's',
+          desc: '设置多少秒无操作后熄屏。仅关闭屏幕,不影响系统运行。',
+          range: '0 ~ 3600 s,步长 15;0 = 不休眠'
+        },
+        {
+          zh: '打印时保持屏幕开启', en: 'KEEP ON PRINTING', type: 'bool', key: 'keepOnPrinting',
+          desc: '3D 打印机工作时保持屏幕常亮,不进入休眠。',
+          range: '开 / 关'
+        },
+        {
+          zh: 'EC11编码器方向', en: 'ENCODER DIRECTION', type: 'enc',
+          desc: '选择编码器方向。正向型号选“正向”,反向型号选“反向”,否则旋转方向会与实际相反。',
+          range: '正向 / 反向'
+        },
+        {
+          zh: 'PIR启动延时', en: 'PIR START DELAY', type: 'num', key: 'pirStart', step: 1, min: 1, max: 300, unit: 's',
+          desc: 'PIR 检测打印机运动持续 n 秒,则开启系统内的仓温控制功能。',
+          range: '1 ~ 300 s,步长 1'
+        },
+        {
+          zh: 'PIR关闭延时', en: 'PIR STOP DELAY', type: 'num', key: 'pirStop', step: 5, min: 10, max: 900, unit: 's',
+          desc: 'PIR 在 n 秒内未检测到运动,则判定打印停止,关闭仓温控制。默认 50 s;多色打印换色久,建议 90 s。',
+          range: '10 ~ 900 s,步长 5'
+        },
+        {
+          zh: '启动后自动开灯', en: 'LIGHT ON START', type: 'bool', key: 'lightOnPrinting',
+          desc: '检测到 3D 打印机开始工作后,自动打开 LED 灯光。',
+          range: '开 / 关'
+        },
+        {
+          zh: '关闭后自动关灯', en: 'LIGHT OFF STOP', type: 'bool', key: 'lightOffAfterPrinting',
+          desc: '检测到 3D 打印机停止工作后,自动关闭 LED 灯光。',
+          range: '开 / 关'
+        },
+        {
+          zh: '启动后蜂鸣提示', en: 'BEEP ON START', type: 'bool', key: 'beepOnStart',
+          desc: '检测到 3D 打印机开始工作后,蜂鸣提示。',
+          range: '开 / 关'
+        },
+        {
+          zh: '关闭后蜂鸣提示', en: 'BEEP ON STOP', type: 'bool', key: 'beepOnStop',
+          desc: '检测到 3D 打印机停止工作后,蜂鸣提示。',
+          range: '开 / 关'
+        },
+        {
+          zh: '发热板限流', en: 'HEATER CURRENT', type: 'num', key: 'heaterCurrent', step: 1, min: 1, max: 12, unit: 'A',
+          desc: '设置发热板最大工作电流。',
+          range: '1 ~ 12 A,步长 1'
+        },
+        {
+          zh: '发热板风扇风速', en: 'HEATER FAN', type: 'num', key: 'heaterFan', step: 5, min: 20, max: 100, unit: '%',
+          desc: '设置发热板风扇的工作风速。',
+          range: '20 ~ 100 %,步长 5'
+        },
+        {
+          zh: '发热板温度保护', en: 'HEATER PROTECTION', type: 'num', key: 'heaterProtection', step: 1, min: 40, max: 180, unit: 'C',
+          desc: '设置发热板最大温度,超过该温度后暂停加热。',
+          range: '40 ~ 180 C,步长 1'
+        },
+        {
+          zh: '触摸屏校准', en: 'TOUCH CALIBRATION', type: 'touch',
+          desc: '校准触摸屏。需先接入触摸屏,按提示两次采点完成,长按编码器可取消。',
+          range: '不支持 / 未校准 / 已校准'
+        },
+        {
+          zh: '恢复出厂配置', en: 'FACTORY RESET', type: 'reset',
+          desc: '清除所有自定义的参数与数据,恢复默认值。需二次确认后执行。',
+          range: '执行 / 确认?'
+        },
+        {
+          zh: '固件版本', en: 'FIRMWARE VERSION', type: 'version',
+          desc: '只读显示当前固件版本号,不可修改。',
+          range: '只读'
+        }
       ];
       var NUMERIC_FIELDS = [2, 3, 6, 7, 12, 13, 14];
       var VERSION = '1.0.0';
@@ -872,7 +1049,8 @@
       }
 
       var screenEl = document.getElementById('screen');
-      function render() {
+      // 只重画屏幕内容。秒级刷新走这里,避免连带重建屏下说明区。
+      function renderScreen() {
         updateClock();
         var inner = ICONS.defs;
         if (S.screen === 'fault') inner += renderFault();
@@ -881,10 +1059,43 @@
         else if (S.screen === 'system') inner += renderSystem();
         else inner += renderMain();
         screenEl.innerHTML = inner;
+      }
 
+      function render() {
+        renderScreen();
         document.querySelector('.doc').setAttribute('data-lang', S.st.language);
+        renderLegend();
         updateCaption();
       }
+
+      /* 屏下 18 项说明区:与屏内光标双向联动(高亮 + 点击跳转) */
+      var legendEl = document.getElementById('legend-list');
+      function renderLegend() {
+        var zh = S.st.language === 'zh';
+        legendEl.innerHTML = F.map(function (f, i) {
+          var on = S.screen === 'system' && i === S.sysField;
+          return '<li class="' + (on ? 'on' : '') + '" data-item="' + i + '">' +
+            '<span class="no">' + (i + 1) + '</span>' +
+            '<span class="body">' +
+            '<span class="head">' +
+            '<span class="name">' + (zh ? f.zh : f.en) + '</span>' +
+            '<span class="val">' + settingValue(f) + '</span>' +
+            '</span>' +
+            '<span class="desc">' + f.desc + '</span>' +
+            '<span class="meta">范围:' + f.range + '</span>' +
+            '</span></li>';
+        }).join('');
+      }
+
+      legendEl.addEventListener('click', function (e) {
+        var li = e.target.closest ? e.target.closest('li[data-item]') : null;
+        if (!li) return;
+        // 真机没有“直接跳项”,这里仅为方便查看:跳到系统设置页并定位光标
+        S.screen = 'system';
+        S.sysField = parseInt(li.getAttribute('data-item'), 10);
+        S.sysEditing = false;
+        render();
+      });
 
       function updateCaption() {
         var zh = S.st.language === 'zh';
@@ -962,7 +1173,7 @@
 
       syncQuickButtons();
       render();
-      setInterval(function () { if (S.screen === 'main' || S.screen === 'fault') render(); }, 1000);
+      setInterval(function () { if (S.screen === 'main' || S.screen === 'fault') renderScreen(); }, 1000);
     })();
   </script>
 </body>
