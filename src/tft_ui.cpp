@@ -298,6 +298,7 @@ void drawMaterialSettings(TFT_eSPI &g, const UiSnapshot &s) {
 }
 
 void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
+  // 条目文案按 SystemSettingField 的下标索引取值,顺序必须与枚举保持一致。
   static const char *const zh[] = {
       "系统语言",       "按键声音",           "屏幕亮度",
       "屏幕休眠时间",   "打印时保持屏幕开启", "编码器方向",
@@ -313,8 +314,9 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
       "HEATER CURRENT",    "HEATER FAN",       "HEATER PROTECTION",
       "TOUCH CALIBRATION", "FACTORY RESET",    "FIRMWARE VERSION"};
   const bool chinese = s.language == Language::Chinese;
+  // 条目总数与光标位置都从枚举推导,新增设置项后无需再改这里的硬编码数字。
   const uint8_t count = static_cast<uint8_t>(SystemSettingField::Count);
-  constexpr uint8_t kRows = 5;
+  constexpr uint8_t kRows = 5; // 一屏可见 5 行,超出部分靠滚动窗口展示。
   const uint8_t selected = static_cast<uint8_t>(s.systemSettingField);
   // 滚动窗口:选中项保持在 5 行内,且首行不超过 count-kRows,否则末项永远不可见。
   uint8_t first = selected >= 2 ? static_cast<uint8_t>(selected - 2) : 0;
@@ -328,6 +330,7 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
   g.setTextDatum(ML_DATUM);
   g.setTextColor(TFT_WHITE, PANEL_ALT);
   g.drawString(chinese ? "系统设置" : "SYSTEM SETTINGS", 10, 16);
+  // 右上角页码:"当前项/总数",存在未保存修改时追加 " *"。
   char page[16];
   snprintf(page, sizeof(page), "%u/%u%s", selected + 1, count,
            s.systemSettingsDirty ? " *" : "");
@@ -346,6 +349,7 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
     g.drawString(chinese ? zh[item] : en[item], 27, y + 20);
     char value[24] = "";
     const char *on = chinese ? "开" : "ON", *off = chinese ? "关" : "OFF";
+    // 右侧取值区:按字段类型格式化为开关、数值或状态文案。
     switch (static_cast<SystemSettingField>(item)) {
     case SystemSettingField::Language:
       strlcpy(value, v.language == Language::Chinese ? "中文" : "EN",
@@ -411,6 +415,7 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
               sizeof(value));
       break;
     case SystemSettingField::Version:
+      // 只读显示编译期写入的版本号,源码见 include/version.h。
       strlcpy(value, FW_VERSION, sizeof(value));
       break;
     case SystemSettingField::Count:

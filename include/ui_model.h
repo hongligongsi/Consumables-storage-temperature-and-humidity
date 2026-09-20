@@ -36,11 +36,29 @@ enum class MainFocus : uint8_t {
   Count
 };
 
+// 系统设置页的条目,顺序即界面显示顺序。
+// 增删条目时只需改这里:页码总数与滚动窗口都按 Count 动态计算,无需改渲染代码。
+// 注意 Count 仅为末尾哨兵(既表示条目总数,也用作取模边界),不对应任何真实条目。
 enum class SystemSettingField : uint8_t {
-  Language, KeySound, Brightness, ScreenSleep, KeepOnPrinting,
-  EncoderDirection, PirStart, PirStop, LightOnStart, LightOffStop,
-  BeepOnStart, BeepOnStop, HeaterCurrent, HeaterFan, HeaterProtection,
-  TouchCalibration, FactoryReset, Version, Count
+  Language,
+  KeySound,
+  Brightness,
+  ScreenSleep,
+  KeepOnPrinting,
+  EncoderDirection,
+  PirStart,
+  PirStop,
+  LightOnStart,
+  LightOffStop,
+  BeepOnStart,
+  BeepOnStop,
+  HeaterCurrent,
+  HeaterFan,
+  HeaterProtection,
+  TouchCalibration,
+  FactoryReset,
+  Version, // 只读展示固件版本号(值取自 version.h 的 FW_VERSION),不可修改
+  Count
 };
 
 struct UiSettings {
@@ -126,7 +144,9 @@ public:
   size_t materialIndex() const { return materialIndex_; }
   bool materialSettingsOpen() const { return materialSettingsOpen_; }
   bool systemSettingsOpen() const { return systemSettingsOpen_; }
-  void bindSystemSettings(SystemSettings &settings) { systemSettings_ = &settings; }
+  void bindSystemSettings(SystemSettings &settings) {
+    systemSettings_ = &settings;
+  }
   bool takeProfileSaveRequest() {
     const bool requested = profileSaveRequested_;
     profileSaveRequested_ = false;

@@ -1,35 +1,77 @@
 #include "ui_model.h"
 #include "pins.h"
 
-void UiModel::adjustSystemSetting(int direction, ChamberController &controller) {
+// 调整当前系统设置项:direction>0 为加/正向,direction<0 为减/反向。
+// 只处理可编辑项的取值变化,随后统一把新值下发给控制器并置脏(等待长按保存到
+// NVS)。
+void UiModel::adjustSystemSetting(int direction,
+                                  ChamberController &controller) {
   if (!systemSettings_ || !direction)
     return;
   SystemSettings &s = *systemSettings_;
   const int d = direction > 0 ? 1 : -1;
   switch (systemSettingField_) {
+  // 开关类:每次取反,不区分旋转方向。
   case SystemSettingField::Language:
-    s.language = s.language == Language::Chinese ? Language::English : Language::Chinese;
-    controller.setLanguage(s.language); break;
-  case SystemSettingField::KeySound: s.keySound = !s.keySound; break;
-  case SystemSettingField::Brightness: s.brightness = constrain((int)s.brightness + d * 5, 1, 100); break;
-  case SystemSettingField::ScreenSleep: s.screenSleepSeconds = constrain((int)s.screenSleepSeconds + d * 15, 0, 3600); break;
-  case SystemSettingField::KeepOnPrinting: s.keepScreenOnPrinting = !s.keepScreenOnPrinting; break;
-  case SystemSettingField::EncoderDirection: s.encoderReversed = !s.encoderReversed; break;
-  case SystemSettingField::PirStart: s.pirStartSeconds = constrain((int)s.pirStartSeconds + d, 1, 300); break;
-  case SystemSettingField::PirStop: s.pirStopSeconds = constrain((int)s.pirStopSeconds + d * 5, 10, 900); break;
-  case SystemSettingField::LightOnStart: s.lightOnPrinting = !s.lightOnPrinting; break;
-  case SystemSettingField::LightOffStop: s.lightOffAfterPrinting = !s.lightOffAfterPrinting; break;
-  case SystemSettingField::BeepOnStart: s.beepOnStart = !s.beepOnStart; break;
-  case SystemSettingField::BeepOnStop: s.beepOnStop = !s.beepOnStop; break;
-  case SystemSettingField::HeaterCurrent: s.heaterMaxCurrentA = constrain((int)s.heaterMaxCurrentA + d, 1, 12); break;
-  case SystemSettingField::HeaterFan: s.heaterFanPercent = constrain((int)s.heaterFanPercent + d * 5, 20, 100); break;
-  case SystemSettingField::HeaterProtection: s.heaterBoardLimitC = constrain((int)s.heaterBoardLimitC + d, 40, 180); break;
+    s.language =
+        s.language == Language::Chinese ? Language::English : Language::Chinese;
+    controller.setLanguage(s.language);
+    break;
+  case SystemSettingField::KeySound:
+    s.keySound = !s.keySound;
+    break;
+  // 数值类:按固定步长增减,并 clamp 在各项允许区间内。
+  case SystemSettingField::Brightness:
+    s.brightness = constrain((int)s.brightness + d * 5, 1, 100);
+    break;
+  case SystemSettingField::ScreenSleep:
+    s.screenSleepSeconds =
+        constrain((int)s.screenSleepSeconds + d * 15, 0, 3600);
+    break;
+  case SystemSettingField::KeepOnPrinting:
+    s.keepScreenOnPrinting = !s.keepScreenOnPrinting;
+    break;
+  case SystemSettingField::EncoderDirection:
+    s.encoderReversed = !s.encoderReversed;
+    break;
+  case SystemSettingField::PirStart:
+    s.pirStartSeconds = constrain((int)s.pirStartSeconds + d, 1, 300);
+    break;
+  case SystemSettingField::PirStop:
+    s.pirStopSeconds = constrain((int)s.pirStopSeconds + d * 5, 10, 900);
+    break;
+  case SystemSettingField::LightOnStart:
+    s.lightOnPrinting = !s.lightOnPrinting;
+    break;
+  case SystemSettingField::LightOffStop:
+    s.lightOffAfterPrinting = !s.lightOffAfterPrinting;
+    break;
+  case SystemSettingField::BeepOnStart:
+    s.beepOnStart = !s.beepOnStart;
+    break;
+  case SystemSettingField::BeepOnStop:
+    s.beepOnStop = !s.beepOnStop;
+    break;
+  case SystemSettingField::HeaterCurrent:
+    s.heaterMaxCurrentA = constrain((int)s.heaterMaxCurrentA + d, 1, 12);
+    break;
+  case SystemSettingField::HeaterFan:
+    s.heaterFanPercent = constrain((int)s.heaterFanPercent + d * 5, 20, 100);
+    break;
+  case SystemSettingField::HeaterProtection:
+    s.heaterBoardLimitC = constrain((int)s.heaterBoardLimitC + d, 40, 180);
+    break;
+  // 非数值项:触摸校准与恢复出厂由 apply() 通过请求标志处理,版本号只读,Count
+  // 是哨兵。
   case SystemSettingField::TouchCalibration:
   case SystemSettingField::FactoryReset:
   case SystemSettingField::Version: // 只读展示,不参与修改,也不置脏。
-  case SystemSettingField::Count: return;
+  case SystemSettingField::Count:
+    return;
   }
-  controller.setPirDelays(s.pirStartSeconds * 1000UL, s.pirStopSeconds * 1000UL);
+  // 已修改的值立即生效(风扇/限流/温度保护/PIR 延时),界面无需重新进设置页。
+  controller.setPirDelays(s.pirStartSeconds * 1000UL,
+                          s.pirStopSeconds * 1000UL);
   controller.setHeaterLimits(s.heaterMaxCurrentA, s.heaterBoardLimitC);
   controller.setHeaterFanPercent(s.heaterFanPercent);
   systemSettingsDirty_ = true;
@@ -37,8 +79,10 @@ void UiModel::adjustSystemSetting(int direction, ChamberController &controller) 
 
 void UiModel::apply(UiAction action, ChamberController &controller) {
   if (systemSettingsOpen_) {
+    // 旋转:编辑态改值,浏览态移动光标。取模范围含 Version 等只读项,长按回绕。
     const uint8_t count = static_cast<uint8_t>(SystemSettingField::Count);
-    if (action == UiAction::PreviousMaterial || action == UiAction::NextMaterial) {
+    if (action == UiAction::PreviousMaterial ||
+        action == UiAction::NextMaterial) {
       const int d = action == UiAction::NextMaterial ? 1 : -1;
       if (systemSettingsEditing_)
         adjustSystemSetting(d, controller);
@@ -64,15 +108,20 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
           systemSettingsEditing_ = true; // 再次单击才执行，防止误触。
         }
       } else {
-        const bool numeric = systemSettingField_ == SystemSettingField::Brightness ||
+        // 数值项单击切换"编辑中"状态,之后旋转即改值;开关项单击直接切换取值。
+        // Version 等只读项走 adjustSystemSetting 后立即返回,单击无副作用。
+        const bool numeric =
+            systemSettingField_ == SystemSettingField::Brightness ||
             systemSettingField_ == SystemSettingField::ScreenSleep ||
             systemSettingField_ == SystemSettingField::PirStart ||
             systemSettingField_ == SystemSettingField::PirStop ||
             systemSettingField_ == SystemSettingField::HeaterCurrent ||
             systemSettingField_ == SystemSettingField::HeaterFan ||
             systemSettingField_ == SystemSettingField::HeaterProtection;
-        if (numeric) systemSettingsEditing_ = !systemSettingsEditing_;
-        else adjustSystemSetting(1, controller);
+        if (numeric)
+          systemSettingsEditing_ = !systemSettingsEditing_;
+        else
+          adjustSystemSetting(1, controller);
       }
       return;
     }
@@ -87,7 +136,8 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
   switch (action) {
   case UiAction::PreviousMaterial:
     if (materialSettingsOpen_) {
-      materialSettingsDirty_ |= controller.adjustProfile(materialSettingField_, -1);
+      materialSettingsDirty_ |=
+          controller.adjustProfile(materialSettingField_, -1);
       break;
     }
     materialIndex_ =
@@ -96,7 +146,8 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
     break;
   case UiAction::NextMaterial:
     if (materialSettingsOpen_) {
-      materialSettingsDirty_ |= controller.adjustProfile(materialSettingField_, 1);
+      materialSettingsDirty_ |=
+          controller.adjustProfile(materialSettingField_, 1);
       break;
     }
     materialIndex_ = (materialIndex_ + 1) % MATERIAL_COUNT;
@@ -151,9 +202,8 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
     break;
   }
   case UiAction::FocusNext:
-    mainFocus_ = static_cast<MainFocus>(
-        (static_cast<uint8_t>(mainFocus_) + 1) %
-        static_cast<uint8_t>(MainFocus::Count));
+    mainFocus_ = static_cast<MainFocus>((static_cast<uint8_t>(mainFocus_) + 1) %
+                                        static_cast<uint8_t>(MainFocus::Count));
     break;
   case UiAction::EncoderDoubleClick:
     if (materialSettingsOpen_) {
@@ -187,11 +237,11 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
           static_cast<uint8_t>(MaterialField::Count));
     } else {
       static const UiAction actions[] = {
-          UiAction::PreviousMaterial, UiAction::OpenMaterialSettings,
-          UiAction::NextMaterial, UiAction::ToggleAutoExhaust,
+          UiAction::PreviousMaterial,      UiAction::OpenMaterialSettings,
+          UiAction::NextMaterial,          UiAction::ToggleAutoExhaust,
           UiAction::ToggleAutoTemperature, UiAction::TogglePostPrintExhaust,
-          UiAction::ToggleSystem, UiAction::TogglePreheat,
-          UiAction::ToggleLight, UiAction::OpenSystemSettings};
+          UiAction::ToggleSystem,          UiAction::TogglePreheat,
+          UiAction::ToggleLight,           UiAction::OpenSystemSettings};
       apply(actions[static_cast<uint8_t>(mainFocus_)], controller);
     }
     break;
@@ -203,8 +253,9 @@ UiSnapshot UiModel::snapshot(const ChamberController &controller,
   const MaterialProfile &profile = controller.profile();
   UiSnapshot s{};
   s.material = profile.name;
-  s.previousMaterial = MATERIALS[materialIndex_ == 0 ? MATERIAL_COUNT - 1
-                                                     : materialIndex_ - 1].name;
+  s.previousMaterial =
+      MATERIALS[materialIndex_ == 0 ? MATERIAL_COUNT - 1 : materialIndex_ - 1]
+          .name;
   s.nextMaterial = MATERIALS[(materialIndex_ + 1) % MATERIAL_COUNT].name;
   s.state = o.state;
   s.language = controller.language();
@@ -252,6 +303,7 @@ UiSnapshot UiModel::snapshot(const ChamberController &controller,
   s.systemSettingsEditing = systemSettingsEditing_;
   s.systemSettingsDirty = systemSettingsDirty_;
   s.systemSettingField = systemSettingField_;
-  if (systemSettings_) s.systemSettings = *systemSettings_;
+  if (systemSettings_)
+    s.systemSettings = *systemSettings_;
   return s;
 }
