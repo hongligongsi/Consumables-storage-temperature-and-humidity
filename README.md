@@ -39,7 +39,17 @@ pio device monitor -b 115200
 
 ### 烧录预编译固件
 
-仓库中的 `firmware/firmware.bin` 是与当前源码对应的应用镜像（约 1.2 MB）。`esptool.py` 未加入系统 PATH，需经 PlatformIO 调用。以下命令把 `COM3` 换成实际串口。
+仓库中的 `firmware/firmware.bin` 是与当前源码对应的应用镜像（约 1.2 MB）。以下命令把 `COM3` 换成实际串口。
+
+两条命令的公共前缀与参数：
+
+| 片段 | 含义 |
+| --- | --- |
+| `pio pkg exec -p tool-esptoolpy --` | 借用 PlatformIO 内置的 esptool（实测 v4.11.0）。`esptool.py` 不在系统 PATH 中，直接调用会报「无法识别」，故经此转发；`--` 之后才是传给 esptool 的参数 |
+| `--chip esp32s3` | 目标芯片型号，必须与实物一致 |
+| `--port COM3` | 串口设备名，Windows 形如 `COM3`，Linux/macOS 形如 `/dev/ttyUSB0`、`/dev/cu.usbserial-*` |
+| `--baud 921600` | 写入波特率，仅影响刷写速度；`write_flash` 之外的命令不必带 |
+| `write_flash` | 子命令，其后参数**两两成组**：先是偏移，再是文件 |
 
 **只更新应用**——板上已有可用的 bootloader 与分区表，例如日常升级：
 
@@ -63,7 +73,24 @@ pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32s3 --port COM3 --baud 9
 pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32s3 --port COM3 erase_flash
 ```
 
-偏移量取自 `board_build.partitions` 指定的 `default_16MB.csv`：bootloader 在 `0x0`、分区表在 `0x8000`、`otadata` 在 `0xe000`、`app0` 在 `0x10000`。该分区表含 `app0`/`app1` 双槽，是 ArduinoOTA 能工作的前提；`otadata` 处的 `boot_app0.bin` 负责指示从哪个槽启动，缺它会导致 OTA 后无法引导。
+上面四个偏移量的含义（取自 `board_build.partitions` 指定的 `default_16MB.csv`）：
+
+| 偏移 | 写入的文件 | 用途 |
+| --- | --- | --- |
+| `0x0` | `bootloader.bin` | 二级引导，上电后最先执行 |
+| `0x8000` | `partitions.bin` | 分区表，描述各分区的起止地址 |
+| `0xe000` | `boot_app0.bin` | `otadata` 槽，记录 OTA 应从哪个 app 槽启动 |
+| `0x10000` | `firmware.bin` | 应用镜像，写入 `app0` |
+
+分区表中 `otadata` 的尺寸为 `0x2000`，与 `boot_app0.bin` 的 8192 字节一致。该分区表含 `app0`/`app1` 双槽，是 ArduinoOTA 能工作的前提；缺少 `otadata` 会让设备在 OTA 后无法引导。
+
+`boot_app0.bin` 不由本工程生成，来自 Arduino 框架包。本机同时存在 `framework-arduinoespressif32`、`...@3.20016.0`、`...@3.20017.241212+sha.dcc1105b` 三个目录，上面的命令用的是无版本后缀那个。若该路径不存在，用下式取其实际位置后替换：
+
+```powershell
+Get-ChildItem "$env:USERPROFILE\.platformio\packages\framework-arduinoespressif32*" -Recurse -Filter boot_app0.bin | Select-Object -First 1 -ExpandProperty FullName
+```
+
+命令块中不能写 `#` 行内注释：PowerShell 的多行续行符 `` ` `` 必须是行尾最后一个字符，注释会截断续行导致命令被拆成多条。
 
 > `firmware.bin` 是纯应用镜像，只能写入 `0x10000`。烧到 `0x0` 会覆盖 bootloader，设备将无法启动。
 
