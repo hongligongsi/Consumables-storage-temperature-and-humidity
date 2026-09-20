@@ -1,4 +1,5 @@
 #include "ui_model.h"
+#include "pins.h"
 
 void UiModel::adjustSystemSetting(int direction, ChamberController &controller) {
   if (!systemSettings_ || !direction)
@@ -52,7 +53,8 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
     }
     if (action == UiAction::EncoderClick) {
       if (systemSettingField_ == SystemSettingField::TouchCalibration) {
-        touchCalibrationRequested_ = true;
+        if (Pin::HAS_TOUCH_PANEL)
+          touchCalibrationRequested_ = true;
       } else if (systemSettingField_ == SystemSettingField::FactoryReset) {
         if (systemSettingsEditing_) {
           factoryResetRequested_ = true;
@@ -141,6 +143,17 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
     systemSettingsOpen_ = true;
     systemSettingsEditing_ = false;
     break;
+  case UiAction::FocusPrevious: {
+    const uint8_t count = static_cast<uint8_t>(MainFocus::Count);
+    mainFocus_ = static_cast<MainFocus>(
+        (static_cast<uint8_t>(mainFocus_) + count - 1) % count);
+    break;
+  }
+  case UiAction::FocusNext:
+    mainFocus_ = static_cast<MainFocus>(
+        (static_cast<uint8_t>(mainFocus_) + 1) %
+        static_cast<uint8_t>(MainFocus::Count));
+    break;
   case UiAction::EncoderDoubleClick:
     if (materialSettingsOpen_) {
       uint8_t field = static_cast<uint8_t>(materialSettingField_);
@@ -172,8 +185,13 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
           (static_cast<uint8_t>(materialSettingField_) + 1) %
           static_cast<uint8_t>(MaterialField::Count));
     } else {
-      // 主界面单击开关照明；设置入口由底部触摸按钮提供。
-      settings_.light = !settings_.light;
+      static const UiAction actions[] = {
+          UiAction::PreviousMaterial, UiAction::OpenMaterialSettings,
+          UiAction::NextMaterial, UiAction::ToggleAutoExhaust,
+          UiAction::ToggleAutoTemperature, UiAction::TogglePostPrintExhaust,
+          UiAction::ToggleSystem, UiAction::TogglePreheat,
+          UiAction::ToggleLight, UiAction::OpenSystemSettings};
+      apply(actions[static_cast<uint8_t>(mainFocus_)], controller);
     }
     break;
   }
@@ -217,6 +235,7 @@ UiSnapshot UiModel::snapshot(const ChamberController &controller,
   s.light = o.light;
   s.manualExhaust = settings_.manualExhaust;
   s.pirMotion = r.pirMotion;
+  s.mainFocus = mainFocus_;
 
   s.exhaustMinPercent = profile.fanMinPercent;
   s.exhaustMaxPercent = profile.fanMaxPercent;

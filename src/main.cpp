@@ -361,7 +361,8 @@ void pollTouchUi() {
   static bool held = false;
   static uint8_t releaseSamples = 0;
   const uint32_t now = millis();
-  if (now - lastSampleMs < 35 || touchCalibrationActive)
+  if (!Pin::HAS_TOUCH_PANEL || now - lastSampleMs < 35 ||
+      touchCalibrationActive)
     return;
   lastSampleMs = now;
   int16_t x = 0, y = 0;
@@ -484,8 +485,12 @@ void pollEncoderUi() {
       accumulator = 0;
       if (settings.encoderReversed)
         direction = -direction;
-      dispatchUiAction(direction > 0 ? UiAction::NextMaterial
-                                     : UiAction::PreviousMaterial);
+      if (ui.materialSettingsOpen() || ui.systemSettingsOpen())
+        dispatchUiAction(direction > 0 ? UiAction::NextMaterial
+                                       : UiAction::PreviousMaterial);
+      else
+        dispatchUiAction(direction > 0 ? UiAction::FocusNext
+                                       : UiAction::FocusPrevious);
     }
   }
 

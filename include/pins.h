@@ -3,6 +3,8 @@
 // ESP32-S3 N16R8 主控板。引脚名与 SCH_1-P1 原理图中的网络名对应。
 // 修改硬件版本时，只需在此文件调整映射。
 namespace Pin {
+// 无触摸显示屏保持 false；更换为四线电阻触摸版本并完成校准后改为 true。
+constexpr bool HAS_TOUCH_PANEL = false;
 constexpr int TFT_YD       = 4;
 constexpr int TFT_XR       = 5;
 constexpr int TFT_YU       = 6;

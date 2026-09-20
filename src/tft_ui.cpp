@@ -2,6 +2,7 @@
 
 #include "font_cn16.h"
 #include "font_cn26.h"
+#include "pins.h"
 #include <TFT_eSPI.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -290,7 +291,12 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
     case SystemSettingField::HeaterCurrent: snprintf(value, sizeof(value), "%uA", v.heaterMaxCurrentA); break;
     case SystemSettingField::HeaterFan: snprintf(value, sizeof(value), "%u%%", v.heaterFanPercent); break;
     case SystemSettingField::HeaterProtection: snprintf(value, sizeof(value), "%uC", v.heaterBoardLimitC); break;
-    case SystemSettingField::TouchCalibration: strlcpy(value, v.touchCalibrated ? (chinese ? "已校准" : "READY") : (chinese ? "未校准" : "NOT SET"), sizeof(value)); break;
+    case SystemSettingField::TouchCalibration:
+      strlcpy(value, !Pin::HAS_TOUCH_PANEL ? (chinese ? "不支持" : "N/A")
+                                          : (v.touchCalibrated ? (chinese ? "已校准" : "READY")
+                                                               : (chinese ? "未校准" : "NOT SET")),
+              sizeof(value));
+      break;
     case SystemSettingField::FactoryReset:
       strlcpy(value, s.systemSettingsEditing ? (chinese ? "确认?" : "CONFIRM?")
                                              : (chinese ? "执行" : "RUN"), sizeof(value));
@@ -369,8 +375,14 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   for (uint8_t i = 0; i < 5; ++i) {
     const int16_t x = 4 + i * 95;
     const bool active = buttonActive(i, s);
+    const bool focused = (i == 1 && s.mainFocus == MainFocus::System) ||
+                         (i == 2 && s.mainFocus == MainFocus::Preheat) ||
+                         (i == 3 && s.mainFocus == MainFocus::Light) ||
+                         (i == 4 && s.mainFocus == MainFocus::Settings);
     g.fillRoundRect(x, 248, 91, 68, 6, active ? 0x2144 : PANEL_ALT);
-    g.drawRoundRect(x, 248, 91, 68, 6, active ? ACCENT : BORDER);
+    g.drawRoundRect(x, 248, 91, 68, 6,
+                    focused ? TFT_WHITE : (active ? ACCENT : BORDER));
+    if (focused) g.drawRoundRect(x + 2, 250, 87, 64, 5, WARN);
     drawBottomIcon(g, static_cast<ButtonIcon>(i), x + 45, 268,
                    active ? WARN : TFT_WHITE);
   }
@@ -380,10 +392,15 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
 
   // Material carousel and compact runtime status.
   g.setTextDatum(MC_DATUM);
-  g.setTextColor(MUTED, PANEL); g.drawString(s.previousMaterial, 35, 23);
-  g.drawCircle(82, 23, 13, MUTED); g.drawString("<", 82, 23);
-  g.setTextColor(ACCENT, PANEL); g.drawString(s.material, 145, 20);
-  g.drawCircle(207, 23, 13, MUTED); g.setTextColor(MUTED, PANEL); g.drawString(">", 207, 23);
+  const uint16_t prevColor = s.mainFocus == MainFocus::PreviousMaterial ? WARN : MUTED;
+  const uint16_t materialColor = s.mainFocus == MainFocus::CurrentMaterial ? WARN : ACCENT;
+  const uint16_t nextColor = s.mainFocus == MainFocus::NextMaterial ? WARN : MUTED;
+  g.setTextColor(prevColor, PANEL); g.drawString(s.previousMaterial, 35, 23);
+  g.drawCircle(82, 23, 13, prevColor); g.drawString("<", 82, 23);
+  g.setTextColor(materialColor, PANEL); g.drawString(s.material, 145, 20);
+  if (s.mainFocus == MainFocus::CurrentMaterial)
+    g.drawFastHLine(122, 32, 46, WARN);
+  g.drawCircle(207, 23, 13, nextColor); g.setTextColor(nextColor, PANEL); g.drawString(">", 207, 23);
   g.drawString(s.nextMaterial, 260, 23);
   g.setTextColor(s.networkConnected ? GOOD : MUTED, PANEL); g.drawString(s.clock, 116, 46);
   g.setTextColor(WARN, PANEL);
@@ -397,6 +414,9 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   const char *subtitlesEn[] = {"AUTO CONTROL", "AUTO CONTROL", "POST EXHAUST"};
   for (uint8_t i = 0; i < 3; ++i) {
     const int16_t y = 62 + i * 60;
+    const bool focused = static_cast<uint8_t>(s.mainFocus) ==
+                         static_cast<uint8_t>(MainFocus::AutoExhaust) + i;
+    if (focused) g.drawRoundRect(7, y, 286, 56, 4, WARN);
     g.setTextDatum(ML_DATUM); g.setTextColor(TFT_WHITE, PANEL);
     g.drawString(chinese ? titlesZh[i] : titlesEn[i], 12, y + 14);
     g.drawString(chinese ? subtitlesZh[i] : subtitlesEn[i], 12, y + 38);

@@ -15,9 +15,25 @@ enum class UiAction : uint8_t {
   ToggleManualExhaust,
   OpenMaterialSettings,
   OpenSystemSettings,
+  FocusPrevious,
+  FocusNext,
   EncoderClick,
   EncoderDoubleClick,
   EncoderLongPress
+};
+
+enum class MainFocus : uint8_t {
+  PreviousMaterial,
+  CurrentMaterial,
+  NextMaterial,
+  AutoExhaust,
+  AutoTemperature,
+  PostExhaust,
+  System,
+  Preheat,
+  Light,
+  Settings,
+  Count
 };
 
 enum class SystemSettingField : uint8_t {
@@ -72,6 +88,7 @@ struct UiSnapshot {
   bool light;
   bool manualExhaust;
   bool pirMotion;
+  MainFocus mainFocus;
 
   // ---- 排气区间与功率上限(来自耗材预设与用户设定) ----
   uint8_t exhaustMinPercent;
@@ -134,6 +151,7 @@ public:
 private:
   UiSettings settings_;
   size_t materialIndex_ = 0;
+  MainFocus mainFocus_ = MainFocus::CurrentMaterial;
   bool materialSettingsOpen_ = false;
   bool materialSettingsDirty_ = false;
   bool profileSaveRequested_ = false;
