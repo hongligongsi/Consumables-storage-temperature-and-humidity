@@ -18,7 +18,12 @@ constexpr uint8_t HOT_PWM_CHANNEL = 0;
 constexpr uint8_t AIR_FAN_PWM_CHANNEL = 1;
 constexpr uint8_t BACKLIGHT_PWM_CHANNEL = 2;
 constexpr uint8_t HOT_FAN_PWM_CHANNEL = 3;
-// 初次烧录/引脚尚未经万用表核实前保持 false，避免未知 ADC 值使热端上电。
+// 加热总保险开关：
+// false = 仅运行状态机和 PID 计算，强制 GPIO40 加热 PWM 为 0，GPIO47“加热中”
+//         状态输出也保持低电平；用于首次烧录和硬件调试，防止误加热。
+// true  = 允许 PID 驱动 GPIO40；当实际加热 PWM > 0 时，GPIO47 输出 3.3 V 高电平。
+// 只有确认 GPIO40/MOSFET 有效电平、NTC 型号与参数、INA226 电流方向及加热板接线
+// 全部正确后，才可以改为 true。过温或传感器故障仍会立即停止加热并拉低 GPIO47。
 constexpr bool HEATER_ENABLED = false;
 
 Adafruit_AHTX0 aht;
