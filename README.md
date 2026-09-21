@@ -8,7 +8,7 @@
 
 ## 详细文档
 
-见 [docs/](docs/README.md)：[硬件接线](docs/hardware.md) · [编译烧录](docs/build-and-flash.md) · [联网功能](docs/networking.md) · [系统设置](docs/settings.md)。
+见 [docs/](docs/README.md)：[硬件接线](docs/hardware.md) · [编译烧录](docs/build-and-flash.md) · [联网功能](docs/networking.md) · [系统设置](docs/settings.md) · [第三方软件声明](THIRD_PARTY_NOTICES.md)。
 
 
 控制器现在以 50 ms 节拍工作，包含 `Idle → Detecting → Printing → Cooling` PIR 三态、分段排气、仓温/热板双 PID、热板硬过温、INA226 电流软降和 3%/周期 PWM 斜率限制。热板 NTC 与 INA226 的读取代码已接入，但 GPIO、NTC 参数和 INA226 地址仍须实物验证；`HEATER_ENABLED` 默认关闭，因此不会误启动加热。
