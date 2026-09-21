@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#08100d">
+  <title>耗材仓网络管理</title>
+  <style>
+    :root { color-scheme: dark; --bg:#08100d; --card:#13201b; --input:#09130f; --line:#294137; --accent:#00d9ef; --ok:#4ace4a; --bad:#ff6868; --text:#eef8f3; --muted:#91a59b; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:15px system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+    .wrap { max-width:920px; margin:auto; padding:18px; }
+    h1 { margin:0 0 4px; font-size:24px; font-weight:650; }
+    .sub { margin:0 0 16px; color:var(--muted); }
+    #message { min-height:22px; margin:10px 0; color:var(--ok); }
+    #message.error { color:var(--bad); }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; }
+    .card { padding:15px; border:1px solid var(--line); border-radius:12px; background:var(--card); }
+    .card h2 { margin:0 0 12px; color:var(--accent); font-size:17px; font-weight:650; }
+    .wide { grid-column:1/-1; }
+    .stats { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+    .stats span { color:var(--muted); }
+    .stats strong { overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+    label { display:block; margin:9px 0 3px; color:var(--muted); }
+    input { width:100%; min-height:40px; padding:9px; border:1px solid var(--line); border-radius:7px; background:var(--input); color:var(--text); font:inherit; }
+    input:focus { border-color:var(--accent); outline:2px solid rgb(0 217 239 / 24%); }
+    input[readonly] { color:#c9d7d0; }
+    .check { display:flex; align-items:center; gap:8px; color:var(--text); }
+    .check input { width:auto; min-height:auto; }
+    .row { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    button { min-height:40px; padding:9px 13px; border:0; border-radius:7px; background:#245b65; color:white; font:inherit; font-weight:600; cursor:pointer; }
+    button:hover { background:#2f7280; }
+    button.danger { background:#8b2727; }
+    button[aria-pressed="true"] { box-shadow:inset 0 0 0 2px var(--accent); }
+    dialog { width:min(90vw,420px); padding:18px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--text); }
+    dialog::backdrop { background:rgb(0 0 0 / 65%); }
+    dialog h2 { margin-top:0; color:var(--bad); }
+    @media(max-width:520px) { .wrap{padding:10px}.stats{grid-template-columns:1fr 1.2fr} }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>耗材仓网络管理</h1>
+    <p class="sub">chamber.local · 固件 <span id="firmware">2026.09.22</span></p>
+    <div id="message" role="status" aria-live="polite">设备已连接</div>
+
+    <section class="grid">
+      <article class="card">
+        <h2>实时状态</h2>
+        <div class="stats">
+          <span>运行状态</span><strong id="state">工作中</strong>
+          <span>仓温</span><strong>38.5 °C</strong>
+          <span>湿度</span><strong>22.1 %</strong>
+          <span>IP</span><strong>192.168.1.50</strong>
+          <span>SSID</span><strong>HomeWiFi</strong>
+          <span>信号</span><strong>−55 dBm</strong>
+          <span>运行时间</span><strong>1h 26m</strong>
+          <span>断线次数</span><strong>1</strong>
+          <span>最近断线</span><strong>NO_AP_FOUND</strong>
+        </div>
+        <div class="row">
+          <button type="button" data-toggle="system" aria-pressed="true">启停系统</button>
+          <button type="button" data-toggle="light" aria-pressed="false">灯光</button>
+          <button type="button" data-toggle="exhaust" aria-pressed="false">强排气</button>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>NTP 与时区</h2>
+        <label class="check"><input type="checkbox" checked>启用 NTP</label>
+        <label for="timezone">POSIX 时区</label><input id="timezone" value="CST-8">
+        <label for="ntp1">NTP 服务器 1</label><input id="ntp1" value="ntp.aliyun.com">
+        <label for="ntp2">NTP 服务器 2</label><input id="ntp2" value="pool.ntp.org">
+        <div class="row"><button type="button" data-save="时间设置">保存时间设置</button></div>
+      </article>
+
+      <article class="card">
+        <h2>静态 IPv4</h2>
+        <label class="check"><input type="checkbox">使用静态 IP（保存后重连）</label>
+        <label for="static-ip">IP 地址</label><input id="static-ip" value="192.168.1.50">
+        <label for="gateway">网关</label><input id="gateway" value="192.168.1.1">
+        <label for="subnet">子网掩码</label><input id="subnet" value="255.255.255.0">
+        <label for="dns1">DNS 1</label><input id="dns1" value="223.5.5.5">
+        <label for="dns2">DNS 2</label><input id="dns2" value="1.1.1.1">
+        <div class="row"><button type="button" data-save="网络设置">保存网络设置</button></div>
+      </article>
+
+      <article class="card">
+        <h2>MQTT 与 OTA</h2>
+        <label class="check"><input type="checkbox">启用 MQTT</label>
+        <label for="broker">Broker</label><input id="broker" placeholder="192.168.1.10">
+        <label for="port">端口</label><input id="port" type="number" min="1" max="65535" value="1883">
+        <label for="topic">主题前缀</label><input id="topic" value="chamber">
+        <label class="check"><input type="checkbox" checked>启用 OTA</label>
+        <label for="ota-password">本机 OTA 密码</label><input id="ota-password" value="CH-7A31C9E2" readonly>
+        <div class="row"><button type="button" data-save="服务设置">保存服务设置</button></div>
+      </article>
+
+      <article class="card wide">
+        <h2>维护</h2>
+        <p class="sub">重新配网会清除已保存的 WiFi，并重启设备。</p>
+        <button class="danger" id="reset-wifi" type="button">清除 WiFi 并重新配网</button>
+      </article>
+    </section>
+  </main>
+
+  <dialog id="confirm-reset">
+    <h2>确认重新配网</h2>
+    <p>设备将清除已保存的 WiFi 并重新启动，然后创建 FilamentChamber-Setup 热点。</p>
+    <div class="row">
+      <button class="danger" id="confirm-reset-button" type="button">确认清除</button>
+      <button id="cancel-reset-button" type="button">取消</button>
+    </div>
+  </dialog>
+
+  <script>
+    const message = document.getElementById("message");
+    const state = document.getElementById("state");
+    const resetDialog = document.getElementById("confirm-reset");
+
+    function notify(text, error = false) {
+      message.textContent = text;
+      message.classList.toggle("error", error);
+    }
+
+    document.querySelectorAll("[data-save]").forEach((button) => {
+      button.addEventListener("click", () => notify(`${button.dataset.save}已保存并生效`));
+    });
+
+    document.querySelectorAll("[data-toggle]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const active = button.getAttribute("aria-pressed") !== "true";
+        button.setAttribute("aria-pressed", String(active));
+        if (button.dataset.toggle === "system") state.textContent = active ? "工作中" : "休息中";
+        notify(`${button.textContent}已${active ? "开启" : "关闭"}`);
+      });
+    });
+
+    document.getElementById("reset-wifi").addEventListener("click", () => resetDialog.showModal());
+    document.getElementById("cancel-reset-button").addEventListener("click", () => resetDialog.close());
+    document.getElementById("confirm-reset-button").addEventListener("click", () => {
+      resetDialog.close();
+      notify("演示：设备将重启并创建 FilamentChamber-Setup 热点");
+    });
+  </script>
+</body>
+</html>
