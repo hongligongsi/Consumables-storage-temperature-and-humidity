@@ -1,6 +1,7 @@
 #include "network.h"
 #include "version.h"
 #include "web_page.h"
+#include "wifi_portal_page.h"
 #include <ArduinoOTA.h>
 #include <ESPmDNS.h>
 #include <PubSubClient.h>
@@ -189,8 +190,22 @@ void NetworkManager::startWifiManager() {
   g_wm.setDebugOutput(false);
   g_wm.setConfigPortalBlocking(false); // 非阻塞:不卡 50ms PID 循环
   g_wm.setConnectTimeout(15);          // STA 连接超时秒
+  g_wm.setSaveConnectTimeout(15);      // 保存后最多等待 15 秒给出连接结果
   g_wm.setConfigPortalTimeout(180);    // 门户 3 分钟无操作自动关闭重试
   g_wm.setSaveConfigCallback(nullptr);
+  g_wm.setTitle(settings_.language == Language::Chinese
+                    ? "耗材仓 WiFi 配置"
+                    : "Filament Chamber WiFi Setup");
+  g_wm.setClass(settings_.language == Language::Chinese ? "chamber zh"
+                                                        : "chamber en");
+  g_wm.setCustomHeadElement(WIFI_PORTAL_CUSTOM_HEAD);
+  g_wm.setScanDispPerc(true);       // 扫描项显示可读的信号百分比
+  g_wm.setRemoveDuplicateAPs(true); // 同名 AP 只保留信号最强的一项
+  g_wm.setMinimumSignalQuality(0);  // 弱信号也显示,由用户自行判断
+  g_wm.setShowPassword(false);      // 绝不回显已经保存的 WiFi 密码
+  g_wm._preloadwifiscan = true;    // 门户启动后立即后台扫描
+  g_wm._asyncScan = true;           // 扫描不阻塞主循环/PID 节拍
+  g_wm._scancachetime = 30000;      // 30 秒内复用扫描结果
   wmStarted_ = true;
   portalRetryAtMs_ = 0;
   // autoConnect 在非阻塞下立即返回;有保存凭据则尝试连 STA,否则后台开 AP 门户。
