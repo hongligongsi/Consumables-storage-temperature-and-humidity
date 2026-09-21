@@ -692,12 +692,23 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   g.setTextColor(nextColor, PANEL);
   g.drawString(">", 207, 23);
   g.drawString(s.nextMaterial, 260, 23);
-  g.setTextColor(s.networkConnected ? GOOD : MUTED, PANEL);
-  g.drawString(s.clock, 116, 46);
+  // 日期在耗材行下方居中(面板中心
+  // x=150),时间靠右对齐,状态文字左对齐与下方行标签同列。
+  char dateBuf[16];
+  char timeBuf[16];
+  formatClockField(dateBuf, sizeof(dateBuf), s.clock, true, false, 0);
+  formatClockField(timeBuf, sizeof(timeBuf), s.clock, false, false, 0);
+  g.setTextDatum(ML_DATUM);
   g.setTextColor(WARN, PANEL);
   g.drawString(s.manualExhaust ? (chinese ? "强制排气" : "MANUAL PURGE")
                                : tx.state,
-               235, 46);
+               12, 46);
+  g.setTextDatum(MC_DATUM);
+  g.setTextColor(s.networkConnected ? GOOD : MUTED, PANEL);
+  g.drawString(dateBuf, 150, 46);
+  g.setTextDatum(MR_DATUM);
+  g.drawString(timeBuf, 290, 46);
+  g.setTextDatum(MC_DATUM);
 
   const bool toggled[] = {s.autoExhaust, s.autoTemperature, s.postPrintExhaust};
   const char *titlesZh[] = {"排气风扇", "打印仓温", "打印结束"};

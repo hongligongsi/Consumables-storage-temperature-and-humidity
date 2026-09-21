@@ -954,16 +954,17 @@
         h += '<circle cx="207" cy="23" r="13" fill="none" stroke="var(--' + (S.mainFocus === 2 ? 'warn' : 'border') + ')" stroke-width="1.4"/>';
         h += '<text x="207" y="27.5" text-anchor="middle" font-size="13" class="' + nc + '">&gt;</text>';
         h += '<text x="260" y="27" text-anchor="middle" font-size="12" class="' + nc + '">' + next.name + '</text>';
-        h += '<text x="116" y="50" text-anchor="middle" font-size="11" class="g">' + clockText + '</text>';
-
+        // 日期在耗材行下方居中(面板中心 x=150),时间靠右,状态文字让位到左侧
         var stateZh, stateEn;
         if (u.manualExhaust) { stateZh = '强制排气'; stateEn = 'MANUAL PURGE'; }
         else if (!u.systemEnabled) { stateZh = '待机'; stateEn = 'IDLE'; }
         else if (u.preheat) { stateZh = '预热'; stateEn = 'PREHEAT'; }
         else if (S.pirMotion) { stateZh = '打印'; stateEn = 'PRINT'; }
         else { stateZh = '检测中'; stateEn = 'DETECT'; }
-        h += '<text x="235" y="50" text-anchor="middle" font-size="11" class="w zh">' + stateZh + '</text>';
-        h += '<text x="235" y="50" text-anchor="middle" font-size="11" class="w en">' + stateEn + '</text>';
+        h += '<text x="12" y="50" text-anchor="start" font-size="11" class="w zh">' + stateZh + '</text>';
+        h += '<text x="12" y="50" text-anchor="start" font-size="11" class="w en">' + stateEn + '</text>';
+        h += '<text x="150" y="50" text-anchor="middle" font-size="11" class="g">' + clockText.slice(0, 10) + '</text>';
+        h += '<text x="290" y="50" text-anchor="end" font-size="11" class="g">' + clockText.slice(11) + '</text>';
 
         // 三个自动开关行,焦点 3/4/5
         var rows = [
