@@ -501,6 +501,8 @@
         // 与 include/settings.h 结构体默认值一致
         return {
           language: 'zh', keySound: true, brightness: 80, screenSleep: 60,
+          // 联网开关:与 include/settings.h 的默认值一致
+          wifiEnabled: true, mqttEnabled: false, ntpEnabled: true, otaEnabled: true,
           keepOnPrinting: true, encoderReversed: false,
           pirStart: 25, pirStop: 50,
           lightOnPrinting: true, lightOffAfterPrinting: true,
@@ -597,6 +599,26 @@
           zh: '系统语言', en: 'LANGUAGE', type: 'lang',
           desc: '切换界面语言,目前支持中文和英文。',
           range: '中文 / English'
+        },
+        {
+          zh: 'WiFi联网', en: 'WIFI', type: 'bool', key: 'wifiEnabled',
+          desc: '关闭后设备断开网络,Web 与 MQTT 均不可用,需重启才能恢复远程访问。',
+          range: '开 / 关'
+        },
+        {
+          zh: 'MQTT上报', en: 'MQTT', type: 'bool', key: 'mqttEnabled',
+          desc: '打开后向配置的 MQTT broker 上报状态;关闭则停止上报。',
+          range: '开 / 关'
+        },
+        {
+          zh: 'NTP校时', en: 'NTP', type: 'bool', key: 'ntpEnabled',
+          desc: '打开后自动联网校时;关闭则沿用上次时钟,可手动校时。',
+          range: '开 / 关'
+        },
+        {
+          zh: 'OTA升级', en: 'OTA', type: 'bool', key: 'otaEnabled',
+          desc: '打开后允许通过 ArduinoOTA 无线烧录固件;关闭则停止监听。',
+          range: '开 / 关'
         },
         {
           zh: '按键声音', en: 'KEY SOUND', type: 'bool', key: 'keySound',

@@ -41,6 +41,11 @@ enum class MainFocus : uint8_t {
 // 注意 Count 仅为末尾哨兵(既表示条目总数,也用作取模边界),不对应任何真实条目。
 enum class SystemSettingField : uint8_t {
   Language,
+  // ---- 联网开关(长按保存后经 network.onSettingsChanged 即时生效) ----
+  WifiEnabled, // 关闭后设备将断开网络,需重启才能恢复远程访问
+  MqttEnabled, // 关闭后停止向 MQTT broker 上报
+  NtpEnabled,  // 关闭后不再自动校时,沿用上次时钟
+  OtaEnabled,  // 关闭后停止 ArduinoOTA 监听
   KeySound,
   Brightness,
   ScreenSleep,

@@ -18,6 +18,19 @@ void UiModel::adjustSystemSetting(int direction,
         s.language == Language::Chinese ? Language::English : Language::Chinese;
     controller.setLanguage(s.language);
     break;
+  // ---- 联网开关:与其余开关一致,单击即取反 ----
+  case SystemSettingField::WifiEnabled:
+    s.wifiEnabled = !s.wifiEnabled;
+    break;
+  case SystemSettingField::MqttEnabled:
+    s.mqttEnabled = !s.mqttEnabled;
+    break;
+  case SystemSettingField::NtpEnabled:
+    s.ntpEnabled = !s.ntpEnabled;
+    break;
+  case SystemSettingField::OtaEnabled:
+    s.otaEnabled = !s.otaEnabled;
+    break;
   case SystemSettingField::KeySound:
     s.keySound = !s.keySound;
     break;

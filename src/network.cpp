@@ -5,6 +5,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
+#include <esp_sntp.h>
 #include <time.h>
 
 // 静态分发:WiFi 事件回调与 MQTT 回调跑在 wifi 任务,只经 self_ 转发到实例方法,
@@ -269,6 +270,12 @@ void NetworkManager::onSettingsChanged(const SystemSettings &settings) {
     }
     return;
   }
+  // 本地关掉 WiFi 后又打开:重新拉起配网流程。否则 state_ 一直停在 Off,
+  // loop() 会立即 return,联网再也起不来。
+  if (!wifiWas) {
+    WiFi.mode(WIFI_STA);
+    startWifiManager();
+  }
   // MQTT 参数(broker/port/enabled)变化则断开重配,loop() 内自动重连。
   const bool brokerChanged = strcmp(oldBroker, settings_.mqttBroker) != 0 ||
                              oldPort != settings_.mqttPort;
@@ -280,12 +287,27 @@ void NetworkManager::onSettingsChanged(const SystemSettings &settings) {
   if (settings_.mqttEnabled && settings_.mqttBroker[0] &&
       WiFi.status() == WL_CONNECTED && !mqttConfigured_)
     startMqtt();
-  if (ntpWas != settings_.ntpEnabled && settings_.ntpEnabled &&
-      WiFi.status() == WL_CONNECTED && !ntpStarted_)
-    startNtp();
-  if (otaWas != settings_.otaEnabled && settings_.otaEnabled &&
-      WiFi.status() == WL_CONNECTED && !otaStarted_)
-    startOta();
+  // NTP/OTA:开关翻转时双向生效(开则起,关则停),仅在已连网时才需要动手。
+  if (ntpWas != settings_.ntpEnabled) {
+    if (settings_.ntpEnabled) {
+      if (WiFi.status() == WL_CONNECTED && !ntpStarted_)
+        startNtp();
+    } else if (ntpStarted_) {
+      esp_sntp_stop();
+      ntpStarted_ = false;
+      Serial.println("[NTP] stopped");
+    }
+  }
+  if (otaWas != settings_.otaEnabled) {
+    if (settings_.otaEnabled) {
+      if (WiFi.status() == WL_CONNECTED && !otaStarted_)
+        startOta();
+    } else if (otaStarted_) {
+      ArduinoOTA.end();
+      otaStarted_ = false;
+      Serial.println("[OTA] stopped");
+    }
+  }
 }
 
 String NetworkManager::ipString() const {
@@ -387,13 +409,15 @@ void NetworkManager::startWebServer() {
     setProfile((size_t)idx);
     const MaterialProfile &current = controller_->profile();
     const float minC = g_server.hasArg("minC") ? g_server.arg("minC").toFloat()
-                                                : current.chamberMinC;
+                                               : current.chamberMinC;
     const float maxC = g_server.hasArg("maxC") ? g_server.arg("maxC").toFloat()
-                                                : current.chamberMaxC;
-    const int fanMin = g_server.hasArg("fanMin") ? g_server.arg("fanMin").toInt()
-                                                  : current.fanMinPercent;
-    const int fanMax = g_server.hasArg("fanMax") ? g_server.arg("fanMax").toInt()
-                                                  : current.fanMaxPercent;
+                                               : current.chamberMaxC;
+    const int fanMin = g_server.hasArg("fanMin")
+                           ? g_server.arg("fanMin").toInt()
+                           : current.fanMinPercent;
+    const int fanMax = g_server.hasArg("fanMax")
+                           ? g_server.arg("fanMax").toInt()
+                           : current.fanMaxPercent;
     const int postFan = g_server.hasArg("postFan")
                             ? g_server.arg("postFan").toInt()
                             : current.postExhaustPercent;
@@ -401,8 +425,7 @@ void NetworkManager::startWebServer() {
                                 ? g_server.arg("postSeconds").toInt()
                                 : current.postExhaustSeconds;
     if (fanMin < 0 || fanMin > 100 || fanMax < 0 || fanMax > 100 ||
-        postFan < 0 || postFan > 100 ||
-        postSeconds < 0 || postSeconds > 1800 ||
+        postFan < 0 || postFan > 100 || postSeconds < 0 || postSeconds > 1800 ||
         !controller_->updateProfile(minC, maxC, fanMin, fanMax, postFan,
                                     postSeconds)) {
       g_server.send(400, "application/json",
@@ -590,7 +613,8 @@ String NetworkManager::buildStateJson() const {
       (unsigned)(ui_ && ui_->settings().manualExhaust ? 100 : o.exhaustPercent),
       (unsigned)o.heaterPercent,
       (unsigned)(o.heaterFan && settings_.heaterFanPercent
-                     ? settings_.heaterFanPercent : 0),
+                     ? settings_.heaterFanPercent
+                     : 0),
       o.light ? "true" : "false",
       (controller_ && controller_->systemEnabled()) ? "true" : "false",
       r.pirMotion ? "true" : "false", timeString().c_str(), ipString().c_str(),

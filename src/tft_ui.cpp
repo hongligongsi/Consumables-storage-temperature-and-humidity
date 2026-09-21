@@ -389,30 +389,21 @@ void formatClockField(char *out, size_t size, const char *clock, bool dateRow,
 
 void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
   // 条目文案按 SystemSettingField 的下标索引取值,顺序必须与枚举保持一致。
-  static const char *const zh[] = {"系统语言",
-                                   "按键声音",
-                                   "屏幕亮度",
-                                   "屏幕休眠时间",
-                                   "打印时保持屏幕开启",
-                                   "编码器方向",
-                                   "PIR启动延时",
-                                   "PIR关闭延时",
-                                   "启动后自动开灯",
-                                   "关闭后自动关灯",
-                                   "启动后蜂鸣提示",
-                                   "关闭后蜂鸣提示",
-                                   "发热板限流",
-                                   "发热板风扇风速",
-                                   "发热板温度保护",
-                                   "屏幕配色",
-                                   "日间开始时刻",
-                                   "夜间开始时刻",
-                                   "日期",
-                                   "时间",
-                                   "触摸屏校准",
-                                   "恢复出厂配置",
-                                   "固件版本"};
+  static const char *const zh[] = {
+      "系统语言",       "WiFi联网",       "MQTT上报",
+      "NTP校时",        "OTA升级",        "按键声音",
+      "屏幕亮度",       "屏幕休眠时间",   "打印时保持屏幕开启",
+      "编码器方向",     "PIR启动延时",    "PIR关闭延时",
+      "启动后自动开灯", "关闭后自动关灯", "启动后蜂鸣提示",
+      "关闭后蜂鸣提示", "发热板限流",     "发热板风扇风速",
+      "发热板温度保护", "屏幕配色",       "日间开始时刻",
+      "夜间开始时刻",   "日期",           "时间",
+      "触摸屏校准",     "恢复出厂配置",   "固件版本"};
   static const char *const en[] = {"LANGUAGE",
+                                   "WIFI",
+                                   "MQTT",
+                                   "NTP",
+                                   "OTA",
                                    "KEY SOUND",
                                    "BRIGHTNESS",
                                    "SCREEN SLEEP",
@@ -477,6 +468,18 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
     case SystemSettingField::Language:
       strlcpy(value, v.language == Language::Chinese ? "中文" : "EN",
               sizeof(value));
+      break;
+    case SystemSettingField::WifiEnabled:
+      strlcpy(value, v.wifiEnabled ? on : off, sizeof(value));
+      break;
+    case SystemSettingField::MqttEnabled:
+      strlcpy(value, v.mqttEnabled ? on : off, sizeof(value));
+      break;
+    case SystemSettingField::NtpEnabled:
+      strlcpy(value, v.ntpEnabled ? on : off, sizeof(value));
+      break;
+    case SystemSettingField::OtaEnabled:
+      strlcpy(value, v.otaEnabled ? on : off, sizeof(value));
       break;
     case SystemSettingField::KeySound:
       strlcpy(value, v.keySound ? on : off, sizeof(value));

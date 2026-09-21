@@ -371,6 +371,8 @@ void dispatchUiAction(UiAction action) {
   }
   if (ui.takeSystemSettingsSaveRequest()) {
     const bool saved = settingsStore.save(settings);
+    // 设置页刚改过的联网开关立即作用于网络子系统,无需重启。
+    network.onSettingsChanged(settings);
     Serial.printf("Settings: %s\n", saved ? "saved" : "save failed");
   }
   if (ui.takeTouchCalibrationRequest()) {
