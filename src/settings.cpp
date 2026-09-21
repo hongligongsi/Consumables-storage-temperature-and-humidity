@@ -18,6 +18,14 @@ void sanitize(SystemSettings &s) {
   s.mqttPort = constrain(s.mqttPort, 1, 65535);
   s.mqttBroker[sizeof(s.mqttBroker) - 1] = '\0';
   s.mqttTopicPrefix[sizeof(s.mqttTopicPrefix) - 1] = '\0';
+  s.timezone[sizeof(s.timezone) - 1] = '\0';
+  s.ntpServer1[sizeof(s.ntpServer1) - 1] = '\0';
+  s.ntpServer2[sizeof(s.ntpServer2) - 1] = '\0';
+  s.staticIp[sizeof(s.staticIp) - 1] = '\0';
+  s.staticGateway[sizeof(s.staticGateway) - 1] = '\0';
+  s.staticSubnet[sizeof(s.staticSubnet) - 1] = '\0';
+  s.staticDns1[sizeof(s.staticDns1) - 1] = '\0';
+  s.staticDns2[sizeof(s.staticDns2) - 1] = '\0';
   // 日夜配色与时间:theme 限 0-2,时刻限 0-1425(23:45,与 15 分钟步长对齐)
   s.theme = constrain(s.theme, 0, 2);
   s.dayStartMinutes = min<uint16_t>(s.dayStartMinutes, 1425);
@@ -59,6 +67,15 @@ SystemSettings SettingsStore::load() {
   p.getString("mqttPrefix", s.mqttTopicPrefix, sizeof(s.mqttTopicPrefix));
   s.ntpEnabled = p.getBool("ntpEn", s.ntpEnabled);
   s.otaEnabled = p.getBool("otaEn", s.otaEnabled);
+  p.getString("tz", s.timezone, sizeof(s.timezone));
+  p.getString("ntp1", s.ntpServer1, sizeof(s.ntpServer1));
+  p.getString("ntp2", s.ntpServer2, sizeof(s.ntpServer2));
+  s.staticIpEnabled = p.getBool("staticEn", s.staticIpEnabled);
+  p.getString("staticIp", s.staticIp, sizeof(s.staticIp));
+  p.getString("gateway", s.staticGateway, sizeof(s.staticGateway));
+  p.getString("subnet", s.staticSubnet, sizeof(s.staticSubnet));
+  p.getString("dns1", s.staticDns1, sizeof(s.staticDns1));
+  p.getString("dns2", s.staticDns2, sizeof(s.staticDns2));
   // 日夜配色与时间
   s.theme = p.getUChar("theme", s.theme);
   s.dayStartMinutes = p.getUShort("dayStart", s.dayStartMinutes);
@@ -75,41 +92,58 @@ bool SettingsStore::save(const SystemSettings &input) {
   Preferences p;
   if (!p.begin(NAMESPACE_NAME, false))
     return false;
-  p.putBool("english", s.language == Language::English);
-  p.putBool("keySound", s.keySound);
-  p.putUChar("brightness", s.brightness);
-  p.putUShort("screenSleep", s.screenSleepSeconds);
-  p.putBool("keepOnPrint", s.keepScreenOnPrinting);
-  p.putBool("encoderRev", s.encoderReversed);
-  p.putUShort("pirStart", s.pirStartSeconds);
-  p.putUShort("pirStop", s.pirStopSeconds);
-  p.putBool("lightStart", s.lightOnPrinting);
-  p.putBool("lightStop", s.lightOffAfterPrinting);
-  p.putBool("beepStart", s.beepOnStart);
-  p.putBool("beepStop", s.beepOnStop);
-  p.putUChar("heaterMaxA", s.heaterMaxCurrentA);
-  p.putUChar("heaterFan", s.heaterFanPercent);
-  p.putUShort("heaterLimit", s.heaterBoardLimitC);
-  p.putUShort("touchX0", s.touchXMin);
-  p.putUShort("touchX1", s.touchXMax);
-  p.putUShort("touchY0", s.touchYMin);
-  p.putUShort("touchY1", s.touchYMax);
-  p.putBool("touchCal", s.touchCalibrated);
+  bool ok = true;
+#define PUT_OK(call) ok &= (call) > 0
+  auto putText = [&p](const char *key, const char *value) {
+    const size_t written = p.putString(key, value);
+    return value[0] ? written == strlen(value)
+                    : p.isKey(key) && p.getString(key, "__error__") == "";
+  };
+  PUT_OK(p.putBool("english", s.language == Language::English));
+  PUT_OK(p.putBool("keySound", s.keySound));
+  PUT_OK(p.putUChar("brightness", s.brightness));
+  PUT_OK(p.putUShort("screenSleep", s.screenSleepSeconds));
+  PUT_OK(p.putBool("keepOnPrint", s.keepScreenOnPrinting));
+  PUT_OK(p.putBool("encoderRev", s.encoderReversed));
+  PUT_OK(p.putUShort("pirStart", s.pirStartSeconds));
+  PUT_OK(p.putUShort("pirStop", s.pirStopSeconds));
+  PUT_OK(p.putBool("lightStart", s.lightOnPrinting));
+  PUT_OK(p.putBool("lightStop", s.lightOffAfterPrinting));
+  PUT_OK(p.putBool("beepStart", s.beepOnStart));
+  PUT_OK(p.putBool("beepStop", s.beepOnStop));
+  PUT_OK(p.putUChar("heaterMaxA", s.heaterMaxCurrentA));
+  PUT_OK(p.putUChar("heaterFan", s.heaterFanPercent));
+  PUT_OK(p.putUShort("heaterLimit", s.heaterBoardLimitC));
+  PUT_OK(p.putUShort("touchX0", s.touchXMin));
+  PUT_OK(p.putUShort("touchX1", s.touchXMax));
+  PUT_OK(p.putUShort("touchY0", s.touchYMin));
+  PUT_OK(p.putUShort("touchY1", s.touchYMax));
+  PUT_OK(p.putBool("touchCal", s.touchCalibrated));
   // 联网功能
-  p.putBool("wifiEn", s.wifiEnabled);
-  p.putBool("mqttEn", s.mqttEnabled);
-  p.putString("mqttBroker", s.mqttBroker);
-  p.putUShort("mqttPort", s.mqttPort);
-  p.putString("mqttPrefix", s.mqttTopicPrefix);
-  p.putBool("ntpEn", s.ntpEnabled);
-  p.putBool("otaEn", s.otaEnabled);
+  PUT_OK(p.putBool("wifiEn", s.wifiEnabled));
+  PUT_OK(p.putBool("mqttEn", s.mqttEnabled));
+  ok &= putText("mqttBroker", s.mqttBroker);
+  PUT_OK(p.putUShort("mqttPort", s.mqttPort));
+  ok &= putText("mqttPrefix", s.mqttTopicPrefix);
+  PUT_OK(p.putBool("ntpEn", s.ntpEnabled));
+  PUT_OK(p.putBool("otaEn", s.otaEnabled));
+  ok &= putText("tz", s.timezone);
+  ok &= putText("ntp1", s.ntpServer1);
+  ok &= putText("ntp2", s.ntpServer2);
+  PUT_OK(p.putBool("staticEn", s.staticIpEnabled));
+  ok &= putText("staticIp", s.staticIp);
+  ok &= putText("gateway", s.staticGateway);
+  ok &= putText("subnet", s.staticSubnet);
+  ok &= putText("dns1", s.staticDns1);
+  ok &= putText("dns2", s.staticDns2);
   // 日夜配色与时间
-  p.putUChar("theme", s.theme);
-  p.putUShort("dayStart", s.dayStartMinutes);
-  p.putUShort("nightStart", s.nightStartMinutes);
-  p.putULong("clockEp", s.manualClockEpoch);
+  PUT_OK(p.putUChar("theme", s.theme));
+  PUT_OK(p.putUShort("dayStart", s.dayStartMinutes));
+  PUT_OK(p.putUShort("nightStart", s.nightStartMinutes));
+  PUT_OK(p.putULong("clockEp", s.manualClockEpoch));
+#undef PUT_OK
   p.end();
-  return true;
+  return ok;
 }
 
 void SettingsStore::loadMaterialProfiles() {
@@ -192,8 +226,9 @@ bool SettingsStore::reset() {
       "beepStart",  "beepStop", "heaterMaxA", "heaterFan",   "heaterLimit",
       "touchX0",    "touchX1",  "touchY0",    "touchY1",     "touchCal",
       "wifiEn",     "mqttEn",   "mqttBroker", "mqttPort",    "mqttPrefix",
-      "ntpEn",      "otaEn",    "theme",      "dayStart",    "nightStart",
-      "clockEp"};
+      "ntpEn",      "otaEn",    "tz",         "ntp1",        "ntp2",
+      "staticEn",   "staticIp", "gateway",    "subnet",      "dns1",
+      "dns2",       "theme",    "dayStart",   "nightStart",  "clockEp"};
   bool ok = true;
   for (const char *key : keys)
     if (p.isKey(key))

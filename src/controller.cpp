@@ -41,7 +41,7 @@ void ChamberController::begin(uint32_t now) {
 void ChamberController::setProfile(size_t index) {
   if (index < MATERIAL_COUNT) {
     profileIndex_ = index;
-    integral_ = previousError_ = 0;
+    integral_ = previousError_ = boardIntegral_ = boardPreviousError_ = 0;
   }
 }
 
@@ -110,9 +110,7 @@ bool ChamberController::adjustProfile(MaterialField field, int direction) {
   return false;
 }
 
-float ChamberController::chamberPid(float input, uint32_t now) {
-  const float dt = max(0.05f, (now - lastPidMs_) / 1000.0f);
-  lastPidMs_ = now;
+float ChamberController::chamberPid(float input, float dt) {
   const float error = profile().chamberMinC - input;
   integral_ = constrain(integral_ + error * dt, -200.0f, 200.0f);
   const float derivative = (error - previousError_) / dt;
@@ -120,8 +118,7 @@ float ChamberController::chamberPid(float input, uint32_t now) {
   return constrain(KP * error + KI * integral_ + KD * derivative, 0.0f, 100.0f);
 }
 
-float ChamberController::boardPid(float input, uint32_t now) {
-  const float dt = max(0.05f, (now - lastPidMs_) / 1000.0f);
+float ChamberController::boardPid(float input, float dt) {
   const float error = boardLimitC_ - input;
   boardIntegral_ = constrain(boardIntegral_ + error * dt, -300.0f, 300.0f);
   const float derivative = (error - boardPreviousError_) / dt;
@@ -212,16 +209,32 @@ Outputs ChamberController::update(const Readings &in, uint32_t now) {
   case ChamberState::Preheat:
   case ChamberState::Printing: {
     if (sensorsValid && autoTemperature_) {
-      float desired =
-          min(chamberPid(in.chamberC, now), boardPid(in.heaterBoardC, now));
-      if (in.heaterCurrentA > maxCurrentA_)
-        desired *= maxCurrentA_ / in.heaterCurrentA;
+      // 同一控制周期同时运行两个 PID：仓温 PID 给出热需求，热板 PID 给出
+      // 安全允许功率。取二者最小值，热板安全限制始终拥有更高优先级。
+      const float dt = constrain((now - lastPidMs_) / 1000.0f, 0.01f, 0.25f);
+      lastPidMs_ = now;
+      const float chamberDemand = chamberPid(in.chamberC, dt);
+      const float boardSafeLimit = boardPid(in.heaterBoardC, dt);
+      float desired = min(chamberDemand, boardSafeLimit);
+
+      // INA226 可能因采样方向返回负值，限流判断统一取绝对值。超限时按
+      // I_limit / I_measured 连续缩放，而不是瞬间切断；后续再经过 PWM 斜率
+      // 限制，使功率平滑下降。
+      const float measuredCurrentA = fabsf(in.heaterCurrentA);
+      if (measuredCurrentA > maxCurrentA_ && measuredCurrentA > 0.01f)
+        desired *= maxCurrentA_ / measuredCurrentA;
       desired = min(desired, static_cast<float>(userHeatLimit_));
       // 每个控制周期最多变化 3%，避免热板功率骤变。
       desired = constrain(desired, lastPwm_ - PWM_SLOPE_PER_50MS,
                           lastPwm_ + PWM_SLOPE_PER_50MS);
       lastPwm_ = desired;
       out.heaterPercent = lroundf(desired);
+    } else {
+      // 自动温控关闭或任一安全传感器无效时，本周期立即输出 0，并丢弃 PID
+      // 历史状态；传感器恢复后必须从斜率限制的 0% 重新爬升。
+      lastPwm_ = 0;
+      lastPidMs_ = now;
+      integral_ = previousError_ = boardIntegral_ = boardPreviousError_ = 0;
     }
     out.heaterFan = out.heaterPercent > 0 ||
                     (in.ntcValid && in.heaterBoardC > in.chamberC + 10);
@@ -253,8 +266,13 @@ Outputs ChamberController::update(const Readings &in, uint32_t now) {
   case ChamberState::Detecting:
     break;
   }
-  if (state_ != ChamberState::Preheat && state_ != ChamberState::Printing)
+  if (state_ != ChamberState::Preheat && state_ != ChamberState::Printing) {
     lastPwm_ = 0;
+    // 非温控状态持续刷新时间基准并清除历史项，避免长时间待机后首次进入
+    // 温控时把整段待机时间计入积分。
+    lastPidMs_ = now;
+    integral_ = previousError_ = boardIntegral_ = boardPreviousError_ = 0;
+  }
   out.boardFan = in.mcuC > 60 ||
                  (in.inaValid && fabsf(in.heaterCurrentA) > 0.05f) ||
                  out.heaterPercent > 0 ||

@@ -96,5 +96,5 @@ Get-ChildItem "$env:USERPROFILE\.platformio\packages\framework-arduinoespressif3
 ## 烧录后确认
 
 首次上电若设备进入 `FilamentChamber-Setup` 配置热点，说明烧录成功。连上该热点
-配网后，可由 ArduinoOTA 继续无线升级（OTA 主机名 `filament-chamber`，密码见
-[networking.md](networking.md)）。
+配网后，可由 ArduinoOTA 继续无线升级（OTA 主机名 `chamber`，每台设备的独立
+密码可在 `http://chamber.local/` 查看，详见 [networking.md](networking.md)）。

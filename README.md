@@ -109,7 +109,7 @@ Get-ChildItem "$env:USERPROFILE\.platformio\packages\framework-arduinoespressif3
 
 > `firmware.bin` 是纯应用镜像，只能写入 `0x10000`。烧到 `0x0` 会覆盖 bootloader，设备将无法启动。
 
-首次上电若设备进入 `FilamentChamber-Setup` 配置热点，说明烧录成功；连上该热点配网后，可由 ArduinoOTA 继续无线升级（OTA 密码见 `startOta()`）。
+首次上电若设备进入 `FilamentChamber-Setup` 配置热点，说明烧录成功；配网后访问 `http://chamber.local/` 打开管理页，并可查看本机独立 OTA 密码继续无线升级。
 
 ## 重要硬件核对
 

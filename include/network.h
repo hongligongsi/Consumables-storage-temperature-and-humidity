@@ -4,7 +4,7 @@
 #include "ui_model.h"
 #include <Arduino.h>
 
-// 联网总管理:WiFi(非阻塞 AP 配网门户)+ WebServer:81 REST API +
+// 联网总管理:WiFi(非阻塞 AP 配网门户)+ WebServer REST API +
 // MQTT 上报/订阅 + NTP 时间同步 + ArduinoOTA 固件升级。
 // 全部在主循环 loop() 内轮询,单线程,不阻塞 50ms PID 热控节拍。
 enum class NetState : uint8_t {
@@ -18,7 +18,7 @@ enum class NetState : uint8_t {
 class NetworkManager {
 public:
   void begin(ChamberController &controller, UiModel &ui,
-             const SystemSettings &settings);
+             SystemSettings &settings);
   void loop();
   // 主循环每周期喂数据;Web/MQTT/状态查询据此返回。Readings 已含
   // voltage/current,无需再传。
@@ -32,20 +32,24 @@ public:
   }
   String ipString() const;   // STA IP "x.x.x.x",未连返回 ""
   String timeString() const; // NTP "HH:MM:SS",未同步返回 ""
-  const char *hostname() const { return "filament-chamber"; }
+  const char *hostname() const { return "chamber"; }
 
   // 由静态回调(WiFi 事件 / MQTT)转发,公开以便 free function 经 g_self 调用。
   void notifyStaConnected() { wifiJustConnected_ = true; }
-  void notifyStaDisconnected() { wifiJustDisconnected_ = true; }
+  void notifyStaDisconnected(uint8_t reason) {
+    lastDisconnectReason_ = reason;
+    wifiJustDisconnected_ = true;
+  }
   void handleMqttCommand(const char *payload);
 
 private:
   ChamberController *controller_ = nullptr;
   UiModel *ui_ = nullptr;
   SystemSettings settings_{};
+  SystemSettings *sharedSettings_ = nullptr;
   NetState state_ = NetState::Off;
   bool wmStarted_ = false;      // WiFiManager.autoConnect 已调用过
-  bool serverStarted_ = false;  // WebServer:81 已 begin
+  bool serverStarted_ = false;  // WebServer 已 begin
   bool otaStarted_ = false;     // ArduinoOTA.begin 已调用
   bool mqttConfigured_ = false; // PubSubClient 已 setServer/订阅
   bool ntpStarted_ = false;     // configTime 已调用
@@ -59,13 +63,27 @@ private:
   // WiFi 事件回调置位,loop() 内处理,避免 wifi 任务与主循环竞争。
   volatile bool wifiJustConnected_ = false;
   volatile bool wifiJustDisconnected_ = false;
+  volatile uint8_t lastDisconnectReason_ = 0;
+  uint32_t disconnectCount_ = 0;
   bool configPortalWasActive_ = false;
+  uint32_t portalRetryAtMs_ = 0;
+
+  struct RateLimitSlot {
+    uint32_t ip = 0;
+    uint32_t lastReadMs = 0;
+    uint32_t lastWriteMs = 0;
+  };
+  RateLimitSlot rateSlots_[4]{};
 
   void startWifiManager();
   void startWebServer();
   void startMqtt();
   void startNtp();
   void startOta();
+  void applyIpConfig();
+  bool allowApiRequest(bool write);
+  void sendRateLimited();
+  String otaPassword() const;
   bool dispatchAction(const String &name);
   void setProfile(size_t index);
   void publishState();

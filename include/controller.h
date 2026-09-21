@@ -101,8 +101,9 @@ public:
   ChamberState state() const { return state_; }
 
 private:
-  float chamberPid(float input, uint32_t now);
-  float boardPid(float input, uint32_t now);
+  // 两个 PID 必须使用同一个采样周期，才能在调度抖动时仍可直接比较并取最小值。
+  float chamberPid(float input, float dt);
+  float boardPid(float input, float dt);
   ChamberState state_ = ChamberState::Idle;
   Language language_ = Language::Chinese;
   size_t profileIndex_ = 0;

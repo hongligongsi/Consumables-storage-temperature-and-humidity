@@ -34,6 +34,17 @@ struct SystemSettings {
       "chamber";          // 主题前缀,实际主题如 chamber/state、chamber/cmd
   bool ntpEnabled = true; // NTP 时间同步
   bool otaEnabled = true; // OTA 固件升级
+  // POSIX TZ 字符串。中国标准时间为 CST-8（POSIX 的符号与 UTC 偏移相反）。
+  char timezone[48] = "CST-8";
+  char ntpServer1[64] = "ntp.aliyun.com";
+  char ntpServer2[64] = "pool.ntp.org";
+  // 可选静态 IPv4；关闭时使用 DHCP。地址使用点分十进制文本，便于 Web 配置。
+  bool staticIpEnabled = false;
+  char staticIp[16] = "192.168.1.50";
+  char staticGateway[16] = "192.168.1.1";
+  char staticSubnet[16] = "255.255.255.0";
+  char staticDns1[16] = "223.5.5.5";
+  char staticDns2[16] = "1.1.1.1";
   // ---- 日夜配色与时间 ----
   uint8_t theme = 1;                 // 0=日间,1=夜间,2=自动(按时刻切换)
   uint16_t dayStartMinutes = 360;    // 日间开始时刻(分钟,0-1439),默认 6:00
