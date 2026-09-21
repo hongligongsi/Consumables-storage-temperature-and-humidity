@@ -9,6 +9,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <Arduino.h>
 #include <Wire.h>
+#include <sys/time.h>
 
 // --------------------------- 可按实际热端调整 ---------------------------
 constexpr uint8_t PWM_BITS = 10;
@@ -47,21 +48,70 @@ uint16_t readTouchAxis(bool xAxis) {
   const int driveLow = xAxis ? Pin::TFT_XL : Pin::TFT_YD;
   const int driveHigh = xAxis ? Pin::TFT_XR : Pin::TFT_YU;
   const int sense = xAxis ? Pin::TFT_YD : Pin::TFT_XR;
-  pinMode(driveLow, OUTPUT); digitalWrite(driveLow, LOW);
-  pinMode(driveHigh, OUTPUT); digitalWrite(driveHigh, HIGH);
+  pinMode(driveLow, OUTPUT);
+  digitalWrite(driveLow, LOW);
+  pinMode(driveHigh, OUTPUT);
+  digitalWrite(driveHigh, HIGH);
   // 下拉使未触摸时稳定回到 0，避免浮空 ADC 产生幽灵点击。
   pinMode(sense, INPUT_PULLDOWN);
   delayMicroseconds(30);
   uint32_t sum = 0;
-  for (uint8_t i = 0; i < 8; ++i) sum += analogRead(sense);
-  pinMode(Pin::TFT_XL, INPUT); pinMode(Pin::TFT_XR, INPUT);
-  pinMode(Pin::TFT_YD, INPUT); pinMode(Pin::TFT_YU, INPUT);
+  for (uint8_t i = 0; i < 8; ++i)
+    sum += analogRead(sense);
+  pinMode(Pin::TFT_XL, INPUT);
+  pinMode(Pin::TFT_XR, INPUT);
+  pinMode(Pin::TFT_YD, INPUT);
+  pinMode(Pin::TFT_YU, INPUT);
   return sum / 8;
 }
 
 void startBuzzer(uint16_t durationMs) {
   digitalWrite(Pin::BUZZER, HIGH);
   buzzerOffMs = millis() + durationMs;
+}
+
+// 2023-11-14 之后的 epoch 视为已同步;未同步时 time() 返回 1970 年起的小值。
+bool clockValid(time_t t) { return t >= 1700000000; }
+
+// 取当前时刻:NTP 已同步用系统时钟,否则回退上次手动校时值。
+time_t currentEpoch() {
+  const time_t now = time(nullptr);
+  if (clockValid(now))
+    return now;
+  return settings.manualClockEpoch >= 1700000000
+             ? static_cast<time_t>(settings.manualClockEpoch)
+             : 0;
+}
+
+// "YYYY-MM-DD HH:MM:SS";无有效时间时退化为占位串。
+void formatClock(char *out, size_t size) {
+  const time_t now = currentEpoch();
+  if (!clockValid(now)) {
+    strlcpy(out, "----/--/-- --:--:--", size);
+    return;
+  }
+  struct tm tm{};
+  localtime_r(&now, &tm);
+  snprintf(out, size, "%04d-%02d-%02d %02d:%02d:%02d", tm.tm_year + 1900,
+           tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+}
+
+// 生效配色:theme 0/1 直接采用,theme==2(自动)按时刻落在日间区间与否判定。
+uint8_t resolveTheme() {
+  if (settings.theme != 2)
+    return settings.theme;
+  const time_t now = currentEpoch();
+  if (!clockValid(now))
+    return 1; // 无有效时间时按夜间渲染,避免白天误亮/夜间误暗
+  struct tm tm{};
+  localtime_r(&now, &tm);
+  const uint16_t minutes = static_cast<uint16_t>(tm.tm_hour * 60 + tm.tm_min);
+  const uint16_t day = settings.dayStartMinutes;
+  const uint16_t night = settings.nightStartMinutes;
+  // 日间区间 [dayStart, nightStart);跨零点时取补集。
+  const bool isDay = day <= night ? (minutes >= day && minutes < night)
+                                  : (minutes >= day || minutes < night);
+  return isDay ? 0 : 1;
 }
 
 void applyRuntimeSettings() {
@@ -84,15 +134,14 @@ float readNtcCelsius(int pin, float seriesOhm = 10000.0f,
   const float resistance = seriesOhm * raw / (4095.0f - raw);
   const float invT = 1.0f / 298.15f + logf(resistance / nominalOhm) / beta;
   const float celsius = 1.0f / invT - 273.15f;
-  return isfinite(celsius) && celsius >= -40.0f && celsius <= 250.0f
-             ? celsius
-             : NAN;
+  return isfinite(celsius) && celsius >= -40.0f && celsius <= 250.0f ? celsius
+                                                                     : NAN;
 }
 
 void setRgb(uint8_t r, uint8_t g, uint8_t b) {
   static uint32_t previous = UINT32_MAX;
-  const uint32_t color = (static_cast<uint32_t>(r) << 16) |
-                         (static_cast<uint32_t>(g) << 8) | b;
+  const uint32_t color =
+      (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
   if (color == previous)
     return;
   previous = color;
@@ -176,12 +225,16 @@ void updateThermalControl() {
   Outputs out = controller.update(in, millis());
   if (out.state == ChamberState::Printing &&
       previousControlState != ChamberState::Printing) {
-    if (settings.lightOnPrinting) automaticLight = true;
-    if (settings.beepOnStart) startBuzzer(180);
+    if (settings.lightOnPrinting)
+      automaticLight = true;
+    if (settings.beepOnStart)
+      startBuzzer(180);
   } else if (previousControlState == ChamberState::Printing &&
              out.state != ChamberState::Printing) {
-    if (settings.lightOffAfterPrinting) automaticLight = false;
-    if (settings.beepOnStop) startBuzzer(300);
+    if (settings.lightOffAfterPrinting)
+      automaticLight = false;
+    if (settings.beepOnStop)
+      startBuzzer(300);
   }
   previousControlState = out.state;
   out.light = automaticLight || ui.settings().light;
@@ -190,9 +243,10 @@ void updateThermalControl() {
     out.exhaustPercent = 100;
   latestOutputs = out;
   setHotPower(out.heaterPercent);
-  ledcWrite(HOT_FAN_PWM_CHANNEL,
-            out.heaterFan ? lroundf(settings.heaterFanPercent *
-                                    ((1 << PWM_BITS) - 1) / 100.0f) : 0);
+  ledcWrite(HOT_FAN_PWM_CHANNEL, out.heaterFan
+                                     ? lroundf(settings.heaterFanPercent *
+                                               ((1 << PWM_BITS) - 1) / 100.0f)
+                                     : 0);
   digitalWrite(Pin::AIR_FAN_DC, out.exhaustPercent ? HIGH : LOW);
   digitalWrite(Pin::BOARD_FAN, out.boardFan ? HIGH : LOW);
   ledcWrite(AIR_FAN_PWM_CHANNEL,
@@ -283,22 +337,26 @@ void dispatchUiAction(UiAction action) {
     } else if (action == UiAction::EncoderClick) {
       const uint16_t x = readTouchAxis(true), y = readTouchAxis(false);
       if (touchCalibrationStep == 0) {
-        touchFirstX = x; touchFirstY = y; touchCalibrationStep = 1;
+        touchFirstX = x;
+        touchFirstY = y;
+        touchCalibrationStep = 1;
       } else {
         // 保留左上与右下的原始方向，兼容 X/Y 反接的触摸屏。
         settings.touchXMin = touchFirstX;
         settings.touchXMax = x;
         settings.touchYMin = touchFirstY;
         settings.touchYMax = y;
-        settings.touchCalibrated = abs(static_cast<int>(settings.touchXMax) -
-                                       static_cast<int>(settings.touchXMin)) > 200 &&
-                                   abs(static_cast<int>(settings.touchYMax) -
-                                       static_cast<int>(settings.touchYMin)) > 200;
+        settings.touchCalibrated =
+            abs(static_cast<int>(settings.touchXMax) -
+                static_cast<int>(settings.touchXMin)) > 200 &&
+            abs(static_cast<int>(settings.touchYMax) -
+                static_cast<int>(settings.touchYMin)) > 200;
         settingsStore.save(settings);
         touchCalibrationActive = false;
         Serial.printf("Touch calibration: x=%u..%u y=%u..%u %s\n",
-                      settings.touchXMin, settings.touchXMax, settings.touchYMin,
-                      settings.touchYMax, settings.touchCalibrated ? "saved" : "invalid");
+                      settings.touchXMin, settings.touchXMax,
+                      settings.touchYMin, settings.touchYMax,
+                      settings.touchCalibrated ? "saved" : "invalid");
       }
     }
     return;
@@ -318,7 +376,8 @@ void dispatchUiAction(UiAction action) {
   if (ui.takeTouchCalibrationRequest()) {
     touchCalibrationActive = true;
     touchCalibrationStep = 0;
-    Serial.println("Touch calibration: hold top-left, click EC11; then bottom-right, click EC11");
+    Serial.println("Touch calibration: hold top-left, click EC11; then "
+                   "bottom-right, click EC11");
   }
   if (ui.takeFactoryResetRequest()) {
     const bool reset = settingsStore.reset();
@@ -367,7 +426,8 @@ void pollTouchUi() {
   lastSampleMs = now;
   int16_t x = 0, y = 0;
   if (!readTouchPoint(x, y)) {
-    if (++releaseSamples >= 2) held = false;
+    if (++releaseSamples >= 2)
+      held = false;
     return;
   }
   releaseSamples = 0;
@@ -399,11 +459,16 @@ void pollTouchUi() {
     action = UiAction::TogglePostPrintExhaust;
   else if (y >= 246) {
     const uint8_t button = min<uint8_t>(x / 95, 4);
-    if (button == 1) action = UiAction::ToggleSystem;
-    else if (button == 2) action = UiAction::TogglePreheat;
-    else if (button == 3) action = UiAction::ToggleLight;
-    else if (button == 4) action = UiAction::OpenSystemSettings;
-    else actionable = false; // 第一格是 PIR 状态指示，不是开关。
+    if (button == 1)
+      action = UiAction::ToggleSystem;
+    else if (button == 2)
+      action = UiAction::TogglePreheat;
+    else if (button == 3)
+      action = UiAction::ToggleLight;
+    else if (button == 4)
+      action = UiAction::OpenSystemSettings;
+    else
+      actionable = false; // 第一格是 PIR 状态指示，不是开关。
   } else {
     actionable = false;
   }
@@ -469,12 +534,12 @@ void pollEncoderUi() {
   static bool rawKey = HIGH, stableKey = HIGH, longSent = false;
   static bool clickPending = false;
   static uint32_t keyChangedMs = 0, pressedMs = 0, clickDeadlineMs = 0;
-  static const int8_t transitions[16] = {
-      0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
+  static const int8_t transitions[16] = {0,  -1, 1, 0, 1, 0, 0,  -1,
+                                         -1, 0,  0, 1, 0, 1, -1, 0};
 
   const uint32_t now = millis();
-  const uint8_t ab = (digitalRead(Pin::ENCODER_A) << 1) |
-                     digitalRead(Pin::ENCODER_B);
+  const uint8_t ab =
+      (digitalRead(Pin::ENCODER_A) << 1) | digitalRead(Pin::ENCODER_B);
   if (previous == 0xff)
     previous = ab;
   if (ab != previous) {
@@ -568,13 +633,11 @@ void loop() {
     screen.touchCalibrationActive = touchCalibrationActive;
     screen.touchCalibrationStep = touchCalibrationStep;
     screen.humidity = humidity;
-    // 时钟与联网标记由网络层提供,ui_model 不反向依赖 network.h。
-    const String clock = network.timeString();
-    if (clock.length() > 0) {
-      strncpy(screen.clock, clock.c_str(), sizeof(screen.clock) - 1);
-      screen.clock[sizeof(screen.clock) - 1] = '\0';
-    }
+    // 日期时间与生效配色由 main.cpp 填充:ui_model 不反向依赖 network.h。
+    // 时钟优先 NTP,断网/未同步时回退上次手动校时值(main.cpp 的 currentEpoch)。
+    formatClock(screen.clock, sizeof(screen.clock));
     screen.networkConnected = network.connected();
+    screen.theme = resolveTheme();
     network.updateReadings(in, latestOutputs,
                            humidity); // Web/MQTT 据此返回数据
     tftUi.render(screen);

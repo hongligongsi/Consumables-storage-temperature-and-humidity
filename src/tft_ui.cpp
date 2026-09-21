@@ -13,14 +13,71 @@
 namespace {
 constexpr int16_t SCREEN_W = 480;
 constexpr int16_t SCREEN_H = 320;
-constexpr uint16_t BG = 0x0861;
-constexpr uint16_t PANEL = 0x10E3;
-constexpr uint16_t PANEL_ALT = 0x1924;
-constexpr uint16_t BORDER = 0x31A6;
-constexpr uint16_t MUTED = 0x9CF3;
-constexpr uint16_t ACCENT = 0x06DD;
-constexpr uint16_t GOOD = 0x4E69;
-constexpr uint16_t WARN = 0xFD20;
+
+// 运行期调色板:日/夜两套配色,由 drawFrame 按快照的 theme 选择。
+// 夜间 = 改动前的原固件配色;日间取自 tools/ui_preview.html 的
+// [data-theme="day"] 令牌(RGB565 换算)。
+struct Palette {
+  uint16_t bg;       // 页面底色
+  uint16_t panel;    // 面板/未选中行底色
+  uint16_t panelAlt; // 顶栏/按钮底色
+  uint16_t border;   // 描边
+  uint16_t muted;    // 次要文字
+  uint16_t text;     // 主要文字
+  uint16_t active;   // 选中行/激活按钮底色
+  uint16_t accent;   // 强调色
+  uint16_t warn;     // 告警/焦点色
+  uint16_t good;     // 正常/联网色
+  uint16_t maroon;   // 故障页标题条
+  uint16_t gRed;
+  uint16_t gYellow;
+  uint16_t gMagenta;
+  uint16_t gCyan;
+};
+
+constexpr Palette kNightPalette = {0x0861, 0x10E3, 0x1924, 0x31A6, 0x9CF3,
+                                   0xFFFF, 0x2144, 0x06DD, 0xFD20, 0x4E69,
+                                   0x7800, 0xF800, 0xFFE0, 0xF81F, 0x07FF};
+
+constexpr Palette kDayPalette = {0xE77C, 0xFFFF, 0xDF3B, 0xB5F6, 0x634C,
+                                 0x1903, 0xD75B, 0x0453, 0xC3A1, 0x34EA,
+                                 0xA207, 0xD184, 0xB4A0, 0xA995, 0x0453};
+
+// 当前生效配色。渲染任务单线程写,drawFrame 每帧按快照主题刷新。
+uint16_t BG = kNightPalette.bg;
+uint16_t PANEL = kNightPalette.panel;
+uint16_t PANEL_ALT = kNightPalette.panelAlt;
+uint16_t BORDER = kNightPalette.border;
+uint16_t MUTED = kNightPalette.muted;
+uint16_t TEXT = kNightPalette.text;
+uint16_t ACTIVE = kNightPalette.active;
+uint16_t ACCENT = kNightPalette.accent;
+uint16_t WARN = kNightPalette.warn;
+uint16_t GOOD = kNightPalette.good;
+uint16_t MAROON = kNightPalette.maroon;
+uint16_t G_RED = kNightPalette.gRed;
+uint16_t G_YELLOW = kNightPalette.gYellow;
+uint16_t G_MAGENTA = kNightPalette.gMagenta;
+uint16_t G_CYAN = kNightPalette.gCyan;
+
+void applyPalette(uint8_t theme) {
+  const Palette &p = theme == 0 ? kDayPalette : kNightPalette;
+  BG = p.bg;
+  PANEL = p.panel;
+  PANEL_ALT = p.panelAlt;
+  BORDER = p.border;
+  MUTED = p.muted;
+  TEXT = p.text;
+  ACTIVE = p.active;
+  ACCENT = p.accent;
+  WARN = p.warn;
+  GOOD = p.good;
+  MAROON = p.maroon;
+  G_RED = p.gRed;
+  G_YELLOW = p.gYellow;
+  G_MAGENTA = p.gMagenta;
+  G_CYAN = p.gCyan;
+}
 
 TFT_eSPI tft;
 TFT_eSprite frame(&tft);
@@ -187,7 +244,7 @@ void drawBottomIcon(TFT_eSPI &g, ButtonIcon icon, int16_t x, int16_t y,
 
 void drawToggle(TFT_eSPI &g, int16_t x, int16_t y, bool enabled, uint16_t c) {
   g.fillRoundRect(x, y, 48, 22, 11, enabled ? c : BORDER);
-  g.fillCircle(enabled ? x + 37 : x + 11, y + 11, 9, TFT_WHITE);
+  g.fillCircle(enabled ? x + 37 : x + 11, y + 11, 9, TEXT);
 }
 
 void formatValue(char *dest, size_t size, float value, uint8_t decimals = 0) {
@@ -199,11 +256,12 @@ void formatValue(char *dest, size_t size, float value, uint8_t decimals = 0) {
 }
 
 uint16_t gaugeColor(uint8_t index, const UiSnapshot &s) {
-  static const uint16_t colors[] = {TFT_RED,     GOOD, TFT_YELLOW, WARN,
-                                    TFT_MAGENTA, WARN, TFT_CYAN,   GOOD};
+  // 不能是 static:调色板随日夜切换,数组须每帧重建。
+  const uint16_t colors[] = {G_RED,     GOOD, G_YELLOW, WARN,
+                             G_MAGENTA, WARN, G_CYAN,   GOOD};
   if (index == 5 && !isnan(s.heaterBoardC) &&
       s.heaterBoardC >= s.heaterBoardLimitC)
-    return TFT_RED;
+    return G_RED;
   return colors[index];
 }
 
@@ -215,14 +273,14 @@ bool buttonActive(uint8_t i, const UiSnapshot &s) {
 void drawFaultFrame(TFT_eSPI &g, const UiSnapshot &s) {
   const bool zh = s.language == Language::Chinese;
   g.fillScreen(BG);
-  g.fillRect(0, 0, SCREEN_W, 30, TFT_MAROON);
-  g.fillTriangle(240, 48, 196, 124, 284, 124, TFT_RED);
-  g.fillCircle(240, 107, 5, TFT_WHITE);
-  g.fillRoundRect(237, 70, 7, 27, 3, TFT_WHITE);
+  g.fillRect(0, 0, SCREEN_W, 30, MAROON);
+  g.fillTriangle(240, 48, 196, 124, 284, 124, G_RED);
+  g.fillCircle(240, 107, 5, TEXT);
+  g.fillRoundRect(237, 70, 7, 27, 3, TEXT);
 
   g.loadFont(FontCN26);
   g.setTextDatum(MC_DATUM);
-  g.setTextColor(TFT_WHITE, BG);
+  g.setTextColor(TEXT, BG);
   g.drawString(zh ? "传感器错误" : "SENSOR FAULT", 240, 153);
   g.unloadFont();
 
@@ -237,13 +295,13 @@ void drawFaultFrame(TFT_eSPI &g, const UiSnapshot &s) {
   const bool valid[] = {s.ahtValid, s.ntcValid, s.inaValid};
   for (uint8_t i = 0; i < 3; ++i) {
     const int16_t x = 104 + i * 136;
-    const uint16_t c = valid[i] ? GOOD : TFT_RED;
+    const uint16_t c = valid[i] ? GOOD : G_RED;
     g.fillCircle(x - 32, 250, 5, c);
     g.setTextColor(c, BG);
     g.setTextDatum(ML_DATUM);
     g.drawString(names[i], x - 20, 250);
   }
-  g.setTextColor(TFT_WHITE, TFT_MAROON);
+  g.setTextColor(TEXT, MAROON);
   g.setTextDatum(MC_DATUM);
   g.drawString(s.clock, 240, 15);
   g.unloadFont();
@@ -267,7 +325,7 @@ void drawMaterialSettings(TFT_eSPI &g, const UiSnapshot &s) {
   g.fillScreen(BG);
   g.fillRect(0, 0, SCREEN_W, 32, PANEL_ALT);
   g.loadFont(FontCN16);
-  g.setTextColor(TFT_WHITE, PANEL_ALT);
+  g.setTextColor(TEXT, PANEL_ALT);
   g.setTextDatum(ML_DATUM);
   g.drawString(zh ? "耗材设置" : "MATERIAL SETTINGS", 10, 16);
   g.setTextColor(ACCENT, PANEL_ALT);
@@ -277,14 +335,15 @@ void drawMaterialSettings(TFT_eSPI &g, const UiSnapshot &s) {
   for (uint8_t i = 0; i < 6; ++i) {
     const int16_t y = 37 + i * 39;
     const bool selected = i == static_cast<uint8_t>(s.materialSettingField);
-    g.fillRoundRect(20, y, 440, 34, 5, selected ? 0x2144 : PANEL);
+    const uint16_t rowBg = selected ? ACTIVE : PANEL;
+    g.fillRoundRect(20, y, 440, 34, 5, rowBg);
     g.drawRoundRect(20, y, 440, 34, 5, selected ? ACCENT : BORDER);
-    g.setTextColor(selected ? TFT_WHITE : MUTED, selected ? 0x2144 : PANEL);
+    g.setTextColor(selected ? TEXT : MUTED, rowBg);
     g.setTextDatum(ML_DATUM);
     g.drawString(zh ? labelsZh[i] : labelsEn[i], 34, y + 17);
     char value[24];
     snprintf(value, sizeof(value), "%.0f%s", values[i], units[i]);
-    g.setTextColor(selected ? ACCENT : TFT_WHITE, selected ? 0x2144 : PANEL);
+    g.setTextColor(selected ? ACCENT : TEXT, rowBg);
     g.setTextDatum(MR_DATUM);
     g.drawString(value, 442, y + 17);
   }
@@ -297,22 +356,85 @@ void drawMaterialSettings(TFT_eSPI &g, const UiSnapshot &s) {
   g.setTextDatum(TL_DATUM);
 }
 
+// 把 "YYYY-MM-DD HH:MM:SS" 按需截取:日期行取年月日,时间行取时分秒;
+// 编辑态下用方括号标出当前可旋转调整的子段(年/月/日 或 时/分)。
+void formatClockField(char *out, size_t size, const char *clock, bool dateRow,
+                      bool editing, uint8_t sub) {
+  int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+  // 未同步且未手动校时过时,快照里是 "----/--/-- --:--:--",解析失败保持占位。
+  const bool valid =
+      strlen(clock) >= 19 && sscanf(clock, "%d-%d-%d %d:%d:%d", &year, &month,
+                                    &day, &hour, &minute, &second) == 6;
+  if (!valid) {
+    strlcpy(out, dateRow ? "----/--/--" : "--:--:--", size);
+    return;
+  }
+  if (dateRow) {
+    if (editing && sub == 0)
+      snprintf(out, size, "[%04d]-%02d-%02d", year, month, day);
+    else if (editing && sub == 1)
+      snprintf(out, size, "%04d-[%02d]-%02d", year, month, day);
+    else if (editing && sub == 2)
+      snprintf(out, size, "%04d-%02d-[%02d]", year, month, day);
+    else
+      snprintf(out, size, "%04d-%02d-%02d", year, month, day);
+  } else if (editing && sub == 0) {
+    snprintf(out, size, "[%02d]:%02d:%02d", hour, minute, second);
+  } else if (editing && sub == 1) {
+    snprintf(out, size, "%02d:[%02d]:%02d", hour, minute, second);
+  } else {
+    snprintf(out, size, "%02d:%02d:%02d", hour, minute, second);
+  }
+}
+
 void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
   // 条目文案按 SystemSettingField 的下标索引取值,顺序必须与枚举保持一致。
-  static const char *const zh[] = {
-      "系统语言",       "按键声音",           "屏幕亮度",
-      "屏幕休眠时间",   "打印时保持屏幕开启", "编码器方向",
-      "PIR启动延时",    "PIR关闭延时",        "启动后自动开灯",
-      "关闭后自动关灯", "启动后蜂鸣提示",     "关闭后蜂鸣提示",
-      "发热板限流",     "发热板风扇风速",     "发热板温度保护",
-      "触摸屏校准",     "恢复出厂配置",       "固件版本"};
-  static const char *const en[] = {
-      "LANGUAGE",          "KEY SOUND",        "BRIGHTNESS",
-      "SCREEN SLEEP",      "KEEP ON PRINTING", "ENCODER DIRECTION",
-      "PIR START DELAY",   "PIR STOP DELAY",   "LIGHT ON START",
-      "LIGHT OFF STOP",    "BEEP ON START",    "BEEP ON STOP",
-      "HEATER CURRENT",    "HEATER FAN",       "HEATER PROTECTION",
-      "TOUCH CALIBRATION", "FACTORY RESET",    "FIRMWARE VERSION"};
+  static const char *const zh[] = {"系统语言",
+                                   "按键声音",
+                                   "屏幕亮度",
+                                   "屏幕休眠时间",
+                                   "打印时保持屏幕开启",
+                                   "编码器方向",
+                                   "PIR启动延时",
+                                   "PIR关闭延时",
+                                   "启动后自动开灯",
+                                   "关闭后自动关灯",
+                                   "启动后蜂鸣提示",
+                                   "关闭后蜂鸣提示",
+                                   "发热板限流",
+                                   "发热板风扇风速",
+                                   "发热板温度保护",
+                                   "屏幕配色",
+                                   "日间开始时刻",
+                                   "夜间开始时刻",
+                                   "日期",
+                                   "时间",
+                                   "触摸屏校准",
+                                   "恢复出厂配置",
+                                   "固件版本"};
+  static const char *const en[] = {"LANGUAGE",
+                                   "KEY SOUND",
+                                   "BRIGHTNESS",
+                                   "SCREEN SLEEP",
+                                   "KEEP ON PRINTING",
+                                   "ENCODER DIRECTION",
+                                   "PIR START DELAY",
+                                   "PIR STOP DELAY",
+                                   "LIGHT ON START",
+                                   "LIGHT OFF STOP",
+                                   "BEEP ON START",
+                                   "BEEP ON STOP",
+                                   "HEATER CURRENT",
+                                   "HEATER FAN",
+                                   "HEATER PROTECTION",
+                                   "THEME",
+                                   "DAY START",
+                                   "NIGHT START",
+                                   "DATE",
+                                   "TIME",
+                                   "TOUCH CALIBRATION",
+                                   "FACTORY RESET",
+                                   "FIRMWARE VERSION"};
   const bool chinese = s.language == Language::Chinese;
   // 条目总数与光标位置都从枚举推导,新增设置项后无需再改这里的硬编码数字。
   const uint8_t count = static_cast<uint8_t>(SystemSettingField::Count);
@@ -328,7 +450,7 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
   g.fillRect(0, 0, SCREEN_W, 32, PANEL_ALT);
   g.loadFont(FontCN16);
   g.setTextDatum(ML_DATUM);
-  g.setTextColor(TFT_WHITE, PANEL_ALT);
+  g.setTextColor(TEXT, PANEL_ALT);
   g.drawString(chinese ? "系统设置" : "SYSTEM SETTINGS", 10, 16);
   // 右上角页码:"当前项/总数",存在未保存修改时追加 " *"。
   char page[16];
@@ -342,10 +464,11 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
     const uint8_t item = first + row;
     const int16_t y = 40 + row * 46;
     const bool active = item == selected;
-    g.fillRoundRect(14, y, 452, 39, 5, active ? 0x2144 : PANEL);
+    const uint16_t rowBg = active ? ACTIVE : PANEL;
+    g.fillRoundRect(14, y, 452, 39, 5, rowBg);
     g.drawRoundRect(14, y, 452, 39, 5, active ? ACCENT : BORDER);
     g.setTextDatum(ML_DATUM);
-    g.setTextColor(active ? TFT_WHITE : MUTED, active ? 0x2144 : PANEL);
+    g.setTextColor(active ? TEXT : MUTED, rowBg);
     g.drawString(chinese ? zh[item] : en[item], 27, y + 20);
     char value[24] = "";
     const char *on = chinese ? "开" : "ON", *off = chinese ? "关" : "OFF";
@@ -400,6 +523,31 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
     case SystemSettingField::HeaterProtection:
       snprintf(value, sizeof(value), "%uC", v.heaterBoardLimitC);
       break;
+    case SystemSettingField::Theme:
+      // 0=日间 1=夜间 2=自动(按日/夜开始时刻切换)
+      strlcpy(value,
+              v.theme == 0 ? (chinese ? "日间" : "DAY")
+                           : (v.theme == 1 ? (chinese ? "夜间" : "NIGHT")
+                                           : (chinese ? "自动" : "AUTO")),
+              sizeof(value));
+      break;
+    case SystemSettingField::DayStart:
+    case SystemSettingField::NightStart: {
+      const uint16_t minutes =
+          item == static_cast<uint8_t>(SystemSettingField::DayStart)
+              ? v.dayStartMinutes
+              : v.nightStartMinutes;
+      snprintf(value, sizeof(value), "%02u:%02u", minutes / 60, minutes % 60);
+      break;
+    }
+    case SystemSettingField::Date:
+      formatClockField(value, sizeof(value), s.clock, true,
+                       s.systemSettingsEditing, s.systemSettingsSubField);
+      break;
+    case SystemSettingField::Time:
+      formatClockField(value, sizeof(value), s.clock, false,
+                       s.systemSettingsEditing, s.systemSettingsSubField);
+      break;
     case SystemSettingField::TouchCalibration:
       strlcpy(value,
               !Pin::HAS_TOUCH_PANEL
@@ -422,7 +570,7 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
       break;
     }
     g.setTextDatum(MR_DATUM);
-    g.setTextColor(active ? ACCENT : TFT_WHITE, active ? 0x2144 : PANEL);
+    g.setTextColor(active ? ACCENT : TEXT, rowBg);
     g.drawString(value, 450, y + 20);
   }
   g.setTextDatum(MC_DATUM);
@@ -443,10 +591,10 @@ void drawTouchCalibration(TFT_eSPI &g, const UiSnapshot &s) {
   g.fillScreen(BG);
   g.drawFastHLine(x - 14, y, 29, ACCENT);
   g.drawFastVLine(x, y - 14, 29, ACCENT);
-  g.drawCircle(x, y, 9, TFT_WHITE);
+  g.drawCircle(x, y, 9, TEXT);
   g.loadFont(FontCN16);
   g.setTextDatum(MC_DATUM);
-  g.setTextColor(TFT_WHITE, BG);
+  g.setTextColor(TEXT, BG);
   g.drawString(s.language == Language::Chinese
                    ? (first ? "按住左上角十字并单击编码器"
                             : "按住右下角十字并单击编码器")
@@ -462,6 +610,8 @@ void drawTouchCalibration(TFT_eSPI &g, const UiSnapshot &s) {
 }
 
 void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
+  // 每帧按快照里的生效主题重建调色板,日/夜切换与主题设置即时生效。
+  applyPalette(s.theme);
   if (s.state == ChamberState::Fault) {
     drawFaultFrame(g, s);
     return;
@@ -487,7 +637,7 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   g.fillRoundRect(4, 4, 292, 238, 6, PANEL);
   g.drawRoundRect(4, 4, 292, 238, 6, BORDER);
   g.drawFastHLine(8, 60, 284, BORDER);
-  g.drawFastHLine(8, 120, 284, TFT_RED);
+  g.drawFastHLine(8, 120, 284, G_RED);
   g.drawFastHLine(8, 180, 284, ACCENT);
   g.drawFastHLine(8, 239, 284, WARN);
 
@@ -510,13 +660,13 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
                          (i == 2 && s.mainFocus == MainFocus::Preheat) ||
                          (i == 3 && s.mainFocus == MainFocus::Light) ||
                          (i == 4 && s.mainFocus == MainFocus::Settings);
-    g.fillRoundRect(x, 248, 91, 68, 6, active ? 0x2144 : PANEL_ALT);
+    g.fillRoundRect(x, 248, 91, 68, 6, active ? ACTIVE : PANEL_ALT);
     g.drawRoundRect(x, 248, 91, 68, 6,
-                    focused ? TFT_WHITE : (active ? ACCENT : BORDER));
+                    focused ? TEXT : (active ? ACCENT : BORDER));
     if (focused)
       g.drawRoundRect(x + 2, 250, 87, 64, 5, WARN);
     drawBottomIcon(g, static_cast<ButtonIcon>(i), x + 45, 268,
-                   active ? WARN : TFT_WHITE);
+                   active ? WARN : TEXT);
   }
 
   // Render all labels with the 16 px Chinese+ASCII VLW font.
@@ -561,7 +711,7 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
     if (focused)
       g.drawRoundRect(7, y, 286, 56, 4, WARN);
     g.setTextDatum(ML_DATUM);
-    g.setTextColor(TFT_WHITE, PANEL);
+    g.setTextColor(TEXT, PANEL);
     g.drawString(chinese ? titlesZh[i] : titlesEn[i], 12, y + 14);
     g.drawString(chinese ? subtitlesZh[i] : subtitlesEn[i], 12, y + 38);
     drawToggle(g, 145, y + 18, toggled[i], i == 2 ? WARN : ACCENT);
@@ -603,7 +753,7 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
     else if (i == 3)
       label = chinese ? (s.light ? "灯光开启" : "灯光关闭")
                       : (s.light ? "LIGHT ON" : "LIGHT OFF");
-    g.setTextColor(TFT_WHITE, buttonActive(i, s) ? 0x2144 : PANEL_ALT);
+    g.setTextColor(TEXT, buttonActive(i, s) ? ACTIVE : PANEL_ALT);
     g.setTextDatum(MC_DATUM);
     g.drawString(label, x + 45, 302);
   }

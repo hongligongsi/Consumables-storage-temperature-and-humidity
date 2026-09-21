@@ -416,9 +416,10 @@
         <button type="button" data-quick="lang" data-val="en" aria-pressed="false">English</button>
       </div>
       <div class="seg" role="group" aria-label="主题">
-        <span>主题</span>
+        <span>主题(快捷)</span>
         <button type="button" data-quick="theme" data-val="night" aria-pressed="true">夜间</button>
-        <button type="button" data-quick="theme" data-val="day" aria-pressed="false">日间(提案)</button>
+        <button type="button" data-quick="theme" data-val="day" aria-pressed="false">日间</button>
+        <button type="button" data-quick="theme" data-val="auto" aria-pressed="false">自动</button>
       </div>
       <div class="seg" role="group" aria-label="PIR">
         <span>PIR 传感器</span>
@@ -459,13 +460,14 @@
     </div>
 
     <section class="legend">
-      <h2>系统设置 · 18 项条目说明</h2>
-      <p class="tip">真机每屏只显示 5 行,靠旋转滚动查看全部 18 项。下表把 18 项一次列全,并实时高亮屏内当前选中项;点击任一条目可直接把屏内光标跳到该项。</p>
+      <h2 id="legend-title">系统设置 · 条目说明</h2>
+      <p class="tip" id="legend-tip">真机每屏只显示 5 行,靠旋转滚动查看全部条目。下表把全部条目一次列全,并实时高亮屏内当前选中项;点击任一条目可直接把屏内光标跳到该项。</p>
       <ol id="legend-list"></ol>
     </section>
 
     <p class="note">
-      说明:夜间为固件实际配色;日间为设计提案(固件未实现)。仪表数值为演示数据,PIR/故障由上方开关模拟硬件输入;
+      说明:日间与夜间均为固件实际配色(系统设置 → 屏幕配色,或选“自动”按日间/夜间开始时刻切换)。
+      仪表数值为演示数据,PIR/故障由上方开关模拟硬件输入;
       系统设置与耗材参数在“长按保存返回”后写入浏览器本地存储,与真机写入 NVS 对应,刷新页面仍保留。
     </p>
   </div>
@@ -504,8 +506,40 @@
           lightOnPrinting: true, lightOffAfterPrinting: true,
           beepOnStart: true, beepOnStop: true,
           heaterCurrent: 6, heaterFan: 100, heaterProtection: 80,
+          // 0=日间 1=夜间 2=自动;时刻为当日 0 点起的分钟数
+          theme: 1, dayStart: 360, nightStart: 1080,
+          // 手动校时结果(epoch 秒),真机写入 RTC + NVS,这里仅存数值
+          clockEpoch: 0,
           touchCalibrated: false
         };
+      }
+
+      /* ---------------- 模拟时钟 ----------------
+       * 真机:settimeofday 写入 RTC,NTP 同步后以 NTP 为准,否则沿用
+       * manualClockEpoch。这里同构:clockEpoch 为基准秒,clockSetAt 为
+       * 设置时刻的本地毫秒,之后按真实时间自走。
+       * ------------------------------------------ */
+      var clockSetAtMs = 0;
+      function simNow() {
+        if (S.st.clockEpoch > 0)
+          return S.st.clockEpoch * 1000 + (Date.now() - clockSetAtMs);
+        return Date.now();
+      }
+      function setSimNow(ms) {
+        S.st.clockEpoch = Math.floor(ms / 1000);
+        clockSetAtMs = Date.now();
+      }
+      // 生效配色:theme 0/1 直接采用,2=自动按时刻落在日间区间与否判定。
+      // 真机在无有效时间时才回退夜间;预览里时钟始终可用(见 simNow),故直接按屏上
+      // 显示的时刻判定,这样“自动”按钮与两个时刻项都能立即看到效果。
+      function resolveTheme() {
+        if (S.st.theme !== 2) return S.st.theme === 0 ? 'day' : 'night';
+        var d = new Date(simNow());
+        var minutes = d.getHours() * 60 + d.getMinutes();
+        var day = S.st.dayStart, night = S.st.nightStart;
+        var isDay = day <= night ? (minutes >= day && minutes < night)
+          : (minutes >= day || minutes < night);
+        return isDay ? 'day' : 'night';
       }
 
       /* ---------------- 模拟器状态 ---------------- */
@@ -524,7 +558,7 @@
         // 耗材设置页
         matField: 0, matDirty: false,
         // 系统设置页
-        sysField: 0, sysEditing: false, sysDirty: false,
+        sysField: 0, sysEditing: false, sysDirty: false, sysSubField: 0,
         // 触摸校准
         calibStep: 0,
         // 故障演示的传感器有效位
@@ -533,8 +567,15 @@
 
       try {
         var saved = JSON.parse(localStorage.getItem('chamber-ui-sim-v1') || 'null');
-        if (saved && saved.st) { S.st = saved.st; S.materials = saved.materials || defaultMaterials(); }
+        if (saved && saved.st) {
+          // 旧版本存档缺新字段,以默认值补齐,避免 undefined 参与运算
+          var base = defaultSettings();
+          for (var k in base) if (!(k in saved.st)) saved.st[k] = base[k];
+          S.st = saved.st;
+          S.materials = saved.materials || defaultMaterials();
+        }
       } catch (e) { /* 忽略损坏的本地数据 */ }
+      clockSetAtMs = Date.now(); // 本地存储里的 clockEpoch 作基准,从当下继续走
 
       function persist() {
         try {
@@ -628,6 +669,31 @@
           range: '40 ~ 180 C,步长 1'
         },
         {
+          zh: '屏幕配色', en: 'THEME', type: 'theme',
+          desc: '切换屏幕配色。选“自动”时按下方日间/夜间开始时刻自动切换。',
+          range: '日间 / 夜间 / 自动'
+        },
+        {
+          zh: '日间开始时刻', en: 'DAY START', type: 'time', key: 'dayStart', step: 15, min: 0, max: 1425,
+          desc: '“自动”配色下,到达该时刻切换到日间配色。',
+          range: '00:00 ~ 23:45,步长 15 min'
+        },
+        {
+          zh: '夜间开始时刻', en: 'NIGHT START', type: 'time', key: 'nightStart', step: 15, min: 0, max: 1425,
+          desc: '“自动”配色下,到达该时刻切换到夜间配色。',
+          range: '00:00 ~ 23:45,步长 15 min'
+        },
+        {
+          zh: '日期', en: 'DATE', type: 'clock', segs: 3,
+          desc: '手动校准年月日。旋转改当前段,单击切到下一段,末段后再单击退出编辑。',
+          range: '年 / 月 / 日,三段编辑'
+        },
+        {
+          zh: '时间', en: 'TIME', type: 'clock', segs: 2,
+          desc: '手动校准时分秒。旋转改当前段,单击切到下一段,末段后再单击退出编辑。',
+          range: '时 / 分,两段编辑'
+        },
+        {
           zh: '触摸屏校准', en: 'TOUCH CALIBRATION', type: 'touch',
           desc: '校准触摸屏。需先接入触摸屏,按提示两次采点完成,长按编码器可取消。',
           range: '不支持 / 未校准 / 已校准'
@@ -643,7 +709,6 @@
           range: '只读'
         }
       ];
-      var NUMERIC_FIELDS = [2, 3, 6, 7, 12, 13, 14];
       var VERSION = '1.0.0';
 
       function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
@@ -666,11 +731,10 @@
           adjustProfile(d);
         } else if (S.screen === 'system') {
           if (S.sysEditing) {
-            var f = F[S.sysField];
-            if (f.type === 'num') adjustSetting(f, d);
-            // reset armed / 其它项:编辑态旋转无效果(与真机一致)
+            adjustSetting(F[S.sysField], d);
           } else {
-            S.sysField = (S.sysField + d + 18) % 18;
+            S.sysField = (S.sysField + d + F.length) % F.length;
+            S.sysSubField = 0; // 换项后子段回到第一段
           }
         }
       }
@@ -696,12 +760,17 @@
           } else if (fld.type === 'reset') {
             if (S.sysEditing) { factoryReset(); S.sysEditing = false; }
             else { S.sysEditing = true; }             // 再次单击才执行,防止误触
-          } else if (fld.type === 'num') {
-            S.sysEditing = !S.sysEditing;
           } else if (fld.type === 'version') {
             // 只读
+          } else if (fld.type === 'clock') {
+            // 日期(3 段)/时间(2 段):单击进入并逐段推进,末段后退出编辑
+            if (!S.sysEditing) { S.sysEditing = true; S.sysSubField = 0; }
+            else if (++S.sysSubField >= fld.segs) { S.sysEditing = false; S.sysSubField = 0; }
+          } else if (fld.type === 'num' || fld.type === 'time') {
+            // 固件把 DayStart/NightStart 与其它数值项同等对待:单击进出编辑态,旋转才改值
+            S.sysEditing = !S.sysEditing;
           } else {
-            adjustSetting(fld, 1);                    // 开关/语言/方向:单击直接切换
+            adjustSetting(fld, 1);                    // 开关/语言/方向/配色:单击直接切换
           }
         }
       }
@@ -711,7 +780,8 @@
         if (S.screen === 'material') {
           S.matField = (S.matField + 5) % 6;          // 双击上一项
         } else if (S.screen === 'system') {
-          S.sysField = (S.sysField + 17) % 18;
+          S.sysField = (S.sysField + F.length - 1) % F.length;
+          S.sysSubField = 0;
         } else if (S.screen === 'main') {
           S.ui.manualExhaust = !S.ui.manualExhaust;   // 双击强排
         }
@@ -727,6 +797,7 @@
         } else if (S.screen === 'system') {
           S.screen = 'main';
           S.sysEditing = false;
+          S.sysSubField = 0;
           if (S.sysDirty) persist();
           S.sysDirty = false;
         } else if (S.screen === 'main') {
@@ -744,7 +815,38 @@
           case 'num':
             S.st[f.key] = clamp(S.st[f.key] + d * f.step, f.min, f.max);
             break;
+          case 'theme':
+            // 0=日间 1=夜间 2=自动,循环切换
+            S.st.theme = (S.st.theme + 3 + d) % 3;
+            break;
+          case 'time':
+            S.st[f.key] = clamp(S.st[f.key] + d * f.step, f.min, f.max);
+            break;
+          case 'clock': adjustClock(f, d); return; // 改的是系统时钟,不走 sysDirty 之外的逻辑
         }
+        S.sysDirty = true;
+      }
+
+      /* 对齐 UiModel::adjustClock:以当前时钟为基准改写单个子段后回写。
+         真机基准是 time(nullptr)(未同步时才退到 manualClockEpoch/常量),预览里
+         simNow() 始终有效,故直接用它,保证“改的那一段”和屏上显示的是同一时刻。 */
+      function adjustClock(f, d) {
+        var t = new Date(simNow());
+        var sub = S.sysSubField;
+        if (f.segs === 3) {
+          if (sub === 0) t.setFullYear(t.getFullYear() + d);
+          else if (sub === 1) t.setMonth((t.getMonth() + d + 12) % 12);
+          else {
+            // 日:按当月天数循环,避免出现 2 月 31 日这类无效值
+            var limit = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+            var day = t.getDate() + d;
+            t.setDate(day < 1 ? limit : (day > limit ? 1 : day));
+          }
+        } else {
+          if (sub === 0) t.setHours((t.getHours() + d + 24) % 24);
+          else t.setMinutes((t.getMinutes() + d + 60) % 60);
+        }
+        setSimNow(t.getTime());
         S.sysDirty = true;
       }
 
@@ -965,7 +1067,10 @@
           case 'lang': return zh ? '中文' : 'EN';
           case 'bool': return S.st[f.key] ? (zh ? '开' : 'ON') : (zh ? '关' : 'OFF');
           case 'num': return S.st[f.key] + f.unit;
+          case 'time': return hhmm(S.st[f.key]);
           case 'enc': return S.st.encoderReversed ? (zh ? '反向' : 'REVERSE') : (zh ? '正向' : 'NORMAL');
+          case 'theme': return themeName(S.st.theme, zh);
+          case 'clock': return clockField(f);
           case 'touch':
             if (!S.hasTouch) return zh ? '不支持' : 'N/A';
             return S.st.touchCalibrated ? (zh ? '已校准' : 'READY') : (zh ? '未校准' : 'NOT SET');
@@ -975,17 +1080,42 @@
         return '';
       }
 
+      function hhmm(minutes) {
+        function p(n) { return (n < 10 ? '0' : '') + n; }
+        return p(Math.floor(minutes / 60)) + ':' + p(minutes % 60);
+      }
+      function themeName(v, zh) {
+        return v === 0 ? (zh ? '日间' : 'DAY') : (v === 1 ? (zh ? '夜间' : 'NIGHT') : (zh ? '自动' : 'AUTO'));
+      }
+      // 编辑态用方括号标出当前子段,与固件 formatClockField 的标记方式一致
+      function clockField(f) {
+        var d = new Date(simNow());
+        function p(n) { return (n < 10 ? '0' : '') + n; }
+        var seg = S.sysSubField, on = S.sysEditing;
+        if (f.segs === 3) {
+          var y = String(d.getFullYear()), m = p(d.getMonth() + 1), dd = p(d.getDate());
+          if (on && seg === 0) y = '[' + y + ']';
+          else if (on && seg === 1) m = '[' + m + ']';
+          else if (on && seg === 2) dd = '[' + dd + ']';
+          return y + '-' + m + '-' + dd;
+        }
+        var hh = p(d.getHours()), mm = p(d.getMinutes()), ss = p(d.getSeconds());
+        if (on && seg === 0) hh = '[' + hh + ']';
+        else if (on && seg === 1) mm = '[' + mm + ']';
+        return hh + ':' + mm + ':' + ss;
+      }
+
       function renderSystem() {
         var zh = S.st.language === 'zh';
         var h = '<rect width="480" height="320" class="fill-bg"/>';
         h += '<rect x="0" y="0" width="480" height="32" class="fill-alt"/>';
         h += '<text x="10" y="21" font-size="13" class="t zh">系统设置</text>';
         h += '<text x="10" y="21" font-size="13" class="t en">SYSTEM SETTINGS</text>';
-        h += '<text x="468" y="21" text-anchor="end" font-size="11" class="a">' + (S.sysField + 1) + '/18' + (S.sysDirty ? ' *' : '') + '</text>';
+        h += '<text x="468" y="21" text-anchor="end" font-size="11" class="a">' + (S.sysField + 1) + '/' + F.length + (S.sysDirty ? ' *' : '') + '</text>';
 
-        // 滚动窗口:选中项保持在 5 行内;first 上限 13,否则末项永远不可见
+        // 滚动窗口:选中项保持在 5 行内;first 上限为 F.length-5,否则末项永远不可见
         var first = S.sysField >= 2 ? S.sysField - 2 : 0;
-        if (first > 13) first = 13;
+        if (first > F.length - 5) first = F.length - 5;
         for (var row = 0; row < 5; row++) {
           var item = first + row, y = 40 + row * 46, f = F[item], activeRow = item === S.sysField;
           h += '<rect x="14" y="' + y + '" width="452" height="39" rx="5" fill="' + (activeRow ? 'var(--active)' : 'var(--panel)') + '" stroke="' + (activeRow ? 'var(--accent)' : 'var(--border)') + '"/>';
@@ -993,7 +1123,7 @@
           h += '<text x="27" y="' + (y + 20) + '" font-size="13" class="' + (activeRow ? 't' : 'm') + ' en">' + f.en + '</text>';
           h += '<text x="450" y="' + (y + 20) + '" text-anchor="end" font-size="13" class="' + (activeRow ? 'a' : 't') + '">' + settingValue(f) + '</text>';
         }
-        if (S.sysEditing && F[S.sysField].type === 'num') {
+        if (S.sysEditing) {
           h += '<text x="240" y="290" text-anchor="middle" font-size="11" class="m zh">旋转修改　单击完成</text>';
           h += '<text x="240" y="290" text-anchor="middle" font-size="11" class="m en">TURN TO EDIT  CLICK DONE</text>';
         } else {
@@ -1043,9 +1173,10 @@
 
       var clockText = '--:--:--';
       function updateClock() {
-        var d = new Date();
+        var d = new Date(simNow());
         function p(n) { return (n < 10 ? '0' : '') + n; }
-        clockText = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+        clockText = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+          ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
       }
 
       var screenEl = document.getElementById('screen');
@@ -1063,12 +1194,22 @@
 
       function render() {
         renderScreen();
-        document.querySelector('.doc').setAttribute('data-lang', S.st.language);
+        var doc = document.querySelector('.doc');
+        doc.setAttribute('data-lang', S.st.language);
+        doc.setAttribute('data-theme', resolveTheme()); // 主题由“屏幕配色”决定,自动模式按时刻判定
+        document.getElementById('legend-title').textContent =
+          (S.st.language === 'zh' ? '系统设置 · ' : 'SYSTEM SETTINGS · ') + F.length +
+          (S.st.language === 'zh' ? ' 项条目说明' : ' ITEMS');
+        document.getElementById('legend-tip').textContent = S.st.language === 'zh'
+          ? '真机每屏只显示 5 行,靠旋转滚动查看全部 ' + F.length + ' 项。下表把全部条目一次列全,并实时高亮屏内当前选中项;点击任一条目可直接把屏内光标跳到该项。'
+          : 'The device shows 5 rows at a time; rotate to scroll through all ' + F.length +
+          ' items. The table lists every item and highlights the current on-screen cursor; click any row to jump the cursor there.';
         renderLegend();
         updateCaption();
+        syncQuickButtons(); // 屏内改了“屏幕配色”等项时,顶部快捷按钮的选中态同步跟上
       }
 
-      /* 屏下 18 项说明区:与屏内光标双向联动(高亮 + 点击跳转) */
+      /* 屏下条目说明区:与屏内光标双向联动(高亮 + 点击跳转) */
       var legendEl = document.getElementById('legend-list');
       function renderLegend() {
         var zh = S.st.language === 'zh';
@@ -1104,7 +1245,9 @@
         var idx = { main: 0, material: 1, system: 2, calib: 3, fault: 4 }[S.screen];
         var extra = '';
         if (S.screen === 'system') {
-          extra = (zh ? '　第 ' : ' item ') + (S.sysField + 1) + '/18' + (S.sysEditing && F[S.sysField].type === 'num' ? (zh ? ' ·编辑中' : ' EDITING') : '');
+          var editable = ['num', 'time', 'clock', 'theme'].indexOf(F[S.sysField].type) >= 0;
+          extra = (zh ? '　第 ' : ' item ') + (S.sysField + 1) + '/' + F.length +
+            (S.sysEditing && editable ? (zh ? ' ·编辑中' : ' EDITING') : '');
         }
         document.getElementById('cap-state').textContent = (zh ? names[idx] : namesEn[idx]) + extra;
         document.getElementById('cap-mode').textContent =
@@ -1134,7 +1277,9 @@
           if (kind === 'lang') {
             S.st.language = val; S.sysDirty = S.screen === 'system' ? true : S.sysDirty;
           } else if (kind === 'theme') {
-            document.querySelector('.doc').setAttribute('data-theme', val);
+            // 与真机一致:快捷按钮等价于把“屏幕配色”设为 日间/夜间/自动
+            S.st.theme = val === 'day' ? 0 : (val === 'night' ? 1 : 2);
+            S.sysDirty = S.screen === 'system' ? true : S.sysDirty;
           } else if (kind === 'pir') {
             S.pirMotion = val === '1';
           } else if (kind === 'touch') {
@@ -1166,7 +1311,8 @@
           });
         };
         q('lang', S.st.language);
-        q('theme', document.querySelector('.doc').getAttribute('data-theme'));
+        // 快捷按钮 data-val 是 day/night/auto,而 S.st.theme 是 0/1/2,按映射比较
+        q('theme', S.st.theme === 0 ? 'day' : (S.st.theme === 1 ? 'night' : 'auto'));
         q('pir', S.pirMotion ? 1 : 0);
         q('touch', S.hasTouch ? 1 : 0);
       }

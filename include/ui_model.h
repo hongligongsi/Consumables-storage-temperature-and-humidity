@@ -55,6 +55,12 @@ enum class SystemSettingField : uint8_t {
   HeaterCurrent,
   HeaterFan,
   HeaterProtection,
+  // ---- 日夜配色与时间(手动校时) ----
+  Theme,      // 屏幕配色: 0=日间, 1=夜间, 2=自动
+  DayStart,   // 日间开始时刻(分钟)
+  NightStart, // 夜间开始时刻(分钟)
+  Date,       // 日期: 年/月/日 三段编辑
+  Time,       // 时间: 时/分 两段编辑
   TouchCalibration,
   FactoryReset,
   Version, // 只读展示固件版本号(值取自 version.h 的 FW_VERSION),不可修改
@@ -79,8 +85,9 @@ struct UiSnapshot {
   const char *nextMaterial;
   ChamberState state;
   Language language; // 决定界面用中文还是英文
-  char clock[9];     // "HH:MM:SS";NTP 未同步时为 "--:--:--"
+  char clock[24]; // "YYYY-MM-DD HH:MM:SS";无有效时间时为 "----/--/-- --:--:--"
   bool networkConnected;
+  uint8_t theme; // 当前生效配色: 0=日间, 1=夜间
   bool ahtValid;
   bool ntcValid;
   bool inaValid;
@@ -125,6 +132,8 @@ struct UiSnapshot {
   bool systemSettingsEditing;
   bool systemSettingsDirty;
   SystemSettingField systemSettingField;
+  uint8_t
+      systemSettingsSubField; // 日期/时间编辑时的子段索引(年/月/日 或 时/分)
   SystemSettings systemSettings;
   bool touchCalibrationActive;
   uint8_t touchCalibrationStep;
@@ -180,9 +189,12 @@ private:
   bool systemSettingsOpen_ = false;
   bool systemSettingsEditing_ = false;
   bool systemSettingsDirty_ = false;
+  uint8_t systemSettingsSubField_ = 0; // 日期(3段)/时间(2段)编辑时的当前子段
   bool systemSettingsSaveRequested_ = false;
   bool touchCalibrationRequested_ = false;
   bool factoryResetRequested_ = false;
   SystemSettingField systemSettingField_ = SystemSettingField::Language;
   void adjustSystemSetting(int direction, ChamberController &controller);
+  // 手动校时:dateField=true 调整年/月/日(子段 0/1/2),false 调整时/分(0/1)。
+  void adjustClock(bool dateField, uint8_t sub, int direction);
 };

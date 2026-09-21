@@ -1,5 +1,6 @@
 #include "ui_model.h"
 #include "pins.h"
+#include <sys/time.h> // settimeofday:手动校时
 
 // 调整当前系统设置项:direction>0 为加/正向,direction<0 为减/反向。
 // 只处理可编辑项的取值变化,随后统一把新值下发给控制器并置脏(等待长按保存到
@@ -61,6 +62,26 @@ void UiModel::adjustSystemSetting(int direction,
   case SystemSettingField::HeaterProtection:
     s.heaterBoardLimitC = constrain((int)s.heaterBoardLimitC + d, 40, 180);
     break;
+  // ---- 日夜配色与时间 ----
+  case SystemSettingField::Theme:
+    // 0=日间 1=夜间 2=自动,旋转在三种取值间循环。
+    s.theme = static_cast<uint8_t>(((int)s.theme + 3 + d) % 3);
+    break;
+  case SystemSettingField::DayStart:
+    // 上界取 1425(23:45) 而非 1439,否则末次递增会被夹到 23:59,破坏 15
+    // 分钟步长。
+    s.dayStartMinutes = constrain((int)s.dayStartMinutes + d * 15, 0, 1425);
+    break;
+  case SystemSettingField::NightStart:
+    s.nightStartMinutes = constrain((int)s.nightStartMinutes + d * 15, 0, 1425);
+    break;
+  // 日期/时间:直接改写系统时钟,不走下面的控制器下发。
+  case SystemSettingField::Date:
+    adjustClock(true, systemSettingsSubField_, direction);
+    return;
+  case SystemSettingField::Time:
+    adjustClock(false, systemSettingsSubField_, direction);
+    return;
   // 非数值项:触摸校准与恢复出厂由 apply() 通过请求标志处理,版本号只读,Count
   // 是哨兵。
   case SystemSettingField::TouchCalibration:
@@ -77,6 +98,73 @@ void UiModel::adjustSystemSetting(int direction,
   systemSettingsDirty_ = true;
 }
 
+// 手动校时:在现有系统时钟基础上增减单个子段(年/月/日 或 时/分),
+// 归一化后写回 RTC 并记录到 manualClockEpoch(NTP 不可用时重启仍可用)。
+void UiModel::adjustClock(bool dateField, uint8_t sub, int direction) {
+  if (!systemSettings_ || !direction)
+    return;
+  SystemSettings &s = *systemSettings_;
+  const int d = direction > 0 ? 1 : -1;
+
+  // 基准时间:优先当前系统时钟,未同步时回退到上次手动校时值。
+  time_t now = time(nullptr);
+  if (now < 1700000000) {
+    if (s.manualClockEpoch >= 1700000000)
+      now = static_cast<time_t>(s.manualClockEpoch);
+    else
+      now = 1767225600; // 2026-01-01 00:00:00 UTC+8,仅作首次编辑起点
+  }
+  struct tm tm;
+  localtime_r(&now, &tm);
+
+  if (dateField) {
+    switch (sub) {
+    case 0:
+      tm.tm_year += d; // 年
+      break;
+    case 1: {
+      int month = tm.tm_mon + d; // 月:1..12 循环
+      tm.tm_mon = (month + 12) % 12;
+      break;
+    }
+    default: {
+      // 日:按当月天数循环,避免 2 月 31 日这类无效值。
+      static const uint8_t days[] = {31, 28, 31, 30, 31, 30,
+                                     31, 31, 30, 31, 30, 31};
+      const int month = tm.tm_mon;
+      int limit = days[month];
+      if (month == 1 &&
+          ((tm.tm_year + 1900) % 4 == 0 && (tm.tm_year + 1900) % 100 != 0 ||
+           (tm.tm_year + 1900) % 400 == 0))
+        limit = 29; // 闰年 2 月
+      int day = tm.tm_mday + d;
+      if (day < 1)
+        day = limit;
+      if (day > limit)
+        day = 1;
+      tm.tm_mday = day;
+      break;
+    }
+    }
+  } else {
+    if (sub == 0) {
+      int hour = tm.tm_hour + d; // 时:0..23 循环
+      tm.tm_hour = (hour + 24) % 24;
+    } else {
+      int minute = tm.tm_min + d; // 分:0..59 循环
+      tm.tm_min = (minute + 60) % 60;
+    }
+  }
+  tm.tm_isdst = -1;
+  const time_t adjusted = mktime(&tm);
+  if (adjusted <= 0)
+    return;
+  struct timeval tv{adjusted, 0};
+  settimeofday(&tv, nullptr);
+  s.manualClockEpoch = static_cast<uint32_t>(adjusted);
+  systemSettingsDirty_ = true;
+}
+
 void UiModel::apply(UiAction action, ChamberController &controller) {
   if (systemSettingsOpen_) {
     // 旋转:编辑态改值,浏览态移动光标。取模范围含 Version 等只读项,长按回绕。
@@ -86,14 +174,17 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
       const int d = action == UiAction::NextMaterial ? 1 : -1;
       if (systemSettingsEditing_)
         adjustSystemSetting(d, controller);
-      else
+      else {
         systemSettingField_ = static_cast<SystemSettingField>(
             (static_cast<uint8_t>(systemSettingField_) + count + d) % count);
+        systemSettingsSubField_ = 0; // 换项后子段回到第一段
+      }
       return;
     }
     if (action == UiAction::EncoderDoubleClick) {
       systemSettingField_ = static_cast<SystemSettingField>(
           (static_cast<uint8_t>(systemSettingField_) + count - 1) % count);
+      systemSettingsSubField_ = 0;
       return;
     }
     if (action == UiAction::EncoderClick) {
@@ -107,6 +198,18 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
         } else {
           systemSettingsEditing_ = true; // 再次单击才执行，防止误触。
         }
+      } else if (systemSettingField_ == SystemSettingField::Date ||
+                 systemSettingField_ == SystemSettingField::Time) {
+        // 日期(年/月/日)与时间(时/分)按子段编辑:单击进入并逐段推进,末段后退出。
+        const uint8_t segments =
+            systemSettingField_ == SystemSettingField::Date ? 3 : 2;
+        if (!systemSettingsEditing_) {
+          systemSettingsEditing_ = true;
+          systemSettingsSubField_ = 0;
+        } else if (++systemSettingsSubField_ >= segments) {
+          systemSettingsEditing_ = false;
+          systemSettingsSubField_ = 0;
+        }
       } else {
         // 数值项单击切换"编辑中"状态,之后旋转即改值;开关项单击直接切换取值。
         // Version 等只读项走 adjustSystemSetting 后立即返回,单击无副作用。
@@ -117,7 +220,9 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
             systemSettingField_ == SystemSettingField::PirStop ||
             systemSettingField_ == SystemSettingField::HeaterCurrent ||
             systemSettingField_ == SystemSettingField::HeaterFan ||
-            systemSettingField_ == SystemSettingField::HeaterProtection;
+            systemSettingField_ == SystemSettingField::HeaterProtection ||
+            systemSettingField_ == SystemSettingField::DayStart ||
+            systemSettingField_ == SystemSettingField::NightStart;
         if (numeric)
           systemSettingsEditing_ = !systemSettingsEditing_;
         else
@@ -128,6 +233,7 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
     if (action == UiAction::EncoderLongPress) {
       systemSettingsOpen_ = false;
       systemSettingsEditing_ = false;
+      systemSettingsSubField_ = 0;
       systemSettingsSaveRequested_ = systemSettingsDirty_;
       systemSettingsDirty_ = false;
       return;
@@ -263,6 +369,7 @@ UiSnapshot UiModel::snapshot(const ChamberController &controller,
   // 不依赖网络层,避免循环包含。
   strncpy(s.clock, "--:--:--", sizeof(s.clock) - 1);
   s.networkConnected = false;
+  s.theme = systemSettings_ ? systemSettings_->theme : 1;
   s.ahtValid = r.ahtValid;
   s.ntcValid = r.ntcValid;
   s.inaValid = r.inaValid;
@@ -303,6 +410,7 @@ UiSnapshot UiModel::snapshot(const ChamberController &controller,
   s.systemSettingsEditing = systemSettingsEditing_;
   s.systemSettingsDirty = systemSettingsDirty_;
   s.systemSettingField = systemSettingField_;
+  s.systemSettingsSubField = systemSettingsSubField_;
   if (systemSettings_)
     s.systemSettings = *systemSettings_;
   return s;

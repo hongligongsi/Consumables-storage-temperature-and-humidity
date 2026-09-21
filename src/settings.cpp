@@ -18,14 +18,20 @@ void sanitize(SystemSettings &s) {
   s.mqttPort = constrain(s.mqttPort, 1, 65535);
   s.mqttBroker[sizeof(s.mqttBroker) - 1] = '\0';
   s.mqttTopicPrefix[sizeof(s.mqttTopicPrefix) - 1] = '\0';
+  // 日夜配色与时间:theme 限 0-2,时刻限 0-1425(23:45,与 15 分钟步长对齐)
+  s.theme = constrain(s.theme, 0, 2);
+  s.dayStartMinutes = min<uint16_t>(s.dayStartMinutes, 1425);
+  s.nightStartMinutes = min<uint16_t>(s.nightStartMinutes, 1425);
 }
-}
+} // namespace
 
 SystemSettings SettingsStore::load() {
   Preferences p;
   SystemSettings s;
-  if (!p.begin(NAMESPACE_NAME, true)) return s;
-  s.language = p.getBool("english", false) ? Language::English : Language::Chinese;
+  if (!p.begin(NAMESPACE_NAME, true))
+    return s;
+  s.language =
+      p.getBool("english", false) ? Language::English : Language::Chinese;
   s.keySound = p.getBool("keySound", s.keySound);
   s.brightness = p.getUChar("brightness", s.brightness);
   s.screenSleepSeconds = p.getUShort("screenSleep", s.screenSleepSeconds);
@@ -53,23 +59,41 @@ SystemSettings SettingsStore::load() {
   p.getString("mqttPrefix", s.mqttTopicPrefix, sizeof(s.mqttTopicPrefix));
   s.ntpEnabled = p.getBool("ntpEn", s.ntpEnabled);
   s.otaEnabled = p.getBool("otaEn", s.otaEnabled);
-  p.end(); sanitize(s); return s;
+  // 日夜配色与时间
+  s.theme = p.getUChar("theme", s.theme);
+  s.dayStartMinutes = p.getUShort("dayStart", s.dayStartMinutes);
+  s.nightStartMinutes = p.getUShort("nightStart", s.nightStartMinutes);
+  s.manualClockEpoch = p.getULong("clockEp", s.manualClockEpoch);
+  p.end();
+  sanitize(s);
+  return s;
 }
 
 bool SettingsStore::save(const SystemSettings &input) {
-  SystemSettings s = input; sanitize(s);
+  SystemSettings s = input;
+  sanitize(s);
   Preferences p;
-  if (!p.begin(NAMESPACE_NAME, false)) return false;
+  if (!p.begin(NAMESPACE_NAME, false))
+    return false;
   p.putBool("english", s.language == Language::English);
-  p.putBool("keySound", s.keySound); p.putUChar("brightness", s.brightness);
-  p.putUShort("screenSleep", s.screenSleepSeconds); p.putBool("keepOnPrint", s.keepScreenOnPrinting);
-  p.putBool("encoderRev", s.encoderReversed); p.putUShort("pirStart", s.pirStartSeconds);
-  p.putUShort("pirStop", s.pirStopSeconds); p.putBool("lightStart", s.lightOnPrinting);
-  p.putBool("lightStop", s.lightOffAfterPrinting); p.putBool("beepStart", s.beepOnStart);
-  p.putBool("beepStop", s.beepOnStop); p.putUChar("heaterMaxA", s.heaterMaxCurrentA);
-  p.putUChar("heaterFan", s.heaterFanPercent); p.putUShort("heaterLimit", s.heaterBoardLimitC);
-  p.putUShort("touchX0", s.touchXMin); p.putUShort("touchX1", s.touchXMax);
-  p.putUShort("touchY0", s.touchYMin); p.putUShort("touchY1", s.touchYMax);
+  p.putBool("keySound", s.keySound);
+  p.putUChar("brightness", s.brightness);
+  p.putUShort("screenSleep", s.screenSleepSeconds);
+  p.putBool("keepOnPrint", s.keepScreenOnPrinting);
+  p.putBool("encoderRev", s.encoderReversed);
+  p.putUShort("pirStart", s.pirStartSeconds);
+  p.putUShort("pirStop", s.pirStopSeconds);
+  p.putBool("lightStart", s.lightOnPrinting);
+  p.putBool("lightStop", s.lightOffAfterPrinting);
+  p.putBool("beepStart", s.beepOnStart);
+  p.putBool("beepStop", s.beepOnStop);
+  p.putUChar("heaterMaxA", s.heaterMaxCurrentA);
+  p.putUChar("heaterFan", s.heaterFanPercent);
+  p.putUShort("heaterLimit", s.heaterBoardLimitC);
+  p.putUShort("touchX0", s.touchXMin);
+  p.putUShort("touchX1", s.touchXMax);
+  p.putUShort("touchY0", s.touchYMin);
+  p.putUShort("touchY1", s.touchYMax);
   p.putBool("touchCal", s.touchCalibrated);
   // 联网功能
   p.putBool("wifiEn", s.wifiEnabled);
@@ -79,7 +103,13 @@ bool SettingsStore::save(const SystemSettings &input) {
   p.putString("mqttPrefix", s.mqttTopicPrefix);
   p.putBool("ntpEn", s.ntpEnabled);
   p.putBool("otaEn", s.otaEnabled);
-  p.end(); return true;
+  // 日夜配色与时间
+  p.putUChar("theme", s.theme);
+  p.putUShort("dayStart", s.dayStartMinutes);
+  p.putUShort("nightStart", s.nightStartMinutes);
+  p.putULong("clockEp", s.manualClockEpoch);
+  p.end();
+  return true;
 }
 
 void SettingsStore::loadMaterialProfiles() {
@@ -102,20 +132,21 @@ void SettingsStore::loadMaterialProfiles() {
     StoredProfileV2 value{};
     const size_t storedSize = p.getBytesLength(key);
     if (storedSize == sizeof(StoredProfileV2)) {
-      if (p.getBytes(key, &value, sizeof(value)) != sizeof(value)) continue;
+      if (p.getBytes(key, &value, sizeof(value)) != sizeof(value))
+        continue;
     } else if (storedSize == sizeof(StoredProfileV1)) {
       StoredProfileV1 old{};
-      if (p.getBytes(key, &old, sizeof(old)) != sizeof(old)) continue;
-      value = {old.minC, old.maxC, old.fanMin, old.fanMax, old.fanMax,
-               old.postSeconds};
+      if (p.getBytes(key, &old, sizeof(old)) != sizeof(old))
+        continue;
+      value = {old.minC,   old.maxC,   old.fanMin,
+               old.fanMax, old.fanMax, old.postSeconds};
     } else {
       continue;
     }
     if (isfinite(value.minC) && isfinite(value.maxC) && value.minC >= 0 &&
         value.minC <= 90 && value.maxC >= value.minC + 5 && value.maxC <= 100 &&
         value.fanMin <= value.fanMax && value.fanMax <= 100 &&
-        value.postFan <= 100 &&
-        value.postSeconds <= 1800) {
+        value.postFan <= 100 && value.postSeconds <= 1800) {
       MATERIALS[i].chamberMinC = value.minC;
       MATERIALS[i].chamberMaxC = value.maxC;
       MATERIALS[i].fanMinPercent = value.fanMin;
@@ -140,10 +171,10 @@ bool SettingsStore::saveMaterialProfiles() {
   for (size_t i = 0; i < MATERIAL_COUNT; ++i) {
     char key[8];
     snprintf(key, sizeof(key), "mat%02u", static_cast<unsigned>(i));
-    const StoredProfile value{MATERIALS[i].chamberMinC, MATERIALS[i].chamberMaxC,
-                              MATERIALS[i].fanMinPercent, MATERIALS[i].fanMaxPercent,
-                              MATERIALS[i].postExhaustPercent,
-                              MATERIALS[i].postExhaustSeconds};
+    const StoredProfile value{
+        MATERIALS[i].chamberMinC,        MATERIALS[i].chamberMaxC,
+        MATERIALS[i].fanMinPercent,      MATERIALS[i].fanMaxPercent,
+        MATERIALS[i].postExhaustPercent, MATERIALS[i].postExhaustSeconds};
     ok &= p.putBytes(key, &value, sizeof(value)) == sizeof(value);
   }
   p.end();
@@ -152,21 +183,27 @@ bool SettingsStore::saveMaterialProfiles() {
 
 bool SettingsStore::reset() {
   Preferences p;
-  if (!p.begin(NAMESPACE_NAME, false)) return false;
+  if (!p.begin(NAMESPACE_NAME, false))
+    return false;
   // 只删除本固件拥有的配置键；未知键（例如注册码）必须保留。
   const char *keys[] = {
-      "english", "keySound", "brightness", "screenSleep", "keepOnPrint",
-      "encoderRev", "pirStart", "pirStop", "lightStart", "lightStop",
-      "beepStart", "beepStop", "heaterMaxA", "heaterFan", "heaterLimit",
-      "touchX0", "touchX1", "touchY0", "touchY1", "touchCal", "wifiEn",
-      "mqttEn", "mqttBroker", "mqttPort", "mqttPrefix", "ntpEn", "otaEn"};
+      "english",    "keySound", "brightness", "screenSleep", "keepOnPrint",
+      "encoderRev", "pirStart", "pirStop",    "lightStart",  "lightStop",
+      "beepStart",  "beepStop", "heaterMaxA", "heaterFan",   "heaterLimit",
+      "touchX0",    "touchX1",  "touchY0",    "touchY1",     "touchCal",
+      "wifiEn",     "mqttEn",   "mqttBroker", "mqttPort",    "mqttPrefix",
+      "ntpEn",      "otaEn",    "theme",      "dayStart",    "nightStart",
+      "clockEp"};
   bool ok = true;
   for (const char *key : keys)
-    if (p.isKey(key)) ok &= p.remove(key);
+    if (p.isKey(key))
+      ok &= p.remove(key);
   for (size_t i = 0; i < MATERIAL_COUNT; ++i) {
     char key[8];
     snprintf(key, sizeof(key), "mat%02u", static_cast<unsigned>(i));
-    if (p.isKey(key)) ok &= p.remove(key);
+    if (p.isKey(key))
+      ok &= p.remove(key);
   }
-  p.end(); return ok;
+  p.end();
+  return ok;
 }
