@@ -8,9 +8,9 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
+#include <ctype.h>
 #include <esp_sntp.h>
 #include <time.h>
-#include <ctype.h>
 
 // 静态分发:WiFi 事件回调与 MQTT 回调跑在 wifi 任务,只经 self_ 转发到实例方法,
 // 实例方法内只更新 volatile 标志或排入 loop() 处理,不直接动共享状态。
@@ -86,13 +86,27 @@ static String jsonEscape(const String &input) {
   for (size_t i = 0; i < input.length(); ++i) {
     const uint8_t c = input[i];
     switch (c) {
-    case '"': out += F("\\\""); break;
-    case '\\': out += F("\\\\"); break;
-    case '\b': out += F("\\b"); break;
-    case '\f': out += F("\\f"); break;
-    case '\n': out += F("\\n"); break;
-    case '\r': out += F("\\r"); break;
-    case '\t': out += F("\\t"); break;
+    case '"':
+      out += F("\\\"");
+      break;
+    case '\\':
+      out += F("\\\\");
+      break;
+    case '\b':
+      out += F("\\b");
+      break;
+    case '\f':
+      out += F("\\f");
+      break;
+    case '\n':
+      out += F("\\n");
+      break;
+    case '\r':
+      out += F("\\r");
+      break;
+    case '\t':
+      out += F("\\t");
+      break;
     default:
       if (c >= 0x20)
         out += static_cast<char>(c);
@@ -111,8 +125,8 @@ static bool safeText(const String &value, size_t maxLength,
     if (isalnum(static_cast<unsigned char>(c)) || c == '.' || c == '-' ||
         c == '_' || c == '/')
       continue;
-    if (allowPosixTz && (c == '+' || c == ':' || c == ',' || c == '<' ||
-                         c == '>'))
+    if (allowPosixTz &&
+        (c == '+' || c == ':' || c == ',' || c == '<' || c == '>'))
       continue;
     return false;
   }
@@ -203,7 +217,7 @@ void NetworkManager::startWifiManager() {
   g_wm.setRemoveDuplicateAPs(true); // 同名 AP 只保留信号最强的一项
   g_wm.setMinimumSignalQuality(0);  // 弱信号也显示,由用户自行判断
   g_wm.setShowPassword(false);      // 绝不回显已经保存的 WiFi 密码
-  g_wm._preloadwifiscan = true;    // 门户启动后立即后台扫描
+  g_wm._preloadwifiscan = true;     // 门户启动后立即后台扫描
   g_wm._asyncScan = true;           // 扫描不阻塞主循环/PID 节拍
   g_wm._scancachetime = 30000;      // 30 秒内复用扫描结果
   wmStarted_ = true;
@@ -396,11 +410,10 @@ void NetworkManager::onSettingsChanged(const SystemSettings &settings) {
       WiFi.status() == WL_CONNECTED && !mqttConfigured_)
     startMqtt();
   // NTP/OTA:开关翻转时双向生效(开则起,关则停),仅在已连网时才需要动手。
-  const bool ntpChanged =
-      old.ntpEnabled != settings_.ntpEnabled ||
-      strcmp(old.timezone, settings_.timezone) != 0 ||
-      strcmp(old.ntpServer1, settings_.ntpServer1) != 0 ||
-      strcmp(old.ntpServer2, settings_.ntpServer2) != 0;
+  const bool ntpChanged = old.ntpEnabled != settings_.ntpEnabled ||
+                          strcmp(old.timezone, settings_.timezone) != 0 ||
+                          strcmp(old.ntpServer1, settings_.ntpServer1) != 0 ||
+                          strcmp(old.ntpServer2, settings_.ntpServer2) != 0;
   if (ntpChanged) {
     if (ntpStarted_) {
       esp_sntp_stop();
@@ -451,11 +464,12 @@ void NetworkManager::applyIpConfig() {
     return;
   }
   IPAddress ip, gateway, subnet, dns1, dns2;
+  // DNS 允许 0.0.0.0(表示不使用该 DNS);地址/网关/掩码不可为零。
   if (!parseIp(settings_.staticIp, ip) ||
       !parseIp(settings_.staticGateway, gateway) ||
       !parseIp(settings_.staticSubnet, subnet) ||
-      !parseIp(settings_.staticDns1, dns1) ||
-      !parseIp(settings_.staticDns2, dns2)) {
+      !parseIp(settings_.staticDns1, dns1, true) ||
+      !parseIp(settings_.staticDns2, dns2, true)) {
     Serial.println("[NET] Invalid static IPv4 configuration; using DHCP");
     const IPAddress zero(0, 0, 0, 0);
     WiFi.config(zero, zero, zero, zero, zero);
@@ -571,7 +585,8 @@ void NetworkManager::startWebServer() {
     }
     if (g_server.hasArg("mqttTopicPrefix")) {
       const String prefix = g_server.arg("mqttTopicPrefix");
-      if (!safeText(prefix, 23) || !copyChecked(candidate.mqttTopicPrefix, prefix))
+      if (!safeText(prefix, 23) ||
+          !copyChecked(candidate.mqttTopicPrefix, prefix))
         error = "invalid mqttTopicPrefix";
     }
 
@@ -587,19 +602,19 @@ void NetworkManager::startWebServer() {
       strlcpy(dest, value.c_str(), cap);
     };
     readText("timezone", candidate.timezone, sizeof(candidate.timezone), true);
-    readText("ntpServer1", candidate.ntpServer1,
-             sizeof(candidate.ntpServer1), false);
-    readText("ntpServer2", candidate.ntpServer2,
-             sizeof(candidate.ntpServer2), false);
+    readText("ntpServer1", candidate.ntpServer1, sizeof(candidate.ntpServer1),
+             false);
+    readText("ntpServer2", candidate.ntpServer2, sizeof(candidate.ntpServer2),
+             false);
     readText("staticIp", candidate.staticIp, sizeof(candidate.staticIp), false);
     readText("staticGateway", candidate.staticGateway,
              sizeof(candidate.staticGateway), false);
     readText("staticSubnet", candidate.staticSubnet,
              sizeof(candidate.staticSubnet), false);
-    readText("staticDns1", candidate.staticDns1,
-             sizeof(candidate.staticDns1), false);
-    readText("staticDns2", candidate.staticDns2,
-             sizeof(candidate.staticDns2), false);
+    readText("staticDns1", candidate.staticDns1, sizeof(candidate.staticDns1),
+             false);
+    readText("staticDns2", candidate.staticDns2, sizeof(candidate.staticDns2),
+             false);
 
     if (g_server.hasArg("language")) {
       const String language = g_server.arg("language");
@@ -614,18 +629,20 @@ void NetworkManager::startWebServer() {
     if (!error.length() && candidate.mqttEnabled && !candidate.mqttBroker[0])
       error = "mqttBroker required when MQTT is enabled";
     if (!error.length() && candidate.staticIpEnabled) {
-      IPAddress ip;
+      // 每个字段用独立变量校验,与 applyIpConfig() 写法一致,避免误读。
+      // DNS 允许 0.0.0.0(表示不使用该 DNS),其余字段不可为零。
+      IPAddress ip, gw, mask, dns1, dns2;
       if (!parseIp(candidate.staticIp, ip) ||
-          !parseIp(candidate.staticGateway, ip) ||
-          !parseIp(candidate.staticSubnet, ip) ||
-          !parseIp(candidate.staticDns1, ip) ||
-          !parseIp(candidate.staticDns2, ip))
+          !parseIp(candidate.staticGateway, gw) ||
+          !parseIp(candidate.staticSubnet, mask) ||
+          !parseIp(candidate.staticDns1, dns1, true) ||
+          !parseIp(candidate.staticDns2, dns2, true))
         error = "invalid static IPv4 settings";
     }
     if (error.length()) {
       g_server.send(400, "application/json",
-                    String("{\"ok\":false,\"err\":\"") +
-                        jsonEscape(error) + "\"}");
+                    String("{\"ok\":false,\"err\":\"") + jsonEscape(error) +
+                        "\"}");
       return;
     }
     if (!settingsStore_.save(candidate)) {
@@ -689,8 +706,8 @@ void NetworkManager::startWebServer() {
                                 : current.postExhaustSeconds;
     if (!isfinite(minC) || !isfinite(maxC) || minC < 0 || minC > 90 ||
         maxC < minC + 5 || maxC > 100 || fanMin < 0 || fanMin > 100 ||
-        fanMin > fanMax || fanMax < 0 || fanMax > 100 ||
-        postFan < 0 || postFan > 100 || postSeconds < 0 || postSeconds > 1800 ||
+        fanMin > fanMax || fanMax < 0 || fanMax > 100 || postFan < 0 ||
+        postFan > 100 || postSeconds < 0 || postSeconds > 1800 ||
         !controller_ || !ui_) {
       g_server.send(400, "application/json",
                     "{\"ok\":false,\"err\":\"invalid profile values\"}");
@@ -744,8 +761,7 @@ void NetworkManager::startMqtt() {
 }
 
 void NetworkManager::startNtp() {
-  configTzTime(settings_.timezone, settings_.ntpServer1,
-               settings_.ntpServer2);
+  configTzTime(settings_.timezone, settings_.ntpServer1, settings_.ntpServer2);
   ntpStarted_ = true;
   Serial.printf("[NTP] started (TZ=%s, %s, %s)\n", settings_.timezone,
                 settings_.ntpServer1, settings_.ntpServer2);
@@ -879,31 +895,47 @@ String NetworkManager::buildStateJson() const {
   json += ui_ ? String((unsigned)ui_->materialIndex()) : String("0");
   json += F(",\"state\":\"");
   json += stateName(o.state);
-  json += F("\",\"chamberC\":"); json += numberOrNull(r.chamberC);
-  json += F(",\"heaterBoardC\":"); json += numberOrNull(r.heaterBoardC);
-  json += F(",\"humidity\":"); json += numberOrNull(humidity_);
-  json += F(",\"currentA\":"); json += numberOrNull(r.heaterCurrentA);
-  json += F(",\"voltageV\":"); json += numberOrNull(r.supplyVoltageV);
+  json += F("\",\"chamberC\":");
+  json += numberOrNull(r.chamberC);
+  json += F(",\"heaterBoardC\":");
+  json += numberOrNull(r.heaterBoardC);
+  json += F(",\"humidity\":");
+  json += numberOrNull(humidity_);
+  json += F(",\"currentA\":");
+  json += numberOrNull(r.heaterCurrentA);
+  json += F(",\"voltageV\":");
+  json += numberOrNull(r.supplyVoltageV);
   json += F(",\"exhaustPercent\":");
-  json += String((unsigned)(ui_ && ui_->settings().manualExhaust
-                                ? 100
-                                : o.exhaustPercent));
-  json += F(",\"heatPercent\":"); json += String((unsigned)o.heaterPercent);
+  json += String((
+      unsigned)(ui_ && ui_->settings().manualExhaust ? 100 : o.exhaustPercent));
+  json += F(",\"heatPercent\":");
+  json += String((unsigned)o.heaterPercent);
   json += F(",\"heaterFan\":");
   json += String((unsigned)(o.heaterFan ? settings_.heaterFanPercent : 0));
-  json += F(",\"light\":"); json += o.light ? F("true") : F("false");
+  json += F(",\"light\":");
+  json += o.light ? F("true") : F("false");
   json += F(",\"systemEnabled\":");
   json += controller_ && controller_->systemEnabled() ? F("true") : F("false");
-  json += F(",\"pirMotion\":"); json += r.pirMotion ? F("true") : F("false");
-  json += F(",\"time\":\""); json += jsonEscape(timeString());
-  json += F("\",\"ip\":\""); json += jsonEscape(ipString());
-  json += F("\",\"net\":\""); json += connected() ? F("online") : F("offline");
-  json += F("\",\"ssid\":\""); json += online ? jsonEscape(WiFi.SSID()) : String();
-  json += F("\",\"rssi\":"); json += online ? String(WiFi.RSSI()) : String("null");
-  json += F(",\"uptimeSeconds\":"); json += String(millis() / 1000UL);
-  json += F(",\"firmware\":\""); json += jsonEscape(FW_VERSION);
-  json += F("\",\"disconnectCount\":"); json += String(disconnectCount_);
-  json += F(",\"lastDisconnectReason\":\""); json += jsonEscape(disconnectReason);
+  json += F(",\"pirMotion\":");
+  json += r.pirMotion ? F("true") : F("false");
+  json += F(",\"time\":\"");
+  json += jsonEscape(timeString());
+  json += F("\",\"ip\":\"");
+  json += jsonEscape(ipString());
+  json += F("\",\"net\":\"");
+  json += connected() ? F("online") : F("offline");
+  json += F("\",\"ssid\":\"");
+  json += online ? jsonEscape(WiFi.SSID()) : String();
+  json += F("\",\"rssi\":");
+  json += online ? String(WiFi.RSSI()) : String("null");
+  json += F(",\"uptimeSeconds\":");
+  json += String(millis() / 1000UL);
+  json += F(",\"firmware\":\"");
+  json += jsonEscape(FW_VERSION);
+  json += F("\",\"disconnectCount\":");
+  json += String(disconnectCount_);
+  json += F(",\"lastDisconnectReason\":\"");
+  json += jsonEscape(disconnectReason);
   json += F("\",\"lastDisconnectReasonCode\":");
   json += String((unsigned)lastDisconnectReason_);
   json += '}';
@@ -914,15 +946,19 @@ String NetworkManager::buildSettingsJson() const {
   String json;
   json.reserve(900);
   auto addString = [&](const char *key, const char *value) {
-    json += F(",\""); json += key; json += F("\":\"");
-    json += jsonEscape(value); json += '"';
+    json += F(",\"");
+    json += key;
+    json += F("\":\"");
+    json += jsonEscape(value);
+    json += '"';
   };
   json = settings_.wifiEnabled ? F("{\"wifiEnabled\":true")
                                : F("{\"wifiEnabled\":false");
   json += settings_.mqttEnabled ? F(",\"mqttEnabled\":true")
                                 : F(",\"mqttEnabled\":false");
   addString("mqttBroker", settings_.mqttBroker);
-  json += F(",\"mqttPort\":"); json += String(settings_.mqttPort);
+  json += F(",\"mqttPort\":");
+  json += String(settings_.mqttPort);
   addString("mqttTopicPrefix", settings_.mqttTopicPrefix);
   json += settings_.ntpEnabled ? F(",\"ntpEnabled\":true")
                                : F(",\"ntpEnabled\":false");
@@ -939,10 +975,14 @@ String NetworkManager::buildSettingsJson() const {
   addString("staticDns1", settings_.staticDns1);
   addString("staticDns2", settings_.staticDns2);
   addString("otaPassword", otaPassword().c_str());
-  json += F(",\"heaterMaxCurrentA\":"); json += String(settings_.heaterMaxCurrentA);
-  json += F(",\"heaterFanPercent\":"); json += String(settings_.heaterFanPercent);
-  json += F(",\"heaterBoardLimitC\":"); json += String(settings_.heaterBoardLimitC);
-  json += F(",\"brightness\":"); json += String(settings_.brightness);
+  json += F(",\"heaterMaxCurrentA\":");
+  json += String(settings_.heaterMaxCurrentA);
+  json += F(",\"heaterFanPercent\":");
+  json += String(settings_.heaterFanPercent);
+  json += F(",\"heaterBoardLimitC\":");
+  json += String(settings_.heaterBoardLimitC);
+  json += F(",\"brightness\":");
+  json += String(settings_.brightness);
   addString("language", settings_.language == Language::English ? "en" : "zh");
   json += '}';
   return json;
