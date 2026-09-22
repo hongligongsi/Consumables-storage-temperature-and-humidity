@@ -68,7 +68,12 @@ constexpr bool HAS_STATUS_OUTPUTS = true;
 constexpr int PRINTING_STATUS = 8; // GPIO8 = 打印中
 constexpr int HEATING_STATUS = 47; // GPIO47 = 加热中
 
-// ---- 未分配(悬空) ----
-// GPIO0 (BOOT), GPIO19 (USB D-), GPIO20 (USB D+), GPIO43 (UART RX), GPIO44
-// (UART TX), GPIO45 已用作 BOARD_FAN, GPIO46 (RTC GPIO), GPIO48 原理图未接
+// ---- 未分配 ----
+// GPIO0  (BOOT 按钮,strapping,按低时进入下载模式,内部上拉)
+// GPIO19 (USB D-,USB 专用,别作 GPIO)
+// GPIO20 (USB D+,USB 专用,别作 GPIO)
+// GPIO33/34/43/44 — N16R8 LGA-33 封装未引出到 PCB
+// GPIO46 (strapping,控制 ROM messages 输出,内部上拉,悬空即可,别强拉低)
+// GPIO48 (模组板载 WS2812 LED,LGA-33 封装没对外引出)
+// USB-UART 走内置 USB-SERIAL-JTAG bridge(UART0),无需占用 43/44
 } // namespace Pin
