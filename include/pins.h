@@ -58,6 +58,8 @@ constexpr int BOARD_FAN = 45;  // 主板散热风扇 MOS Q7 栅极
 constexpr int HOT_PWM = 38; // 发热板 MPT40N08S MOS 栅极
 
 // ---- 传感器 ----
+// 注意: GPIO3 也是 strapping 脚,但默认浮空、不参与启动(Strap JTAG 选择需先烧
+// STRAP_JTAG_SEL eFuse 才生效),接 PIR 输出无冲突。
 constexpr int PIR = 3;      // 红外感应模块输出(CN3)
 constexpr int ADC_NTC = 39; // 发热板 NTC 热敏电阻采样(ZX-NTC1.25-P2ZZ)
 constexpr int ADC_VCC = 40; // 电压分压采样(INA226 Vin+)
@@ -69,11 +71,19 @@ constexpr int PRINTING_STATUS = 8; // GPIO8 = 打印中
 constexpr int HEATING_STATUS = 47; // GPIO47 = 加热中
 
 // ---- 未分配 ----
-// GPIO0  (BOOT 按钮,strapping,按低时进入下载模式,内部上拉)
+// GPIO0  (BOOT 按钮,strapping,默认弱上拉,按低时进入下载模式)
 // GPIO19 (USB D-,USB 专用,别作 GPIO)
 // GPIO20 (USB D+,USB 专用,别作 GPIO)
 // GPIO33/34/43/44 — N16R8 LGA-33 封装未引出到 PCB
-// GPIO46 (strapping,控制 ROM messages 输出,内部上拉,悬空即可,别强拉低)
+// GPIO46 (strapping,默认弱下拉。与 GPIO0 共同决定启动模式,同时控制 ROM
+//         启动日志是否打印;默认低=打印。保持默认即可)
 // GPIO48 (模组板载 WS2812 LED,LGA-33 封装没对外引出)
 // USB-UART 走内置 USB-SERIAL-JTAG bridge(UART0),无需占用 43/44
+//
+// ---- Strapping 注意 ----
+// GPIO45 已分配给 BOARD_FAN,但它同时是 strapping 脚,上电电平选择 VDD_SPI:
+//   低(默认,内部弱下拉) = 3.3V flash;高 = 1.8V flash。
+// 本板为模组内置 flash,必须走 3.3V,故上电瞬间 GPIO45 必须为低。
+// 若 MOS Q7 栅极把这脚拉高,芯片会按 1.8V 配置 VDD_SPI 而启动失败。
+// 详见 docs/hardware.md「上电前必须复核」第 5 项。
 } // namespace Pin

@@ -83,13 +83,15 @@ Gerber 飞针网表已确认这两路为独立 3.3 V 输出，故
 
 ### USB 与 Strapping
 
-| GPIO | 类型 | 说明 |
-| --- | --- | --- |
-| 0 | Strapping | BOOT 按钮，按低时进入下载模式，内部上拉 |
-| 19 | USB | USB D−，板载 USB-SERIAL-JTAG bridge 专用，别作 GPIO |
-| 20 | USB | USB D+，同上 |
-| 46 | Strapping | 控制 ROM messages 输出，内部上拉，悬空即可，别强拉低 |
-| 48 | 板载 | ESP32-S3 模组板载 WS2812 RGB LED，LGA-33 封装没对外引出 |
+| GPIO | 类型 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| 0 | Strapping | 弱上拉 | BOOT 按钮，按低时进入下载模式 |
+| 3 | Strapping | 浮空 | 默认不参与启动（需烧 `STRAP_JTAG_SEL` eFuse 才生效），现接 PIR 输出 |
+| 19 | USB | — | USB D−，板载 USB-SERIAL-JTAG bridge 专用，别作 GPIO |
+| 20 | USB | — | USB D+，同上 |
+| 45 | Strapping | 弱下拉 | VDD_SPI 电压选择：低 = 3.3 V，高 = 1.8 V |
+| 46 | Strapping | 弱下拉 | 启动模式（与 GPIO0 配合）+ ROM messages 打印控制 |
+| 48 | 板载 | — | ESP32-S3 模组板载 WS2812 RGB LED，LGA-33 封装没对外引出 |
 
 USB-UART 走内置 USB-SERIAL-JTAG bridge（UART0），无需占用 GPIO43/44。
 
@@ -154,12 +156,22 @@ AHT20 位于仓内，作为自动仓温闭环的输入。上电串口会打印
 
 ### 5. GPIO45（BOARD_FAN）上电风险
 
-**GPIO45 是 ESP32-S3 的 strapping 脚** — 上电时决定是否打印 ROM messages 到
-USB。它接 `BOARD_FAN` MOS Q7 栅极（高阻抗输入），默认悬空，ESP32-S3 GPIO45
-有内置上拉，上电应进正常模式。
+**GPIO45 是 ESP32-S3 的 strapping 脚**，上电时选择 VDD_SPI 电压：
 
-但上电瞬间如果 MOS 栅极有电容残留拉低，可能出问题。**首次上板烧录前建议把
-BOARD_FAN 那条先断开或临时把 GPIO45 接 3V3 上拉**，确认能正常启动后再接回去。
+| GPIO45 上电电平 | VDD_SPI |
+| --- | --- |
+| **低（默认，内部弱下拉）** | **3.3 V** |
+| 高 | 1.8 V |
+
+本板用模组内置 flash，走默认 3.3 V，因此 **GPIO45 在上电瞬间必须为低**。
+它接 `BOARD_FAN` MOS Q7 栅极，栅极是高阻输入，正常不会影响电平。
+
+风险在于 MOS 栅极电阻分压或栅源电容残留把 GPIO45 拉高：一旦上电被读成高，
+芯片会按 1.8 V 配置 VDD_SPI，**与 3.3 V 的 flash 不匹配，直接启动失败**。
+
+**首次上板烧录前，建议确认 Q7 栅极在上电瞬间没有把 GPIO45 拉高**（示波器看
+GPIO45 上升沿，或临时断开 BOARD_FAN 那路）。确认能正常启动后再接回去。
+注意**不要**为了"保险"给 GPIO45 加上拉 —— 那恰好会触发 1.8 V 配置。
 
 ### 6. Flash 分区表
 
