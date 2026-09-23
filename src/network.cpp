@@ -1,3 +1,8 @@
+// 网络子系统实现(单例 network):一个 NetworkManager 统管六件事——
+// WiFiManager 配网门户(无凭据时 AP 回退)、:80 管理页与 REST API、
+// MQTT 上报与命令、NTP 校时、ArduinoOTA 升级、mDNS 广播。
+// 设计约束:全部非阻塞,由 loop() 轮询,绝不能卡住 main.cpp 的 50ms 热控节拍;
+// wifi 任务回调只置标志,真正的状态变更都在 loop() 任务上下文执行。
 #include "network.h"
 #include "version.h"
 #include "web_page.h"
@@ -14,17 +19,17 @@
 
 // 静态分发:WiFi 事件回调与 MQTT 回调跑在 wifi 任务,只经 self_ 转发到实例方法,
 // 实例方法内只更新 volatile 标志或排入 loop() 处理,不直接动共享状态。
-static NetworkManager *g_self = nullptr;
-static WiFiManager g_wm;
-static WebServer g_server(80);
-static WiFiClient g_wifiClient;
-static PubSubClient g_mqtt(g_wifiClient);
+static NetworkManager *g_self = nullptr;  // C 风格回调 → 单例实例的跳板
+static WiFiManager g_wm;                  // 配网门户库实例
+static WebServer g_server(80);            // REST/管理页 HTTP 服务
+static WiFiClient g_wifiClient;           // MQTT 底层 TCP 连接
+static PubSubClient g_mqtt(g_wifiClient); // MQTT 客户端
 
-NetworkManager network;
+NetworkManager network; // 全局单例(main.cpp 直接引用)
 
-static const char *kApSsid = "FilamentChamber-Setup";
-static const uint32_t MQTT_PUBLISH_MS = 5000;
-static const uint32_t MQTT_RECONNECT_MS = 5000;
+static const char *kApSsid = "FilamentChamber-Setup"; // 无凭据时的 AP 热点名
+static const uint32_t MQTT_PUBLISH_MS = 5000;         // state 周期上报间隔 5s
+static const uint32_t MQTT_RECONNECT_MS = 5000;       // MQTT 断线重连节流 5s
 
 // ---------- 动作名 <-> UiAction 映射 ----------
 struct ActionMap {
@@ -40,6 +45,7 @@ static const ActionMap kActions[] = {
 };
 static const size_t kActionCount = sizeof(kActions) / sizeof(kActions[0]);
 
+// 把 REST/MQTT 里的动作字符串解析成 UiAction;不在白名单内返回 false。
 static bool parseAction(const String &s, UiAction &out) {
   for (size_t i = 0; i < kActionCount; ++i)
     if (s == kActions[i].name) {
@@ -61,6 +67,7 @@ static String jsonExtractString(const char *json, const char *key) {
     return "";
   return String(json).substring(v0, v1);
 }
+// 极简 JSON 整数提取(匹配 "key":数字,取到非数字为止);找不到返回 fallback。
 static long jsonExtractInt(const char *json, const char *key, long fallback) {
   String k = String("\"") + key + "\":";
   const int p = String(json).indexOf(k);
@@ -68,6 +75,7 @@ static long jsonExtractInt(const char *json, const char *key, long fallback) {
     return fallback;
   return String(json).substring(p + k.length()).toInt();
 }
+// 严格布尔解析:只接受 1/true/on 与 0/false/off,其他写法判错(防歧义)。
 static bool parseBoolStrict(const String &value, bool &out) {
   if (value == "1" || value == "true" || value == "on") {
     out = true;
@@ -80,6 +88,7 @@ static bool parseBoolStrict(const String &value, bool &out) {
   return false;
 }
 
+// JSON 字符串转义:处理引号/反斜杠/控制字符,0x20 以下不可打印字符直接丢弃。
 static String jsonEscape(const String &input) {
   String out;
   out.reserve(input.length() + 8);
@@ -116,6 +125,8 @@ static String jsonEscape(const String &input) {
   return out;
 }
 
+// 文本字段白名单校验(长度 + 字符集),写入设置前统一过一遍,挡住注入/乱码。
+// allowPosixTz 仅放行 POSIX 时区串额外需要的 + : , < > 字符。
 static bool safeText(const String &value, size_t maxLength,
                      bool allowPosixTz = false) {
   if (!value.length() || value.length() > maxLength)
@@ -133,12 +144,15 @@ static bool safeText(const String &value, size_t maxLength,
   return true;
 }
 
+// IPv4 文本转 IPAddress;allowZero=true 时允许 0.0.0.0(用于可选 DNS)。
 static bool parseIp(const char *text, IPAddress &out, bool allowZero = false) {
   if (!text || !out.fromString(text))
     return false;
   return allowZero || static_cast<uint32_t>(out) != 0;
 }
 
+// 带长度检查的字符串拷贝到固定 char 数组,超长返回 false(防 strlcpy 截断后
+// 静默使用半截值)。N 由目标数组自动推导。
 template <size_t N>
 static bool copyChecked(char (&dest)[N], const String &value) {
   if (value.length() >= N)
@@ -178,6 +192,8 @@ static void onMqttMessage(char *topic, byte *payload, unsigned int len) {
 // ============================================================
 // NetworkManager
 // ============================================================
+// 开机绑定控制器/UI/设置三个外部对象,注册 WiFi 事件,按 wifiEnabled 决定
+// 直接停在 Off 还是走静态 IP 配置 + WiFiManager 配网流程。
 void NetworkManager::begin(ChamberController &controller, UiModel &ui,
                            SystemSettings &settings) {
   controller_ = &controller;
@@ -200,6 +216,9 @@ void NetworkManager::begin(ChamberController &controller, UiModel &ui,
   Serial.printf("[NET] WiFiManager started, AP fallback SSID=%s\n", kApSsid);
 }
 
+// 配置并启动 WiFiManager:非阻塞门户(15s 连接超时/180s 门户超时)、
+// 中英双语标题、异步后台扫描、不回显密码。autoConnect 立即返回,
+// 后续状态在 loop() 里用 process() 推进。
 void NetworkManager::startWifiManager() {
   g_wm.setDebugOutput(false);
   g_wm.setConfigPortalBlocking(false); // 非阻塞:不卡 50ms PID 循环
@@ -235,6 +254,9 @@ void NetworkManager::startWifiManager() {
   }
 }
 
+// 网络主轮询,由 Arduino loop() 每轮调用。依次推进:配网门户生命周期与
+// 超时重开 → 连上后按需拉起 mDNS/Web/NTP/OTA → 处理 HTTP/OTA →
+// MQTT 收发与节流重连(加热中不重连)→ 状态跳变 event 上报 → 汇总 NetState。
 void NetworkManager::loop() {
   if (state_ == NetState::Off)
     return;
@@ -351,6 +373,8 @@ void NetworkManager::loop() {
   }
 }
 
+// 由主循环 500ms 节拍喂入最新传感器/执行器快照,供 REST 与 MQTT 上报使用;
+// 此处是网络侧数据的唯一更新入口。
 void NetworkManager::updateReadings(const Readings &r, const Outputs &o,
                                     float humidity) {
   readings_ = r;
@@ -361,6 +385,9 @@ void NetworkManager::updateReadings(const Readings &r, const Outputs &o,
   humidity_ = humidity;
 }
 
+// 设置热更新(本地 UI、REST 两条路径都汇聚到此)。逐项 diff 旧值后只做
+// 必要动作:WiFi 总开关/静态 IP 变化重走配网,MQTT 参数变化断开重配,
+// NTP/OTA 开关翻转双向生效。无需重启即生效。
 void NetworkManager::onSettingsChanged(const SystemSettings &settings) {
   const SystemSettings old = settings_;
   settings_ = settings;
@@ -438,12 +465,14 @@ void NetworkManager::onSettingsChanged(const SystemSettings &settings) {
   }
 }
 
+// STA 已连时返回点分十进制 IPv4,否则空串。
 String NetworkManager::ipString() const {
   if (WiFi.status() != WL_CONNECTED)
     return "";
   return WiFi.localIP().toString();
 }
 
+// NTP 已同步时返回 "HH:MM:SS";epoch 早于 2023-11 视为未同步,返回空串。
 String NetworkManager::timeString() const {
   time_t now = time(nullptr);
   if (now < 1700000000)
@@ -456,6 +485,8 @@ String NetworkManager::timeString() const {
   return String(buf);
 }
 
+// 按设置下发 IP 层配置:关静态 IP 时全 0 交回 DHCP;静态配置任一地址
+// 解析失败也回退 DHCP,保证设备不会因填错地址而彻底失联。
 void NetworkManager::applyIpConfig() {
   if (!settings_.staticIpEnabled) {
     const IPAddress zero(0, 0, 0, 0);
@@ -481,6 +512,8 @@ void NetworkManager::applyIpConfig() {
     Serial.println("[NET] Static IPv4 configuration failed");
 }
 
+// REST 简易限流:按客户端 IP 在 4 个槽里找/挤出一个,读接口最小间隔
+// 100ms、写接口 500ms,过快直接拒绝。槽满时用 ip%4 兜底复用。
 bool NetworkManager::allowApiRequest(bool write) {
   const uint32_t now = millis();
   const uint32_t ip = static_cast<uint32_t>(g_server.client().remoteIP());
@@ -506,12 +539,15 @@ bool NetworkManager::allowApiRequest(bool write) {
   return true;
 }
 
+// 统一的 429 限流响应,带 Retry-After:1 头。
 void NetworkManager::sendRateLimited() {
   g_server.sendHeader("Retry-After", "1");
   g_server.send(429, "application/json",
                 "{\"ok\":false,\"err\":\"rate limit\"}");
 }
 
+// 由 MAC 经 xor 混淆生成 OTA 密码 CH-XXXXXXXX(纯混淆防直接读 MAC,
+// 非密码学保护);设置接口里明文返回,供设备主人取用。
 String NetworkManager::otaPassword() const {
   const uint64_t mac = ESP.getEfuseMac();
   const uint32_t mixed = static_cast<uint32_t>(mac) ^
@@ -522,6 +558,15 @@ String NetworkManager::otaPassword() const {
 }
 
 // ---------- 子系统启动 ----------
+// 注册 :80 全部路由并开始监听:
+//   GET  /                 管理网页(内置 PROGMEM HTML)
+//   GET  /api/state        实时状态 JSON
+//   GET  /api/settings     联网设置 JSON
+//   POST /api/settings     改联网设置(字段级合并、校验、存 NVS、热生效)
+//   POST /api/action       远程触发 UiAction
+//   POST /api/profile      在线修改某耗材预设参数并持久化
+//   POST /api/wifi/reset   清除 WiFi 凭据并重启回配网门户
+// 写接口均过限流;跨域请求回 * 头方便局域网仪表盘直接取数。
 void NetworkManager::startWebServer() {
   g_server.on("/", HTTP_GET, []() {
     g_server.send_P(200, "text/html; charset=utf-8", WEB_MANAGEMENT_PAGE);
@@ -748,6 +793,8 @@ void NetworkManager::startWebServer() {
   Serial.println("[NET] WebServer :80 started (http://chamber.local/)");
 }
 
+// 配置 MQTT 客户端(broker/端口/512B 收包缓冲/1s socket 超时/命令回调)。
+// 只配置不立即连接,实际连接由 loop() 按 5s 节流发起。
 void NetworkManager::startMqtt() {
   g_mqtt.setServer(settings_.mqttBroker, settings_.mqttPort);
   g_mqtt.setBufferSize(512);
@@ -760,6 +807,8 @@ void NetworkManager::startMqtt() {
                 settings_.mqttPort);
 }
 
+// 用 POSIX 时区串和两个 NTP 服务器配置 SNTP 并在后台同步;同步成功后
+// time()/localtime 直接可用,UI 时钟与自动主题都依赖它。
 void NetworkManager::startNtp() {
   configTzTime(settings_.timezone, settings_.ntpServer1, settings_.ntpServer2);
   ntpStarted_ = true;
@@ -767,6 +816,8 @@ void NetworkManager::startNtp() {
                 settings_.ntpServer1, settings_.ntpServer2);
 }
 
+// 启动 ArduinoOTA:主机名同 mDNS,密码取 otaPassword();关键安全动作是
+// onStart 里先关系统使能停加热,避免写 Flash 期间 PID 失控。
 void NetworkManager::startOta() {
   ArduinoOTA.setHostname(hostname());
   const String password = otaPassword();
@@ -788,6 +839,8 @@ void NetworkManager::startOta() {
 }
 
 // ---------- 远程命令 ----------
+// REST/MQTT 动作名的统一分发:四个开关类动作直写,其余查动作映射表;
+// 全部经 UiModel::apply 走与本地按键完全相同的状态机路径。
 bool NetworkManager::dispatchAction(const String &name) {
   if (!ui_ || !controller_)
     return false;
@@ -814,6 +867,7 @@ bool NetworkManager::dispatchAction(const String &name) {
   return true;
 }
 
+// 远程切料:UI 当前索引与控制器当前预设一起切,保持两侧一致。
 void NetworkManager::setProfile(size_t index) {
   if (!ui_ || !controller_ || index >= MATERIAL_COUNT)
     return;
@@ -822,6 +876,7 @@ void NetworkManager::setProfile(size_t index) {
 }
 
 // ---------- MQTT 上报 ----------
+// 周期全量状态上报到 <prefix>/state,retained=true(新订阅者立刻拿到当前值)。
 void NetworkManager::publishState() {
   if (!g_mqtt.connected())
     return;
@@ -829,6 +884,8 @@ void NetworkManager::publishState() {
   g_mqtt.publish(topic.c_str(), buildStateJson().c_str(), true);
 }
 
+// 即时事件上报到 <prefix>/event(如 online、状态机跳变、远程动作),
+// 不 retained——事件只表达"发生过一次"。
 void NetworkManager::publishEvent(const char *type) {
   if (!g_mqtt.connected())
     return;
@@ -837,6 +894,8 @@ void NetworkManager::publishEvent(const char *type) {
   g_mqtt.publish(topic.c_str(), payload.c_str(), false);
 }
 
+// 处理 <prefix>/cmd 收到的 JSON:支持 {"action":"..."} 触发动作与
+// {"profile":n} 切料两类;无法识别的内容静默丢弃。
 void NetworkManager::handleMqttCommand(const char *payload) {
   const String action = jsonExtractString(payload, "action");
   if (action.length() && dispatchAction(action)) {
@@ -855,6 +914,7 @@ void NetworkManager::handleMqttCommand(const char *payload) {
 }
 
 // ---------- JSON ----------
+// 六态状态机到对外英文字符串的映射(JSON 协议保持英文,UI 显示才做中文)。
 const char *NetworkManager::stateName(ChamberState s) const {
   switch (s) {
   case ChamberState::Idle:
@@ -873,6 +933,9 @@ const char *NetworkManager::stateName(ChamberState s) const {
   return "Unknown";
 }
 
+// 拼实时状态 JSON:耗材/状态/温湿度/电流电压/各执行器百分比/系统使能/
+// PIR/时间/IP/SSID/RSSI/运行时长/固件版本/断线统计。NAN 一律输出 null,
+// 避免上报端把"无效"误当成 0。
 String NetworkManager::buildStateJson() const {
   const Readings &r = readings_;
   const Outputs &o = outputs_;
@@ -942,6 +1005,7 @@ String NetworkManager::buildStateJson() const {
   return json;
 }
 
+// 拼全部可联网配置项 JSON(含只读的 otaPassword),供管理页拉取后回显编辑。
 String NetworkManager::buildSettingsJson() const {
   String json;
   json.reserve(900);

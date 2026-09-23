@@ -1,3 +1,6 @@
+// UI 状态机实现:把编码器/触摸/串口/Web 来的 UiAction 翻译成控制器命令与
+// 页面状态变化,并在 snapshot() 中汇总出渲染所需的只读快照。
+// 三层职责划分:输入解析在 main.cpp,状态流转在本文件,绘制在 tft_ui.cpp。
 #include "ui_model.h"
 #include "pins.h"
 #include <sys/time.h> // settimeofday:手动校时
@@ -178,6 +181,9 @@ void UiModel::adjustClock(bool dateField, uint8_t sub, int direction) {
   systemSettingsDirty_ = true;
 }
 
+// 统一的动作入口。先处理"系统设置页打开时"的专属交互(旋转改值/移动光标、
+// 单击进入编辑、双击上一项、长按退出并按脏标记请求保存);不在该页时才进入
+// 下方主界面/耗材页的动作分派。
 void UiModel::apply(UiAction action, ChamberController &controller) {
   if (systemSettingsOpen_) {
     // 旋转:编辑态改值,浏览态移动光标。取模范围含 Version 等只读项,长按回绕。
@@ -252,7 +258,9 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
       return;
     }
   }
+  // ---- 主界面 / 耗材参数页的动作分派 ----
   switch (action) {
+  // 旋转:耗材页内调整当前字段;主界面则循环切换耗材并让控制器清 PID 历史。
   case UiAction::PreviousMaterial:
     if (materialSettingsOpen_) {
       materialSettingsDirty_ |=
@@ -272,6 +280,8 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
     materialIndex_ = (materialIndex_ + 1) % MATERIAL_COUNT;
     controller.setProfile(materialIndex_);
     break;
+  // ---- 主界面三个自动开关 + 系统/预热/灯光/强排 ----
+  // 每个开关都同时更新本地运行态并同步给控制器(控制器是执行的唯一真相)。
   case UiAction::ToggleAutoExhaust:
     settings_.autoExhaust = !settings_.autoExhaust;
     controller.setAutoExhaust(settings_.autoExhaust);
@@ -288,6 +298,7 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
     settings_.systemEnabled = !settings_.systemEnabled;
     controller.setSystemEnabled(settings_.systemEnabled);
     if (!settings_.systemEnabled) {
+      // 关系统时联动取消预热,避免下次开机直接进入加热。
       settings_.preheat = false;
       controller.requestPreheat(false);
     }
@@ -295,6 +306,7 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
   case UiAction::TogglePreheat:
     settings_.preheat = !settings_.preheat;
     if (settings_.preheat && !settings_.systemEnabled) {
+      // 请求预热隐含开启系统,否则控制器会直接停在 Idle。
       settings_.systemEnabled = true;
       controller.setSystemEnabled(true);
     }
@@ -306,6 +318,7 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
   case UiAction::ToggleManualExhaust:
     settings_.manualExhaust = !settings_.manualExhaust;
     break;
+  // ---- 进入子页面与焦点移动 ----
   case UiAction::OpenMaterialSettings:
     materialSettingsOpen_ = true;
     materialSettingField_ = MaterialField::ChamberMin;
@@ -324,6 +337,7 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
     mainFocus_ = static_cast<MainFocus>((static_cast<uint8_t>(mainFocus_) + 1) %
                                         static_cast<uint8_t>(MainFocus::Count));
     break;
+  // ---- 编码器复合按键:双击/长按/短按在不同页面含义不同 ----
   case UiAction::EncoderDoubleClick:
     if (materialSettingsOpen_) {
       uint8_t field = static_cast<uint8_t>(materialSettingField_);
@@ -351,10 +365,13 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
     break;
   case UiAction::EncoderClick:
     if (materialSettingsOpen_) {
+      // 耗材页:短按在字段间循环前进。
       materialSettingField_ = static_cast<MaterialField>(
           (static_cast<uint8_t>(materialSettingField_) + 1) %
           static_cast<uint8_t>(MaterialField::Count));
     } else {
+      // 主界面:短按 = "激活当前焦点"。下表下标与 MainFocus 一一对应,
+      // 把一次短按翻译成该焦点控件自己的动作(复用上面的分支)。
       static const UiAction actions[] = {
           UiAction::PreviousMaterial,      UiAction::OpenMaterialSettings,
           UiAction::NextMaterial,          UiAction::ToggleAutoExhaust,
@@ -367,6 +384,9 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
   }
 }
 
+// 生成一帧只读快照供显示层渲染。原则:开关类状态一律回读控制器(执行端的
+// 真相),本类的 settings_ 只保留 UI 临时态;clock/humidity/networkConnected
+// 因依赖网络/AHT 层,由 main.cpp 在快照返回后补填,避免头文件循环依赖。
 UiSnapshot UiModel::snapshot(const ChamberController &controller,
                              const Readings &r, const Outputs &o) const {
   const MaterialProfile &profile = controller.profile();

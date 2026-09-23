@@ -1,3 +1,9 @@
+// 显示层实现:480x320 横屏 TFT 的全部绘制逻辑。main.cpp 每 500ms 生成
+// 一份 UiSnapshot 经长度 1 的队列投递给独立 FreeRTOS 渲染任务
+// (uiRenderTask,钉在 core0),渲染与热控/PID 完全解耦,绘制再慢也不会
+// 拖慢 50ms 控制节拍。有八线 PSRAM 时开双缓冲 sprite(离屏绘制后一次
+// push,无闪烁);分配失败则降级为直接写屏。
+// 页面分发见 drawFrame:故障页/触摸校准/耗材设置/系统设置/主屏仪表盘。
 #include "tft_ui.h"
 
 #include "font_cn16.h"
@@ -11,8 +17,8 @@
 #include <math.h>
 
 namespace {
-constexpr int16_t SCREEN_W = 480;
-constexpr int16_t SCREEN_H = 320;
+constexpr int16_t SCREEN_W = 480; // 横屏宽(像素)
+constexpr int16_t SCREEN_H = 320; // 横屏高(像素)
 
 // 运行期调色板:日/夜两套配色,由 drawFrame 按快照的 theme 选择。
 // 夜间 = 改动前的原固件配色;日间取自 tools/ui_preview.html 的
@@ -60,6 +66,8 @@ uint16_t G_YELLOW = kNightPalette.gYellow;
 uint16_t G_MAGENTA = kNightPalette.gMagenta;
 uint16_t G_CYAN = kNightPalette.gCyan;
 
+// 按主题号(0=日 1=夜)把整套调色板复制到上面的全局颜色变量;
+// drawFrame 每帧开头调用,所以切换主题下一帧即生效。
 void applyPalette(uint8_t theme) {
   const Palette &p = theme == 0 ? kDayPalette : kNightPalette;
   BG = p.bg;
@@ -79,11 +87,13 @@ void applyPalette(uint8_t theme) {
   G_CYAN = p.gCyan;
 }
 
-TFT_eSPI tft;
-TFT_eSprite frame(&tft);
-QueueHandle_t renderQueue = nullptr;
-bool spriteReady = false;
+TFT_eSPI tft;                        // 底层屏幕驱动(SPI)
+TFT_eSprite frame(&tft);             // 全屏离屏画布(双缓冲时两块帧缓冲交替)
+QueueHandle_t renderQueue = nullptr; // 长度 1 的快照队列(主循环 → 渲染任务)
+bool spriteReady = false;            // 双缓冲 sprite 是否成功建立
 
+// 右侧 2x4 仪表的顺序:排风/主板/湿度/仓温/热风/热板/电压/电流,
+// 数值数组与 texts().gauges 都按此枚举下标排列。
 enum class GaugeIcon : uint8_t {
   Exhaust,
   Mcu,
@@ -94,8 +104,10 @@ enum class GaugeIcon : uint8_t {
   Voltage,
   Current
 };
+// 底部五个常驻按钮:人感状态/系统开关/预热/灯光/系统设置入口。
 enum class ButtonIcon : uint8_t { Idle, Print, Preheat, Light, Settings };
 
+// 一屏内所有可切换中英文的文案,texts() 按快照语言一次性填好。
 struct Texts {
   const char *title;
   const char *state;
@@ -109,6 +121,7 @@ struct Texts {
   const char *buttons[5];
 };
 
+// 六态状态机 → 界面状态文案(中文/英文),下标与 ChamberState 枚举一致。
 const char *stateName(ChamberState state, bool chinese) {
   static const char *const zh[] = {"待机", "检测中", "预热",
                                    "打印", "排气",   "故障"};
@@ -119,6 +132,7 @@ const char *stateName(ChamberState state, bool chinese) {
                   : en)[i <= static_cast<uint8_t>(ChamberState::Fault) ? i : 0];
 }
 
+// 按快照语言组装主屏全部静态文案(标题/状态/三个开关/仪表名/按钮名)。
 Texts texts(const UiSnapshot &s) {
   Texts out{};
   if (s.language == Language::Chinese) {
@@ -148,6 +162,8 @@ Texts texts(const UiSnapshot &s) {
   return out;
 }
 
+// 用基础图元手绘 8 个仪表小图标(风扇/芯片/水滴/仓体/热风/热板/闪电/表头),
+// 全部以 (x,y) 为中心,避免引入图标位图资源。
 void drawGaugeIcon(TFT_eSPI &g, GaugeIcon icon, int16_t x, int16_t y,
                    uint16_t c) {
   switch (icon) {
@@ -211,6 +227,7 @@ void drawGaugeIcon(TFT_eSPI &g, GaugeIcon icon, int16_t x, int16_t y,
   }
 }
 
+// 手绘底部 5 个按钮图标(人感/打印播放/预热火焰/灯泡/设置齿轮)。
 void drawBottomIcon(TFT_eSPI &g, ButtonIcon icon, int16_t x, int16_t y,
                     uint16_t c) {
   switch (icon) {
@@ -242,11 +259,14 @@ void drawBottomIcon(TFT_eSPI &g, ButtonIcon icon, int16_t x, int16_t y,
   }
 }
 
+// iOS 风格滑动开关:48x22 圆角轨道 + 白色圆点,enabled 决定轨道色与圆点位置。
 void drawToggle(TFT_eSPI &g, int16_t x, int16_t y, bool enabled, uint16_t c) {
   g.fillRoundRect(x, y, 48, 22, 11, enabled ? c : BORDER);
   g.fillCircle(enabled ? x + 37 : x + 11, y + 11, 9, TEXT);
 }
 
+// 仪表数值格式化:NAN(传感器无效)统一显示 "--",否则按 0/1 位小数输出,
+// 单位由调用处拼接。
 void formatValue(char *dest, size_t size, float value, uint8_t decimals = 0) {
   if (isnan(value)) {
     strlcpy(dest, "--", size);
@@ -265,11 +285,15 @@ uint16_t gaugeColor(uint8_t index, const UiSnapshot &s) {
   return colors[index];
 }
 
+// 底部前 4 个按钮的"激活态"来源各不相同:0=PIR 有人、1=系统使能、
+// 2=预热中、3=灯亮;第 4 个(设置入口)无激活态。
 bool buttonActive(uint8_t i, const UiSnapshot &s) {
   return (i == 0 && s.pirMotion) || (i == 1 && s.systemEnabled) ||
          (i == 2 && s.preheat) || (i == 3 && s.light);
 }
 
+// 故障全屏页:三角警告符 + 传感器错误/系统已停止提示,底部逐一点名
+// AHT20/NTC/INA226 三个传感器的在线状态(绿点/红点),便于现场排查。
 void drawFaultFrame(TFT_eSPI &g, const UiSnapshot &s) {
   const bool zh = s.language == Language::Chinese;
   g.fillScreen(BG);
@@ -308,6 +332,8 @@ void drawFaultFrame(TFT_eSPI &g, const UiSnapshot &s) {
   g.setTextDatum(TL_DATUM);
 }
 
+// 耗材参数设置页:6 行(温区上下限/风速上下限/打印后排风风速与时长),
+// 当前编辑行高亮,右上角有未保存修改时显示 "*";操作提示固定在底行。
 void drawMaterialSettings(TFT_eSPI &g, const UiSnapshot &s) {
   const bool zh = s.language == Language::Chinese;
   const char *labelsZh[] = {"最低温度", "最高温度", "最低风速",
@@ -387,6 +413,9 @@ void formatClockField(char *out, size_t size, const char *clock, bool dateRow,
   }
 }
 
+// 系统设置页:全部 SystemSettingField 条目,一屏 5 行带滚动窗口;每行左侧
+// 名称右侧当前值(开关/百分比/秒/温度/时刻/日期/状态等各自格式化)。
+// 标签数组下标必须与 SystemSettingField 枚举一一对应。
 void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
   // 条目文案按 SystemSettingField 的下标索引取值,顺序必须与枚举保持一致。
   static const char *const zh[] = {
@@ -588,6 +617,8 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
   g.setTextDatum(TL_DATUM);
 }
 
+// 触摸校准引导页:第 0 步在左上角、第 1 步在右下角显示十字靶点,
+// 配双语操作提示;采样动作由 main.cpp 的 dispatchUiAction 完成。
 void drawTouchCalibration(TFT_eSPI &g, const UiSnapshot &s) {
   const bool first = s.touchCalibrationStep == 0;
   const int16_t x = first ? 28 : 452, y = first ? 28 : 292;
@@ -612,6 +643,10 @@ void drawTouchCalibration(TFT_eSPI &g, const UiSnapshot &s) {
   g.setTextDatum(TL_DATUM);
 }
 
+// 整帧绘制总入口,也是页面分发器:故障/校准/耗材设置/系统设置四种全屏
+// 模式优先返回,否则画主屏仪表盘(左侧控制区:耗材轮播+三个自动开关+
+// 参数;右侧 2x4 实时仪表;底部 5 按钮状态栏)。目标 g 可以是 sprite
+// 也可以是直屏 tft,两种路径绘制代码完全相同。
 void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   // 每帧按快照里的生效主题重建调色板,日/夜切换与主题设置即时生效。
   applyPalette(s.theme);
@@ -798,6 +833,9 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   g.setTextDatum(TL_DATUM);
 }
 
+// 渲染任务主体:永久阻塞等队列,拿到快照后——双缓冲模式下选另一块帧缓冲
+// 离屏绘制再整屏 push(交替 backBuffer 实现无闪烁);无 sprite 则直接在
+// 屏上绘制。队列由主循环 overwrite 投递,本任务只做消费者。
 void uiRenderTask(void *) {
   UiSnapshot snapshot{};
   uint8_t backBuffer = 1;
@@ -816,6 +854,9 @@ void uiRenderTask(void *) {
 }
 } // namespace
 
+// 显示初始化:屏幕横屏 + UTF-8;探测 PSRAM 并尝试创建双缓冲全屏 sprite
+// (成功才无闪烁,失败降级直绘);建长度 1 队列并在 core0 创建渲染任务,
+// 任一失败都放弃 UI(ready_=false),优先保证控制节拍不受影响。
 void TftUi::begin() {
   tft.init();
   tft.setRotation(1);
@@ -849,6 +890,8 @@ void TftUi::begin() {
   ready_ = renderQueue != nullptr;
 }
 
+// 投递一帧快照。长度 1 队列 + overwrite:渲染跟不上时旧帧被直接丢弃,
+// 只保留最新状态;主循环调用永不阻塞、永不失败,UI 不反压控制任务。
 void TftUi::render(const UiSnapshot &snapshot) {
   if (!ready_)
     return;

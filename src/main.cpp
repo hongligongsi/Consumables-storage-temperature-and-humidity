@@ -1,3 +1,7 @@
+// 固件入口与硬件接线层:setup() 完成全部外设初始化,loop() 按不同节拍调度
+// 传感器读取(500ms)、热控运算(50ms)、UI 输入轮询与屏幕渲染,并把控制器
+// 输出的 Outputs 逐路写到 GPIO/LEDC。业务状态机在 controller.cpp,
+// 界面状态在 ui_model.cpp,联网在 network.cpp,本文件只做装配与驱动。
 #include "controller.h"
 #include "ina226_sensor.h"
 #include "network.h"
@@ -12,43 +16,48 @@
 #include <sys/time.h>
 
 // --------------------------- 可按实际热端调整 ---------------------------
-constexpr uint8_t PWM_BITS = 10;
-constexpr uint32_t PWM_FREQ = 20000;
-constexpr uint8_t HOT_PWM_CHANNEL = 0;
-constexpr uint8_t AIR_FAN_PWM_CHANNEL = 1;
-constexpr uint8_t BACKLIGHT_PWM_CHANNEL = 2;
-constexpr uint8_t HOT_FAN_PWM_CHANNEL = 3;
+constexpr uint8_t PWM_BITS = 10;             // LEDC 分辨率(10bit → 0..1023)
+constexpr uint32_t PWM_FREQ = 20000;         // 发热板 PWM 20kHz(超出可闻音频)
+constexpr uint8_t HOT_PWM_CHANNEL = 0;       // LEDC 通道:发热板
+constexpr uint8_t AIR_FAN_PWM_CHANNEL = 1;   // LEDC 通道:4 线排风风扇
+constexpr uint8_t BACKLIGHT_PWM_CHANNEL = 2; // LEDC 通道:TFT 背光
+constexpr uint8_t HOT_FAN_PWM_CHANNEL = 3;   // LEDC 通道:加热风扇
 // 加热总保险开关：
-// false = 仅运行状态机和 PID 计算，强制 GPIO40 加热 PWM 为 0，GPIO47“加热中”
+// false = 仅运行状态机和 PID 计算，强制 GPIO38 加热 PWM 为 0，GPIO47“加热中”
 //         状态输出也保持低电平；用于首次烧录和硬件调试，防止误加热。
-// true  = 允许 PID 驱动 GPIO40；当实际加热 PWM > 0 时，GPIO47 输出 3.3 V 高电平。
-// 只有确认 GPIO40/MOSFET 有效电平、NTC 型号与参数、INA226 电流方向及加热板接线
-// 全部正确后，才可以改为 true。过温或传感器故障仍会立即停止加热并拉低 GPIO47。
+// true  = 允许 PID 驱动 GPIO38；当实际加热 PWM > 0 时，GPIO47 输出 3.3 V
+// 高电平。 只有确认 GPIO38/MOSFET 有效电平、NTC 型号与参数、INA226
+// 电流方向及加热板接线 全部正确后，才可以改为
+// true。过温或传感器故障仍会立即停止加热并拉低 GPIO47。
 constexpr bool HEATER_ENABLED = false;
 
-Adafruit_AHTX0 aht;
-Adafruit_NeoPixel rgb(1, Pin::RGB, NEO_GRB + NEO_KHZ800);
-bool ahtAvailable = false;
-float chamberTemp = NAN, humidity = NAN;
-float heaterBoardTemp = NAN; // NTC 参数确认后启用
-float heaterCurrentA = NAN;  // INA226 电流比例/I2C 地址确认后启用
-float supplyVoltage = NAN;
+// ---- 全局外设与共享状态(各调度函数之间通过这些文件级变量传递数据) ----
+Adafruit_AHTX0 aht; // 仓内温湿度传感器(I²C)
+Adafruit_NeoPixel rgb(1, Pin::RGB, NEO_GRB + NEO_KHZ800); // 状态 RGB 灯
+bool ahtAvailable = false;                                // AHT20 是否在线
+float chamberTemp = NAN, humidity = NAN; // AHT20 仓温(℃)与湿度(%RH)
+float heaterBoardTemp = NAN;             // NTC 参数确认后启用
+float heaterCurrentA = NAN;              // INA226 电流比例/I2C 地址确认后启用
+float supplyVoltage = NAN;               // INA226 总线电压(V)
 Ina226Sensor ina226;
-bool inaAvailable = false;
-uint32_t lastSensorOk = 0;
-ChamberController controller;
-UiModel ui;
-SettingsStore settingsStore;
-SystemSettings settings;
-TftUi tftUi;
-Outputs latestOutputs{0, 0, false, false, false, ChamberState::Idle};
-uint32_t lastUiActivityMs = 0, buzzerOffMs = 0;
-bool automaticLight = false;
-ChamberState previousControlState = ChamberState::Idle;
-bool touchCalibrationActive = false;
-uint8_t touchCalibrationStep = 0;
-uint16_t touchFirstX = 0, touchFirstY = 0;
+bool inaAvailable = false;    // INA226 是否在线
+uint32_t lastSensorOk = 0;    // AHT20 最近一次成功读数时刻
+ChamberController controller; // 热控状态机 + 双 PID
+UiModel ui;                   // UI 状态机
+SettingsStore settingsStore;  // NVS 持久化
+SystemSettings settings;      // 当前系统设置(内存中的唯一份)
+TftUi tftUi;                  // 显示层
+Outputs latestOutputs{0,     0,     false,
+                      false, false, ChamberState::Idle}; // 最近一次执行器输出
+uint32_t lastUiActivityMs = 0, buzzerOffMs = 0; // 最近操作时刻 / 蜂鸣器停止时刻
+bool automaticLight = false; // 打印联动自动开关的灯(区别于手动灯)
+ChamberState previousControlState = ChamberState::Idle; // 上周期状态(边沿检测)
+bool touchCalibrationActive = false;                    // 触摸校准流程进行中
+uint8_t touchCalibrationStep = 0;                       // 校准第几步(0=第一点)
+uint16_t touchFirstX = 0, touchFirstY = 0; // 校准第一点(左上)原始 ADC 值
 
+// 读电阻触摸屏的一个轴(原始 ADC 值)。四线电阻屏的做法:给该轴的两根
+// 电极加高低电平,在另一方向的电极上用 ADC 测分压;8 次平均降噪。
 uint16_t readTouchAxis(bool xAxis) {
   const int driveLow = xAxis ? Pin::TFT_XL : Pin::TFT_YD;
   const int driveHigh = xAxis ? Pin::TFT_XR : Pin::TFT_YU;
@@ -70,6 +79,7 @@ uint16_t readTouchAxis(bool xAxis) {
   return sum / 8;
 }
 
+// 鸣蜂鸣器并安排在 durationMs 后由 loop() 关闭(非阻塞,不占用控制周期)。
 void startBuzzer(uint16_t durationMs) {
   digitalWrite(Pin::BUZZER, HIGH);
   buzzerOffMs = millis() + durationMs;
@@ -119,6 +129,8 @@ uint8_t resolveTheme() {
   return isDay ? 0 : 1;
 }
 
+// 把系统设置里"影响热控行为"的项同步给控制器(语言/PIR 延时/加热限制/
+// 热风风速),并刷新用户活动计时。恢复出厂与每次 UI 操作后都会调用。
 void applyRuntimeSettings() {
   controller.setLanguage(settings.language);
   controller.setPirDelays(settings.pirStartSeconds * 1000UL,
@@ -143,6 +155,7 @@ float readNtcCelsius(int pin, float seriesOhm = 10000.0f,
                                                                      : NAN;
 }
 
+// 设置状态灯颜色;与上次相同时跳过 show(),省一次单线协议传输。
 void setRgb(uint8_t r, uint8_t g, uint8_t b) {
   static uint32_t previous = UINT32_MAX;
   const uint32_t color =
@@ -154,9 +167,12 @@ void setRgb(uint8_t r, uint8_t g, uint8_t b) {
   rgb.show();
 }
 
+// 按状态机/执行器输出选择状态灯颜色与闪烁节奏:故障快闪红、加热慢闪橙、
+// 手动强排快闪青、排气慢闪琥珀、热风扇转紫色、打印蓝、预热紫、人感橙、
+// 空闲绿色。优先级从上到下,故障最高。
 void updateStatusRgb(const Readings &in, const Outputs &out) {
-  const bool slowOn = ((millis() / 450) & 1U) == 0;
-  const bool fastOn = ((millis() / 180) & 1U) == 0;
+  const bool slowOn = ((millis() / 450) & 1U) == 0; // 慢闪节拍(约 2.2Hz 切换)
+  const bool fastOn = ((millis() / 180) & 1U) == 0; // 快闪节拍(故障/强排)
   if (out.state == ChamberState::Fault)
     setRgb(fastOn ? 255 : 25, 0, 0);
   else if (out.heaterPercent > 0)
@@ -177,6 +193,8 @@ void updateStatusRgb(const Readings &in, const Outputs &out) {
     setRgb(0, 70, 18);
 }
 
+// 发热板功率输出:百分比换算成 LEDC 占空比。HEATER_ENABLED=false 时
+// 无条件输出 0,是比状态机更外层的硬件保险。
 void setHotPower(float percent) {
   if (!HEATER_ENABLED)
     percent = 0;
@@ -184,6 +202,7 @@ void setHotPower(float percent) {
   ledcWrite(HOT_PWM_CHANNEL, lroundf(percent * ((1 << PWM_BITS) - 1) / 100.0f));
 }
 
+// 紧急停机:停加热、热风/排风全速、红灯、打印原因。当前预留,供严重故障调用。
 void emergencyStop(const char *reason) {
   setHotPower(0);
   ledcWrite(HOT_FAN_PWM_CHANNEL, (1 << PWM_BITS) - 1);
@@ -192,6 +211,8 @@ void emergencyStop(const char *reason) {
   Serial.printf("FAULT: %s\n", reason);
 }
 
+// 每 500ms 读一路传感器并做量程合理性检查,越界值一律置 NAN,
+// 控制器据此把对应传感器判为无效(NAN 不会参与加热决策)。
 void readSensors() {
   // 加热模块的独立 NTC 两芯线接入 ADC_NTC；当前按 100 kΩ/B3950 预设。
   // PCB 网表或实物 NTC 型号不同，必须先在 pins.h/此处改正再开启加热。
@@ -217,6 +238,8 @@ void readSensors() {
   }
 }
 
+// 每 50ms 执行的热控节拍:组装 Readings → 跑控制器状态机 → 处理打印开始/
+// 结束的灯光蜂鸣联动 → 叠加手动灯/手动强排等 UI 覆盖 → 把 Outputs 写硬件。
 void updateThermalControl() {
   const Readings in{chamberTemp,
                     heaterBoardTemp,
@@ -266,11 +289,14 @@ void updateThermalControl() {
   updateStatusRgb(in, out);
 }
 
+// 开机一次性初始化,顺序:GPIO → ADC → LEDC 四路 PWM → RGB/I²C 传感器 →
+// NVS 设置 → 控制器初值 → TFT/UI → 联网子系统。
 void setup() {
   Serial.begin(115200);
   delay(300);
   Serial.println("ESP32-S3 N16R8 temperature-control board starting");
 
+  // ---- GPIO 方向与安全初值(执行器默认全部断开) ----
   pinMode(Pin::HOT_FAN, OUTPUT);
   pinMode(Pin::BUZZER, OUTPUT);
   digitalWrite(Pin::BUZZER, LOW);
@@ -289,9 +315,11 @@ void setup() {
     digitalWrite(Pin::PRINTING_STATUS, LOW);
     digitalWrite(Pin::HEATING_STATUS, LOW);
   }
+  // ---- ADC:12bit 分辨率,NTC 采样脚 11dB 衰减(量程约 0-3.3V) ----
   analogReadResolution(12);
   analogSetPinAttenuation(Pin::ADC_NTC, ADC_11db);
 
+  // ---- LEDC 四路 PWM:发热板/排风/背光/热风风扇 ----
   ledcSetup(HOT_PWM_CHANNEL, PWM_FREQ, PWM_BITS);
   ledcAttachPin(Pin::HOT_PWM, HOT_PWM_CHANNEL);
   ledcSetup(AIR_FAN_PWM_CHANNEL, 25000, PWM_BITS);
@@ -303,6 +331,7 @@ void setup() {
   ledcSetup(HOT_FAN_PWM_CHANNEL, 25000, PWM_BITS);
   ledcAttachPin(Pin::HOT_FAN, HOT_FAN_PWM_CHANNEL);
 
+  // ---- RGB 状态灯与 I²C 总线(AHT20 + INA226 同址不同设备) ----
   rgb.begin();
   setRgb(80, 80, 0);
   Wire.begin(Pin::I2C_SDA, Pin::I2C_SCL);
@@ -312,9 +341,11 @@ void setup() {
   Serial.printf("INA226 (0x40, 10mOhm): %s\n",
                 inaAvailable ? "detected" : "not detected");
   lastSensorOk = millis();
+  // ---- 从 NVS 恢复系统设置与耗材预设,并让 UI 绑定这份设置 ----
   settings = settingsStore.load();
   settingsStore.loadMaterialProfiles();
   ui.bindSystemSettings(settings);
+  // ---- 控制器初始参数(默认 PLA、用户保存的加热/PIR 参数) ----
   controller.setLanguage(settings.language);
   controller.setProfile(0); // PLA；UI/串口设置可调用 setProfile() 选择其它耗材
   controller.setHeatLimit(
@@ -328,11 +359,15 @@ void setup() {
             lroundf(settings.brightness * ((1 << PWM_BITS) - 1) / 100.0f));
   controller.begin(millis());
   lastUiActivityMs = millis();
+  // ---- 显示层(含渲染任务)与联网子系统,放最后启动 ----
   tftUi.begin();
   network.begin(controller, ui,
                 settings); // 联网:WiFi 配网门户 + Web/MQTT/NTP/OTA
 }
 
+// 所有输入来源(编码器/触摸/串口)的统一出口。校准流程中先截获按键采集
+// 两点;否则交给 UiModel,再处理它产生的边沿请求(保存耗材/保存设置/
+// 进入校准/恢复出厂),按键音也在这里统一播放。
 void dispatchUiAction(UiAction action) {
   lastUiActivityMs = millis();
   if (touchCalibrationActive) {
@@ -396,6 +431,8 @@ void dispatchUiAction(UiAction action) {
   }
 }
 
+// 屏幕是否应熄灭:设置了休眠秒数、当前没在打印(或未开启打印常亮)、
+// 且距上次 UI 活动超过休眠时长。
 bool screenIsSleeping(uint32_t now) {
   const bool keepAwake = settings.keepScreenOnPrinting &&
                          latestOutputs.state == ChamberState::Printing;
@@ -403,6 +440,8 @@ bool screenIsSleeping(uint32_t now) {
          now - lastUiActivityMs >= settings.screenSleepSeconds * 1000UL;
 }
 
+// 采样一次触摸并换算成屏幕像素坐标(480x320 横屏,留 28px 边距)。
+// 未触摸、超量程或校准跨度太小都返回 false。
 bool readTouchPoint(int16_t &screenX, int16_t &screenY) {
   const uint16_t rawX = readTouchAxis(true);
   delayMicroseconds(80);
@@ -422,10 +461,12 @@ bool readTouchPoint(int16_t &screenX, int16_t &screenY) {
   return true;
 }
 
+// 触摸屏轮询(约 28fps):按下坐标映射到主屏各热区并只在"按下瞬间"触发
+// 一次动作,连续两次无有效采样才认为松手;设置页禁用触摸以防误改。
 void pollTouchUi() {
-  static uint32_t lastSampleMs = 0;
-  static bool held = false;
-  static uint8_t releaseSamples = 0;
+  static uint32_t lastSampleMs = 0;  // 上次采样时刻(35ms 限频)
+  static bool held = false;          // 当前手指仍按住,去重连续触发
+  static uint8_t releaseSamples = 0; // 连续无触点采样计数(消抖)
   const uint32_t now = millis();
   if (!Pin::HAS_TOUCH_PANEL || now - lastSampleMs < 35 ||
       touchCalibrationActive)
@@ -535,12 +576,18 @@ void pollConsoleUi() {
                 ui.settings().preheat, ui.settings().light);
 }
 
+// EC11 旋转编码器轮询:用 4 状态转移表对 A/B 相解码,累计满 4 个微步算
+// 一格(手感一个定位);按键做 30ms 消抖,并识别单击/双击(350ms 窗)/
+// 长按(800ms)。设置页中旋转复用为改选耗材,主屏则是焦点上下移动。
 void pollEncoderUi() {
-  static uint8_t previous = 0xff;
-  static int8_t accumulator = 0;
-  static bool rawKey = HIGH, stableKey = HIGH, longSent = false;
-  static bool clickPending = false;
-  static uint32_t keyChangedMs = 0, pressedMs = 0, clickDeadlineMs = 0;
+  static uint8_t previous = 0xff; // 上次 AB 相位组合
+  static int8_t accumulator = 0;  // 微步累加器(±4 输出一格)
+  static bool rawKey = HIGH, stableKey = HIGH,
+              longSent = false;     // 原始电平/消抖电平/长按已发
+  static bool clickPending = false; // 已按一次,等双击窗口结束
+  static uint32_t keyChangedMs = 0, pressedMs = 0,
+                  clickDeadlineMs = 0; // 抖动时刻/按下时刻/单击判定时刻
+  // AB 四相(00/01/10/11)间的合法转移增量表,非法跳变记 0(抗抖动)。
   static const int8_t transitions[16] = {0,  -1, 1, 0, 1, 0, 0,  -1,
                                          -1, 0,  0, 1, 0, 1, -1, 0};
 
@@ -597,39 +644,41 @@ void pollEncoderUi() {
   }
 }
 
+// 主循环,所有任务都是非阻塞节拍调度:联网每轮先服务,传感器 500ms、
+// 热控 50ms、界面快照/渲染 500ms、串口上报 2000ms,输入三路每轮都查。
 void loop() {
   network
       .loop(); // 联网轮询:WiFiManager/WebServer/MQTT/OTA/NTP(不阻塞 50ms PID)
   static uint32_t lastRead = 0, lastControl = 0, lastReport = 0;
-  if (millis() - lastRead >= 500) {
+  if (millis() - lastRead >= 500) { // 500ms:读传感器
     lastRead = millis();
     readSensors();
   }
-  if (millis() - lastControl >= 50) {
+  if (millis() - lastControl >= 50) { // 50ms:热控状态机 + PID + 输出
     lastControl = millis();
     updateThermalControl();
   }
-  pollConsoleUi();
-  pollEncoderUi();
-  pollTouchUi();
+  pollConsoleUi(); // 串口调试命令
+  pollEncoderUi(); // EC11 旋转/按键
+  pollTouchUi();   // 电阻触摸热区
   if (buzzerOffMs && (int32_t)(millis() - buzzerOffMs) >= 0) {
-    digitalWrite(Pin::BUZZER, LOW);
+    digitalWrite(Pin::BUZZER, LOW); // 到点关蜂鸣器
     buzzerOffMs = 0;
   }
   const bool sleeping = screenIsSleeping(millis());
   static int lastBacklight = -1;
   const int backlight = sleeping ? 0 : settings.brightness;
-  if (backlight != lastBacklight) {
+  if (backlight != lastBacklight) { // 亮度/休眠状态变化才重写 PWM
     ledcWrite(BACKLIGHT_PWM_CHANNEL,
               lroundf(backlight * ((1 << PWM_BITS) - 1) / 100.0f));
     lastBacklight = backlight;
   }
-  if (millis() - lastReport >= 2000) {
+  if (millis() - lastReport >= 2000) { // 2s:串口健康上报
     lastReport = millis();
     Serial.printf("chamber=%.1fC humidity=%.1f%%\n", chamberTemp, humidity);
   }
   static uint32_t lastScreen = 0;
-  if (millis() - lastScreen >= 500) {
+  if (millis() - lastScreen >= 500) { // 500ms:生成界面快照并渲染
     lastScreen = millis();
     Readings in{chamberTemp,           heaterBoardTemp,
                 heaterCurrentA,        supplyVoltage,
