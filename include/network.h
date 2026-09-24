@@ -40,6 +40,10 @@ public:
   }
   String ipString() const;   // STA IP "x.x.x.x",未连返回 ""
   String timeString() const; // NTP "HH:MM:SS",未同步返回 ""
+  // OTA 是否进行中(供主循环在屏幕叠加升级进度横幅)。
+  bool otaActive() const;
+  // 最近一次 OTA 进度 0..100(未升级时为 0)。
+  uint8_t otaProgress() const;
   // 固定 mDNS/OTA 主机名,局域网访问 http://chamber.local/ 。
   const char *hostname() const { return "chamber"; }
 

@@ -19,8 +19,13 @@ class TftUi {
   void render(const UiSnapshot &snapshot);
   // 是否成功启用了 PSRAM 双缓冲(调试/诊断用)。
   bool doubleBuffered() const { return doubleBuffered_; }
+  // OTA 屏显:升级期间在屏幕底部叠加进度条与百分比文本。
+  // active=false 时清掉横幅;pct 范围 0..100。主循环调用,低写入量,不影响渲染。
+  void setOtaProgress(bool active, uint8_t pct);
  private:
   bool ready_ = false;       // begin() 是否完成(tft.init 成功)
   bool doubleBuffered_ = false; // 全屏双缓冲 sprite 是否创建成功
   void *queue_ = nullptr;    // FreeRTOS 队列句柄(QueueHandle_t),main 任务投递、渲染任务取出
+  volatile bool otaActive_ = false; // 正在 OTA:渲染任务据此决定是否叠加横幅
+  volatile uint8_t otaPct_ = 0;     // 最近一次 OTA 进度 0..100
 };

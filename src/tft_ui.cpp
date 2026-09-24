@@ -647,6 +647,37 @@ void drawTouchCalibration(TFT_eSPI &g, const UiSnapshot &s) {
 // 模式优先返回,否则画主屏仪表盘(左侧控制区:耗材轮播+三个自动开关+
 // 参数;右侧 2x4 实时仪表;底部 5 按钮状态栏)。目标 g 可以是 sprite
 // 也可以是直屏 tft,两种路径绘制代码完全相同。
+// OTA 屏显横幅的状态(文件级,供渲染任务与 setOtaProgress 跨作用域共享)。
+// 主循环写、渲染任务读,均为原子量,无需加锁。
+volatile bool gOtaActive = false; // 是否显示 OTA 横幅
+volatile uint8_t gOtaPct = 0;     // 进度 0..100
+
+// 在整屏(或 sprite)底部叠加一条 OTA 进度横幅:深色底 + 文字 + 进度块。
+// 每帧末尾在 drawFrame 之后调用,双缓冲模式下同样画进帧缓冲并随 push 出现。
+void tintOtaBanner(TFT_eSPI &g, bool active, uint8_t pct) {
+  if (!active)
+    return;
+  const int16_t barH = 46;                // 横幅高度
+  const int16_t y = SCREEN_H - barH;      // 贴底
+  g.fillRoundRect(6, y, SCREEN_W - 12, barH - 8, 6, 0x1082); // 深灰底
+  g.drawRoundRect(6, y, SCREEN_W - 12, barH - 8, 6, 0xFFE0); // 黄描边
+  // 状态文案与百分比:用项目自带 16px 中英 VLW 字体
+  g.loadFont(FontCN16);
+  g.setTextDatum(ML_DATUM);
+  g.setTextColor(0xFFFF, 0x1082);
+  g.drawString("OTA 升级中", 16, y + 10);
+  char s[8];
+  snprintf(s, sizeof(s), "%u%%", (unsigned)pct);
+  g.setTextDatum(MR_DATUM);
+  g.drawString(s, SCREEN_W - 14, y + 11);
+  g.unloadFont();
+  // 中部绿色进度条
+  const int16_t px = 16, pw = SCREEN_W - 32, ph = 8, py = y + barH - 24;
+  g.drawRoundRect(px, py, pw, ph, 4, 0x7BEF);
+  g.fillRoundRect(px, py, (int16_t)((uint32_t)pw * pct / 100), ph, 4, 0x07E0);
+}
+
+// 整屏页面分发函数(入口,负责按快照的分支转发到各页面绘制例程)。
 void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   // 每帧按快照里的生效主题重建调色板,日/夜切换与主题设置即时生效。
   applyPalette(s.theme);

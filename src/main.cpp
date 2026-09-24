@@ -696,6 +696,8 @@ void loop() {
     screen.theme = resolveTheme();
     network.updateReadings(in, latestOutputs,
                            humidity); // Web/MQTT 据此返回数据
+    // OTA 期间在屏幕底部叠加升级进度条(网络子系统→显示层桥接)。
+    tftUi.setOtaProgress(network.otaActive(), network.otaProgress());
     tftUi.render(screen);
   }
 }

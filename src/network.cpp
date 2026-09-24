@@ -9,6 +9,8 @@
 #include "wifi_portal_page.h"
 #include <ArduinoOTA.h>
 #include <ESPmDNS.h>
+#include <Update.h>
+#include <esp_ota_ops.h>
 #include <PubSubClient.h>
 #include <WebServer.h>
 #include <WiFi.h>
@@ -24,6 +26,12 @@ static WiFiManager g_wm;                  // 配网门户库实例
 static WebServer g_server(80);            // REST/管理页 HTTP 服务
 static WiFiClient g_wifiClient;           // MQTT 底层 TCP 连接
 static PubSubClient g_mqtt(g_wifiClient); // MQTT 客户端
+
+// OTA 实时进度/状态(文件级可见,供 Web 轮询与 /api/state 回显)。
+// onProgress 在 wifi 任务回调里只写这几个原子量,其余上下文只读。
+static volatile bool g_otaActive = false;   // 升级进行中
+static volatile uint8_t g_otaProgress = 0;   // 0..100 百分比
+static volatile bool g_otaFailed = false;    // 上一轮升级是否失败(供 Web 提示)
 
 NetworkManager network; // 全局单例(main.cpp 直接引用)
 
@@ -201,6 +209,10 @@ void NetworkManager::begin(ChamberController &controller, UiModel &ui,
   settings_ = settings;
   sharedSettings_ = &settings;
   g_self = this;
+  // 固件有效性确认:启动进入这里说明本版本已稳定(未在看门狗/早期崩溃前挂掉),
+  // 标记应用有效,取消失败回滚标志。若新版在 setup 早期崩溃,引导器会自动
+  // 回退到上一分区(双槽 OTA 的生产级回滚保障)。
+  esp_ota_mark_app_valid_cancel_rollback();
   WiFi.onEvent(onWifiEvent);
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(hostname());
@@ -484,6 +496,12 @@ String NetworkManager::timeString() const {
            tm.tm_sec);
   return String(buf);
 }
+
+// 返回 OTA 是否进行中,供主循环在屏幕叠加升级进度横幅。
+bool NetworkManager::otaActive() const { return g_otaActive; }
+
+// 返回最近一次 OTA 进度 0..100(无升级时为 0)。
+uint8_t NetworkManager::otaProgress() const { return g_otaProgress; }
 
 // 按设置下发 IP 层配置:关静态 IP 时全 0 交回 DHCP;静态配置任一地址
 // 解析失败也回退 DHCP,保证设备不会因填错地址而彻底失联。
@@ -785,6 +803,59 @@ void NetworkManager::startWebServer() {
     g_wm.resetSettings();
     ESP.restart();
   });
+  // Web 上传升级:浏览器直接选 .bin 推送到闪光芯片,无需串口/Arduino IDE。
+  // 上传回调跨 chunk 多次调用,写过程非阻塞;失败按 400 返回且不重启,
+  // 双槽分区保证当前固件仍是有效可启动的,升级失败不报废。
+  g_server.on("/api/update", HTTP_POST,
+              [this]() {
+                if (g_otaFailed && !g_otaActive) {
+                  g_server.send(500, "application/json",
+                                "{\"ok\":false,\"err\":\"ota failed\"}");
+                  return;
+                }
+                // 上传完成(纯头部 POST 或空文件)时终结并重启进新固件。
+                if (!Update.hasError()) {
+                  g_server.send(200, "application/json",
+                                "{\"ok\":true,\"err\":\"reboot\"}");
+                  esp_restart();
+                } else {
+                  g_server.send(500, "application/json",
+                                "{\"ok\":false,\"err\":\"flash write failed\"}");
+                }
+              },
+              [this]() {
+                // 上传 body 以 multipart chunk 形式进入,支持进度回显。
+                HTTPUpload &up = g_server.upload();
+                if (up.status == UPLOAD_FILE_START) {
+                  // 升级前先关加热,避免写 Flash 窗口 PID 失步。
+                  controller_->setSystemEnabled(false);
+                  g_otaActive = true;
+                  g_otaFailed = false;
+                  g_otaProgress = 0;
+                  // 未知总长场景使用默认分区尺寸;双槽由引导器接管回退。
+                  if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+                    Update.printError(Serial);
+                    delay(100);
+                  }
+                } else if (up.status == UPLOAD_FILE_WRITE) {
+                  if (Update.write(up.buf, up.currentSize) != up.currentSize) {
+                    Update.printError(Serial);
+                    // 示错误已记录,g_otaFailed 让头部回包返回 500。
+                    Update.abort();
+                    g_otaFailed = true;
+                  }
+                  g_otaProgress = Update.progress() * 100 / Update.size();
+                } else if (up.status == UPLOAD_FILE_END) {
+                  if (Update.end(true)) {
+                    g_otaProgress = 100;
+                    g_otaActive = false;
+                  } else {
+                    Update.printError(Serial);
+                    g_otaFailed = true;
+                    g_otaActive = false;
+                  }
+                }
+              });
   g_server.onNotFound([this]() {
     g_server.send(404, "application/json", "{\"err\":\"not found\"}");
   });
@@ -825,14 +896,29 @@ void NetworkManager::startOta() {
   ArduinoOTA.onStart([this]() {
     // OTA 写入期间 PID 失步,先关加热保安全。
     controller_->setSystemEnabled(false);
+    g_otaActive = true;
+    g_otaProgress = 0;
+    g_otaFailed = false;
     Serial.println("[OTA] start, heater disabled");
   });
-  ArduinoOTA.onEnd([]() { Serial.println("\n[OTA] done"); });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\n[OTA] done");
+    g_otaProgress = 100;
+    g_otaActive = false;
+  });
   ArduinoOTA.onProgress([](unsigned int p, unsigned int t) {
     Serial.printf("[OTA] %u/%u\r", p, t);
+    if (t > 0)
+      g_otaProgress = (uint8_t)((uint64_t)p * 100 / t);
   });
-  ArduinoOTA.onError(
-      [](ota_error_t e) { Serial.printf("[OTA] error %u\n", e); });
+  ArduinoOTA.onError([](ota_error_t e) {
+    Serial.printf("[OTA] error %u\n", e);
+    // 兜底:出错后停掉 OTA 服务并复位标志,避免半失效的 OTA 悬挂到重启,
+    // 也把失败回显给 Web,提示用户重新上传或换用串口烧录。
+    ArduinoOTA.end();
+    g_otaActive = false;
+    g_otaFailed = true;
+  });
   ArduinoOTA.begin();
   otaStarted_ = true;
   Serial.printf("[OTA] ready, device password=%s\n", password.c_str());
@@ -1001,6 +1087,13 @@ String NetworkManager::buildStateJson() const {
   json += jsonEscape(disconnectReason);
   json += F("\",\"lastDisconnectReasonCode\":");
   json += String((unsigned)lastDisconnectReason_);
+  // OTA 状态:升级中(active/progress)或上次失败(failed),供管理页轮询回显。
+  json += F(",\"otaActivity\":\"");
+  json += g_otaActive ? F("upgrading") : F("idle");
+  json += F("\",\"otaProgress\":");
+  json += String((unsigned)g_otaProgress);
+  json += F(",\"otaFailed\":");
+  json += g_otaFailed ? F("true") : F("false");
   json += '}';
   return json;
 }
