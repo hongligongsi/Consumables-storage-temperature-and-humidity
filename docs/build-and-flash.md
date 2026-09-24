@@ -57,6 +57,33 @@ pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32s3 --port COM3 --baud 9
 > 命令块中不能写 `#` 行内注释：PowerShell 的多行续行符 `` ` `` 必须是行尾最后一个
 > 字符，注释会截断续行导致命令被拆成多条。
 
+### 生成合并镜像（对外分发）
+
+对外发布/量产时，若想让对方"只烧一次"，可用 `esptool.py merge_bin` 把引导器、分区表与应用
+拼成一个 `merged.bin`（约 1.2 MB），发送单个文件即可完成全新烧录：
+
+```powershell
+pio pkg exec -p tool-esptoolpy -- esptool.py `
+  --chip esp32s3 merge_bin `
+  --flash_mode qio --flash_freq 80m --flash_size 16MB `
+  --target-offset 0x0 `
+  -o firmware/firmware-merged.bin `
+  0x0     .pio/build/esp32-s3-n16r8/bootloader.bin `
+  0x8000  .pio/build/esp32-s3-n16r8/partitions.bin `
+  0xe000  "$env:USERPROFILE\.platformio\packages\framework-arduinoespressif32\tools\partitions\boot_app0.bin" `
+  0x10000 firmware/firmware.bin
+```
+
+合并镜像的烧录只有一个偏移 `0x0`：
+
+```powershell
+pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32s3 --port COM3 --baud 921600 write_flash 0x0 firmware/firmware-merged.bin
+```
+
+> **两种分发形态**：日常 OTA 升级只需单个 `firmware.bin`（网页/ArduinoOTA 在线写应用槽）；
+> 而"拆分 3 个文件（bootloader/partitions/app）"或"合并 1 个 merged.bin"都用于空片或量产，
+> 烧录路径等价。合并镜像最大的好处是 `boot_app0.bin` 也一并打进，不依赖框架路径。
+
 ### 擦除
 
 烧录失败或分区表错乱时，先整片擦除再重烧：
