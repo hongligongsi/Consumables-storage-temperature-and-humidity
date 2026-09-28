@@ -9,13 +9,13 @@
 #include "wifi_portal_page.h"
 #include <ArduinoOTA.h>
 #include <ESPmDNS.h>
-#include <Update.h>
-#include <esp_ota_ops.h>
 #include <PubSubClient.h>
+#include <Update.h>
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
 #include <ctype.h>
+#include <esp_ota_ops.h>
 #include <esp_sntp.h>
 #include <time.h>
 
@@ -29,9 +29,9 @@ static PubSubClient g_mqtt(g_wifiClient); // MQTT 客户端
 
 // OTA 实时进度/状态(文件级可见,供 Web 轮询与 /api/state 回显)。
 // onProgress 在 wifi 任务回调里只写这几个原子量,其余上下文只读。
-static volatile bool g_otaActive = false;   // 升级进行中
-static volatile uint8_t g_otaProgress = 0;   // 0..100 百分比
-static volatile bool g_otaFailed = false;    // 上一轮升级是否失败(供 Web 提示)
+static volatile bool g_otaActive = false;  // 升级进行中
+static volatile uint8_t g_otaProgress = 0; // 0..100 百分比
+static volatile bool g_otaFailed = false;  // 上一轮升级是否失败(供 Web 提示)
 
 NetworkManager network; // 全局单例(main.cpp 直接引用)
 
@@ -806,56 +806,57 @@ void NetworkManager::startWebServer() {
   // Web 上传升级:浏览器直接选 .bin 推送到闪光芯片,无需串口/Arduino IDE。
   // 上传回调跨 chunk 多次调用,写过程非阻塞;失败按 400 返回且不重启,
   // 双槽分区保证当前固件仍是有效可启动的,升级失败不报废。
-  g_server.on("/api/update", HTTP_POST,
-              [this]() {
-                if (g_otaFailed && !g_otaActive) {
-                  g_server.send(500, "application/json",
-                                "{\"ok\":false,\"err\":\"ota failed\"}");
-                  return;
-                }
-                // 上传完成(纯头部 POST 或空文件)时终结并重启进新固件。
-                if (!Update.hasError()) {
-                  g_server.send(200, "application/json",
-                                "{\"ok\":true,\"err\":\"reboot\"}");
-                  esp_restart();
-                } else {
-                  g_server.send(500, "application/json",
-                                "{\"ok\":false,\"err\":\"flash write failed\"}");
-                }
-              },
-              [this]() {
-                // 上传 body 以 multipart chunk 形式进入,支持进度回显。
-                HTTPUpload &up = g_server.upload();
-                if (up.status == UPLOAD_FILE_START) {
-                  // 升级前先关加热,避免写 Flash 窗口 PID 失步。
-                  controller_->setSystemEnabled(false);
-                  g_otaActive = true;
-                  g_otaFailed = false;
-                  g_otaProgress = 0;
-                  // 未知总长场景使用默认分区尺寸;双槽由引导器接管回退。
-                  if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
-                    Update.printError(Serial);
-                    delay(100);
-                  }
-                } else if (up.status == UPLOAD_FILE_WRITE) {
-                  if (Update.write(up.buf, up.currentSize) != up.currentSize) {
-                    Update.printError(Serial);
-                    // 示错误已记录,g_otaFailed 让头部回包返回 500。
-                    Update.abort();
-                    g_otaFailed = true;
-                  }
-                  g_otaProgress = Update.progress() * 100 / Update.size();
-                } else if (up.status == UPLOAD_FILE_END) {
-                  if (Update.end(true)) {
-                    g_otaProgress = 100;
-                    g_otaActive = false;
-                  } else {
-                    Update.printError(Serial);
-                    g_otaFailed = true;
-                    g_otaActive = false;
-                  }
-                }
-              });
+  g_server.on(
+      "/api/update", HTTP_POST,
+      [this]() {
+        if (g_otaFailed && !g_otaActive) {
+          g_server.send(500, "application/json",
+                        "{\"ok\":false,\"err\":\"ota failed\"}");
+          return;
+        }
+        // 上传完成(纯头部 POST 或空文件)时终结并重启进新固件。
+        if (!Update.hasError()) {
+          g_server.send(200, "application/json",
+                        "{\"ok\":true,\"err\":\"reboot\"}");
+          esp_restart();
+        } else {
+          g_server.send(500, "application/json",
+                        "{\"ok\":false,\"err\":\"flash write failed\"}");
+        }
+      },
+      [this]() {
+        // 上传 body 以 multipart chunk 形式进入,支持进度回显。
+        HTTPUpload &up = g_server.upload();
+        if (up.status == UPLOAD_FILE_START) {
+          // 升级前先关加热,避免写 Flash 窗口 PID 失步。
+          controller_->setSystemEnabled(false);
+          g_otaActive = true;
+          g_otaFailed = false;
+          g_otaProgress = 0;
+          // 未知总长场景使用默认分区尺寸;双槽由引导器接管回退。
+          if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+            Update.printError(Serial);
+            delay(100);
+          }
+        } else if (up.status == UPLOAD_FILE_WRITE) {
+          if (Update.write(up.buf, up.currentSize) != up.currentSize) {
+            Update.printError(Serial);
+            // 示错误已记录,g_otaFailed 让头部回包返回 500。
+            Update.abort();
+            g_otaFailed = true;
+          }
+          g_otaProgress = Update.progress() * 100 / Update.size();
+        } else if (up.status == UPLOAD_FILE_END) {
+          if (Update.end(true)) {
+            g_otaProgress = 100;
+            g_otaActive = false;
+          } else {
+            Update.printError(Serial);
+            g_otaFailed = true;
+            g_otaActive = false;
+          }
+        }
+      });
   g_server.onNotFound([this]() {
     g_server.send(404, "application/json", "{\"err\":\"not found\"}");
   });
@@ -1050,10 +1051,19 @@ String NetworkManager::buildStateJson() const {
   json += numberOrNull(r.heaterBoardC);
   json += F(",\"humidity\":");
   json += numberOrNull(humidity_);
+  // 当前耗材的仓温目标温区(℃);设备不直接控湿,故只回传温区不回传目标湿度。
+  json += F(",\"targetCMin\":");
+  json += numberOrNull(m.chamberMinC);
+  json += F(",\"targetCMax\":");
+  json += numberOrNull(m.chamberMaxC);
+  json += F(",\"manualExhaust\":");
+  json += (ui_ && ui_->settings().manualExhaust) ? F("true") : F("false");
   json += F(",\"currentA\":");
   json += numberOrNull(r.heaterCurrentA);
   json += F(",\"voltageV\":");
   json += numberOrNull(r.supplyVoltageV);
+  json += F(",\"mcuC\":");
+  json += numberOrNull(r.mcuC);
   json += F(",\"exhaustPercent\":");
   json += String((
       unsigned)(ui_ && ui_->settings().manualExhaust ? 100 : o.exhaustPercent));
