@@ -1,0 +1,95 @@
+
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chamber 管理</title><style>
+:root{color-scheme:dark;--bg:#0d1117;--bg2:#161c24;--card:#161b22;--card2:#161b22;--line:#2d333d;--field-line:#3d4651;--a:#2f81f7;--a2:#2f81f7;--ok:#3fb950;--warn:#d29922;--danger:#f85149;--text:#e6edf3;--muted:#8b949e;--radius:8px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--text);font:15px/1.55 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);-webkit-font-smoothing:antialiased}
+.wrap{max-width:960px;margin:0 auto;padding:30px 18px 44px}
+header{position:relative;display:flex;align-items:center;justify-content:flex-end;min-height:32px;margin-bottom:4px;padding-bottom:16px;border-bottom:1px solid var(--line)}h1{position:absolute;left:50%;transform:translateX(-50%);font-size:20px;margin:0;font-weight:600}
+.badge{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--bg2);border-radius:999px;padding:6px 14px;font-size:13px;color:var(--muted)}.badge i{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+#msg{min-height:22px;margin:12px 0 2px;font-size:14px;color:var(--ok);transition:opacity .25s}
+.sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin-top:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px}.card:hover{border-color:#3d4651}
+.card h2{font-size:15px;margin:0 0 14px;color:var(--text);font-weight:600}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:9px}.stat{display:flex;flex-direction:column;gap:2px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px}.stat:last-child{grid-column:1/-1}.stat span{color:var(--muted);font-size:12px}.stat b{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;word-break:break-all;display:flex;align-items:center;gap:7px}.stat b small{font-size:11px;font-weight:400;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}.dot.g{background:var(--ok)}.dot.y{background:var(--warn)}.dot.r{background:var(--danger)}.dot.b{background:var(--a)}
+.bars{display:inline-flex;gap:2px;align-items:flex-end;height:13px;flex:none}.bars i{width:3px;border-radius:1px;background:#3d4651}.bars i:nth-child(1){height:4px}.bars i:nth-child(2){height:7px}.bars i:nth-child(3){height:10px}.bars i:nth-child(4){height:13px}.bars i.on{background:var(--ok)}.bars i.on.weak{background:var(--warn)}.bars i.on.bad{background:var(--danger)}
+label{display:block;color:var(--muted);font-size:13px;margin:11px 0 4px}input,select{width:100%;padding:9px 11px;border:1px solid var(--field-line);border-radius:6px;background:var(--bg2);color:var(--text);font-size:14px;outline:none;transition:border-color .15s,box-shadow .15s}input:focus,select:focus{border-color:var(--a);box-shadow:0 0 0 3px rgba(47,129,247,.18)}input::placeholder{color:#6b7682}input[type=file]{padding:8px}
+.check{display:flex;gap:9px;align-items:center;color:var(--text);font-size:14px;margin:11px 0}.check input{width:auto;width:17px;height:17px;accent-color:var(--a);cursor:pointer}
+.row{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+button{border:1px solid #3d4651;border-radius:6px;padding:9px 15px;background:#21262d;color:var(--text);font-size:14px;cursor:pointer;transition:background-color .15s,border-color .15s}button:hover{background:#2d333d;border-color:#4d5663}button:active{background:#1c2128}button.active{border-color:var(--a);background:#13314f;color:#7db8ff}button.warn{border-color:#6e541d;background:#3a2e15;color:#f0c674}button.warn:hover{background:#4a3b1b;border-color:#8a6a26}button.danger{border-color:#7a2e2c;background:#3a1f1e;color:#ff9490}button.danger:hover{background:#4d2826;border-color:#9a3b38}
+progress{width:100%;height:10px;border-radius:6px;accent-color:var(--a)}progress::-webkit-progress-bar{background:var(--bg2);border-radius:6px}progress::-webkit-progress-value{background:linear-gradient(90deg,var(--a2),var(--a));border-radius:6px;transition:width .25s}
+.wide{grid-column:1/-1}@media(max-width:520px){.wrap{padding:18px 12px 32px}.grid{grid-template-columns:1fr}.stat b{font-size:14px}.card{padding:15px}header{flex-direction:column;justify-content:center;gap:10px;min-height:0}h1{position:static;transform:none}}
+</style></head><body><div style="position:fixed;top:0;left:0;right:0;z-index:99;background:#3a2e15;color:#f0c674;text-align:center;font:13px/1.6 system-ui,sans-serif;padding:5px 10px;border-bottom:1px solid #6e541d">离线设计预览 · 页面数据均为模拟值 · 真机页面由固件 include/web_page.h 提供（访问 http://chamber.local/）</div><style>body{padding-top:31px}</style><main class="wrap"><header><h1>耗材仓网络管理</h1>
+<div class="badge"><i></i>设备在线</div></header><div id="msg"></div>
+<section class="grid"><article class="card"><h2>实时状态</h2><div class="stats">
+<div class="stat"><span>运行状态</span><b><i class="dot" id="stateDot"></i><span id="state">--</span></b></div>
+<div class="stat"><span>当前耗材</span><b id="material">--</b></div>
+<div class="stat"><span>仓温</span><b><span id="temp">--</span><small id="tempTgt"></small></b></div>
+<div class="stat"><span>湿度</span><b id="hum">--</b></div>
+<div class="stat"><span>热板温度</span><b id="boardTemp">--</b></div>
+<div class="stat"><span>加热电流</span><b id="current">--</b></div>
+<div class="stat"><span>供电电压</span><b id="voltage">--</b></div>
+<div class="stat"><span>MCU 温度</span><b id="mcuTemp">--</b></div>
+<div class="stat"><span>排气输出</span><b id="exhaust">--</b></div>
+<div class="stat"><span>加热输出</span><b id="heat">--</b></div>
+<div class="stat"><span>热风</span><b id="heaterFan">--</b></div>
+<div class="stat"><span>灯光</span><b id="lightState">--</b></div>
+<div class="stat"><span>IP</span><b id="ip">--</b></div>
+<div class="stat"><span>SSID</span><b id="ssid">--</b></div>
+<div class="stat"><span>信号</span><b><span class="bars" id="rssiBars"><i></i><i></i><i></i><i></i></span><span id="rssi">--</span></b></div>
+<div class="stat"><span>设备时间</span><b id="clock">--</b></div>
+<div class="stat"><span>运行时间</span><b id="uptime">--</b></div>
+<div class="stat"><span>断线次数</span><b id="drops">--</b></div>
+<div class="stat"><span>最近断线</span><b id="reason">--</b></div></div>
+<div class="row"><button id="btnSystem" onclick="action('toggleSystem')">启停系统</button><button id="btnPreheat" onclick="action('togglePreheat')">预热</button><button id="btnLight" onclick="action('toggleLight')">灯光</button><button id="btnExhaust" onclick="action('toggleManualExhaust')">强排气</button></div></article>
+<article class="card"><h2>NTP 与时区</h2><label class="check"><input id="ntpEnabled" type="checkbox">启用 NTP</label><label>POSIX 时区</label><input id="timezone" placeholder="CST-8"><label>NTP 服务器 1</label><input id="ntpServer1"><label>NTP 服务器 2</label><input id="ntpServer2"><div class="row"><button onclick="saveTime()">保存时间设置</button></div></article>
+<article class="card"><h2>静态 IPv4</h2><label class="check"><input id="staticIpEnabled" type="checkbox">使用静态 IP（保存后重连）</label><label>IP 地址</label><input id="staticIp"><label>网关</label><input id="staticGateway"><label>子网掩码</label><input id="staticSubnet"><label>DNS 1</label><input id="staticDns1"><label>DNS 2</label><input id="staticDns2"><div class="row"><button onclick="saveNetwork()">保存网络设置</button></div></article>
+<article class="card"><h2>MQTT 与 OTA</h2><label class="check"><input id="mqttEnabled" type="checkbox">启用 MQTT</label><label>Broker</label><input id="mqttBroker"><label>端口</label><input id="mqttPort" type="number" min="1" max="65535"><label>主题前缀</label><input id="mqttTopicPrefix"><label class="check"><input id="otaEnabled" type="checkbox">启用 OTA</label><label>本机 OTA 密码</label><input id="otaPassword" readonly><div class="row"><button onclick="saveServices()">保存服务设置</button></div></article>
+<article class="card wide"><h2>固件升级 (OTA)</h2><p class="sub" id="otaStat">选择 .bin 固件后点击升级，约 1-2 分钟，期间请勿断电。</p><input id="otaFile" type="file" accept=".bin"><div class="row"><button class="warn" onclick="uploadFw()">上传并升级</button></div><div class="row"><progress id="otaBar" max="100" value="0" style="width:100%"></progress></div></article>
+<article class="card wide"><h2>维护</h2><p class="sub">重新配网会清除已保存的 Wi‑Fi 并重启设备。</p><button class="danger" onclick="resetWifi()">清除 Wi‑Fi 并重新配网</button></article></section></main>
+<script>/* mock */
+window.fetch=function(u){var s=String(u);var d;if(s.indexOf('/api/settings')>=0){d={ntpEnabled:1,staticIpEnabled:0,mqttEnabled:1,otaEnabled:1,timezone:'CST-8',ntpServer1:'ntp.aliyun.com',ntpServer2:'pool.ntp.org',staticIp:'192.168.1.50',staticGateway:'192.168.1.1',staticSubnet:'255.255.255.0',staticDns1:'223.5.5.5',staticDns2:'8.8.8.8',mqttBroker:'192.168.1.10',mqttPort:1883,mqttTopicPrefix:'chamber',otaPassword:'CH-A1B2C3D4'}}else if(s.indexOf('/api/state')>=0){d={firmware:'1.0.0',material:'PLA',materialIndex:0,state:'printing',chamberC:43.6,heaterBoardC:41.2,humidity:38.2,targetCMin:40,targetCMax:45,manualExhaust:false,currentA:1.25,voltageV:24.0,mcuC:38.5,exhaustPercent:60,heatPercent:0,heaterFan:0,light:true,systemEnabled:true,pirMotion:false,time:'14:23:05',ip:'192.168.1.50',net:'online',ssid:'Home-WiFi',rssi:-58,uptimeSeconds:12540,disconnectCount:1,lastDisconnectReason:'BEACON_TIMEOUT',lastDisconnectReasonCode:200,otaActivity:'idle',otaProgress:0,otaFailed:false}}else{d={}};return Promise.resolve({ok:true,status:200,text:function(){return Promise.resolve(JSON.stringify(d))}})};
+const $=id=>document.getElementById(id), msg=(s,bad=false)=>{const e=$('msg');e.textContent=s;e.style.color=bad?'#f85149':'#3fb950'};
+async function api(url,opt){const r=await fetch(url,opt);const t=await r.text();if(!r.ok)throw Error(t||('HTTP '+r.status));return t?JSON.parse(t):{}}
+function body(o){return new URLSearchParams(Object.entries(o).map(([k,v])=>[k,String(v)]))}
+async function loadSettings(){const s=await api('/api/settings');for(const k of ['ntpEnabled','staticIpEnabled','mqttEnabled','otaEnabled'])$(k).checked=!!s[k];for(const k of ['timezone','ntpServer1','ntpServer2','staticIp','staticGateway','staticSubnet','staticDns1','staticDns2','mqttBroker','mqttPort','mqttTopicPrefix','otaPassword'])$(k).value=s[k]??''}
+async function uploadFw(){const f=$('otaFile').files[0];if(!f){msg('请先选择 .bin 固件文件',true);return}if(!confirm('确定将 '+f.name+' 升级到设备？'))return;const xhr=new XMLHttpRequest();xhr.open('POST','/api/update',true);const stat=$('otaStat'),bar=$('otaBar');bar.value=0;stat.textContent='正在上传并写入 Flash…';xhr.upload.onprogress=e=>{if(e.lengthComputable){bar.value=Math.round(e.loaded/e.total*100);stat.textContent='上传 '+Math.round(e.loaded/e.total*100)+'% / 写入中…'}};xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===200&&d.ok){stat.textContent='升级成功，设备正在重启…';bar.value=100;setTimeout(()=>location.reload(),4000)}else{stat.textContent='升级失败：'+(d.err||('HTTP '+xhr.status));bar.value=0;msg('OTA 失败',true)}}catch(e){stat.textContent='升级完成，设备可能正在重启…'}};xhr.onerror=()=>{stat.textContent='网络错误，请重试';msg('OTA 请求失败',true)};xhr.send();}
+// 六态状态机英文键 -> 中文文案 + 状态点颜色(g 绿/y 黄/b 蓝/r 红/灰)。
+const STATE_MAP={idle:['待机',''],detecting:['检测中','y'],preheat:['预热中','y'],printing:['打印中','g'],cooling:['冷却中','b'],fault:['故障','r']};
+const n2=v=>v==null?'--':v.toFixed(1), onoff=v=>v?'开':'关';
+function setBars(rssi){const bs=$('rssiBars').children,n=rssi==null?0:(rssi>=-55?4:rssi>=-65?3:rssi>=-75?2:1);for(let i=0;i<4;i++){const on=i<n;bs[i].className=on?'on'+(n<=1?' bad':n===2?' weak':''):''}}
+async function poll(){try{const s=await api('/api/state');
+const st=STATE_MAP[s.state]||[s.state||'--',''];
+$('state').textContent=st[0];$('stateDot').className='dot'+(st[1]?' '+st[1]:'');
+$('material').textContent=s.material||'--';
+$('temp').textContent=n2(s.chamberC)+' ℃';
+$('tempTgt').textContent=(s.targetCMin==null)?'':('目标 '+s.targetCMin+'~'+s.targetCMax+' ℃');
+$('hum').textContent=n2(s.humidity)+' %';
+$('boardTemp').textContent=n2(s.heaterBoardC)+' ℃';
+$('current').textContent=s.currentA==null?'--':s.currentA.toFixed(2)+' A';
+$('voltage').textContent=s.voltageV==null?'--':s.voltageV.toFixed(1)+' V';
+$('mcuTemp').textContent=n2(s.mcuC)+' ℃';
+$('exhaust').textContent=(s.exhaustPercent??0)+' %';
+$('heat').textContent=(s.heatPercent??0)+' %';
+$('heaterFan').textContent=s.heaterFan?s.heaterFan+' %':'关';
+$('lightState').textContent=onoff(s.light);
+$('ip').textContent=s.ip||'--';$('ssid').textContent=s.ssid||'--';
+$('rssi').textContent=s.rssi==null?'--':s.rssi+' dBm';setBars(s.rssi);
+$('clock').textContent=s.time||'--';
+$('uptime').textContent=Math.floor(s.uptimeSeconds/3600)+'h '+Math.floor(s.uptimeSeconds%3600/60)+'m';$('drops').textContent=s.disconnectCount;$('reason').textContent=s.lastDisconnectReason||'--';
+// 开关类按钮回显当前态(蓝色高亮=已启用);预热按状态机是否处于 preheat 判定。
+$('btnSystem').classList.toggle('active',!!s.systemEnabled);
+$('btnPreheat').classList.toggle('active',s.state==='preheat');
+$('btnLight').classList.toggle('active',!!s.light);
+$('btnExhaust').classList.toggle('active',!!s.manualExhaust);
+if(s.otaActivity==='upgrading'){$('otaBar').value=s.otaProgress||0;$('otaStat').textContent='升级进行中 '+s.otaProgress+'%'}else if(s.otaFailed){$('otaStat').textContent='上次升级失败，可重试'}}catch(e){msg('状态读取失败：'+e.message,true)}}
+async function post(data){try{await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body(data)})}catch(e){msg('保存失败：'+e.message,true);return}msg('已保存并生效');setTimeout(()=>loadSettings().catch(()=>{}),800)}
+function saveTime(){post({ntpEnabled:$('ntpEnabled').checked,timezone:$('timezone').value,ntpServer1:$('ntpServer1').value,ntpServer2:$('ntpServer2').value})}
+function saveNetwork(){post({staticIpEnabled:$('staticIpEnabled').checked,staticIp:$('staticIp').value,staticGateway:$('staticGateway').value,staticSubnet:$('staticSubnet').value,staticDns1:$('staticDns1').value,staticDns2:$('staticDns2').value})}
+function saveServices(){post({mqttEnabled:$('mqttEnabled').checked,mqttBroker:$('mqttBroker').value,mqttPort:$('mqttPort').value,mqttTopicPrefix:$('mqttTopicPrefix').value,otaEnabled:$('otaEnabled').checked})}
+async function action(name){try{await api('/api/action',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body({name})});msg('操作成功');poll()}catch(e){msg('操作失败：'+e.message,true)}}
+async function resetWifi(){if(!confirm('确定清除 Wi‑Fi 并重启？'))return;try{await fetch('/api/wifi/reset',{method:'POST'});msg('设备正在重启，请连接 FilamentChamber-Setup')}catch(e){msg('设备正在重启')}}
+loadSettings().then(()=>setTimeout(poll,150)).catch(e=>msg('读取设置失败：'+e.message,true));setInterval(poll,3000);
+</script></body></html>
