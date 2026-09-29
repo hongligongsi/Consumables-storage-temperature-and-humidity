@@ -21,8 +21,9 @@ constexpr int16_t SCREEN_W = 480; // 横屏宽(像素)
 constexpr int16_t SCREEN_H = 320; // 横屏高(像素)
 
 // 运行期调色板:日/夜两套配色,由 drawFrame 按快照的 theme 选择。
-// 夜间 = 改动前的原固件配色;日间取自 tools/ui_preview.html 的
-// [data-theme="day"] 令牌(RGB565 换算)。
+// 参考图风格改版:夜间 = 亮蓝 iOS 风(蓝底白字、iOS 蓝色开关、黄色激活态、
+// 大数值配小单位);日间 = 同一设计语言的浅蓝白配色。色值均为 RGB888
+// 设计稿换算的 RGB565。
 struct Palette {
   uint16_t bg;       // 页面底色
   uint16_t panel;    // 面板/未选中行底色
@@ -41,13 +42,13 @@ struct Palette {
   uint16_t gCyan;
 };
 
-constexpr Palette kNightPalette = {0x0861, 0x10E3, 0x1924, 0x31A6, 0x8C72,
-                                   0xFFFF, 0x2144, 0x06DD, 0xFD20, 0x4E69,
-                                   0x7800, 0xF800, 0xFFE0, 0xF81F, 0x07FF};
+constexpr Palette kNightPalette = {0x1B7A, 0x12B7, 0x0A33, 0x3C3C, 0xAE5E,
+                                   0xFFFF, 0x2BDD, 0x4E1E, 0xFEA7, 0x4EE9,
+                                   0xB145, 0xFA8A, 0xFEA7, 0xFB56, 0x5E5F};
 
-constexpr Palette kDayPalette = {0xE77C, 0xFFFF, 0xDF3B, 0xB5F6, 0x6B6E,
-                                 0x1903, 0xD75B, 0x0453, 0xC3A1, 0x34EA,
-                                 0xA207, 0xD184, 0xB4A0, 0xA995, 0x0453};
+constexpr Palette kDayPalette = {0xEF9F, 0xFFFF, 0xD73F, 0xB67D, 0x5B91,
+                                 0x0908, 0xCF3F, 0x03DF, 0xDC80, 0x2D89,
+                                 0x88E3, 0xD9A6, 0xC440, 0xC233, 0x0C3F};
 
 // 当前生效配色。渲染任务单线程写,drawFrame 每帧按快照主题刷新。
 uint16_t BG = kNightPalette.bg;
@@ -694,7 +695,7 @@ uint16_t stateAccent(const UiSnapshot &s) {
   case ChamberState::Cooling:
     return G_YELLOW;
   case ChamberState::Printing:
-    return 0x0296; // 打印蓝(与状态灯 RGB 0,80,180 对应的 RGB565)
+    return TEXT; // 打印态:蓝底上深蓝不可见,转白色
   case ChamberState::Preheat:
     return 0x78B6; // 预热紫(RGB 120,20,180)
   case ChamberState::Detecting:
@@ -770,7 +771,8 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
     }
   }
 
-  // Bottom five action buttons.
+  // Bottom five action buttons. 参考图式激活态:底色不变,图标/文字/描边
+  // 转为黄色,底部小色条同步黄色。
   for (uint8_t i = 0; i < 5; ++i) {
     const int16_t x = 4 + i * 95;
     const bool active = buttonActive(i, s);
@@ -778,28 +780,29 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
                          (i == 2 && s.mainFocus == MainFocus::Preheat) ||
                          (i == 3 && s.mainFocus == MainFocus::Light) ||
                          (i == 4 && s.mainFocus == MainFocus::Settings);
-    g.fillRoundRect(x, 248, 91, 68, 10, active ? ACTIVE : PANEL_ALT);
+    g.fillRoundRect(x, 248, 91, 68, 10, PANEL_ALT);
     g.drawRoundRect(x, 248, 91, 68, 10,
-                    focused ? TEXT : (active ? ACCENT : BORDER));
+                    focused ? TEXT : (active ? G_YELLOW : BORDER));
     if (focused)
       g.drawRoundRect(x + 2, 250, 87, 64, 8, WARN);
     drawBottomIcon(g, static_cast<ButtonIcon>(i), x + 45, 268,
-                   active ? ACCENT : TEXT);
+                   active ? G_YELLOW : TEXT);
     if (active) // 激活态底部小色条,强化“此路已开”的直觉
-      g.fillRoundRect(x + 24, 309, 43, 3, 1, ACCENT);
+      g.fillRoundRect(x + 24, 309, 43, 3, 1, G_YELLOW);
   }
 
   // Render all labels with the 16 px Chinese+ASCII VLW font.
   g.loadFont(FontCN16);
 
-  // Material carousel and compact runtime status.
+  // Material carousel and compact runtime status. 参考图:耗材名与箭头
+  // 均为白色,聚焦编辑时转黄色提示。
   g.setTextDatum(MC_DATUM);
   const uint16_t prevColor =
-      s.mainFocus == MainFocus::PreviousMaterial ? WARN : MUTED;
+      s.mainFocus == MainFocus::PreviousMaterial ? WARN : TEXT;
   const uint16_t materialColor =
-      s.mainFocus == MainFocus::CurrentMaterial ? WARN : ACCENT;
+      s.mainFocus == MainFocus::CurrentMaterial ? WARN : TEXT;
   const uint16_t nextColor =
-      s.mainFocus == MainFocus::NextMaterial ? WARN : MUTED;
+      s.mainFocus == MainFocus::NextMaterial ? WARN : TEXT;
   g.setTextColor(prevColor, PANEL);
   g.drawString(s.previousMaterial, 35, 23);
   g.fillCircle(82, 23, 13, PANEL_ALT); // 箭头底衬,立体按钮感
@@ -849,7 +852,7 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
     g.setTextColor(TEXT, PANEL);
     g.drawString(chinese ? titlesZh[i] : titlesEn[i], 16, y + 14);
     g.drawString(chinese ? subtitlesZh[i] : subtitlesEn[i], 16, y + 38);
-    drawToggle(g, 145, y + 18, toggled[i], GOOD); // iOS 式统一绿色开关
+    drawToggle(g, 145, y + 18, toggled[i], G_CYAN); // iOS 式蓝色开关(参考图)
   }
 
   char line[32];
@@ -889,13 +892,16 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
       label = chinese ? (s.light ? "灯光开启" : "灯光关闭")
                       : (s.light ? "LIGHT ON" : "LIGHT OFF");
     const bool on = buttonActive(i, s);
-    g.setTextColor(on ? ACCENT : TEXT, on ? ACTIVE : PANEL_ALT);
+    g.setTextColor(on ? G_YELLOW : TEXT, PANEL_ALT);
     g.setTextDatum(MC_DATUM);
     g.drawString(label, x + 45, 299);
   }
   g.unloadFont();
 
-  // Render the eight live values with the 26 px font.
+  // Render the eight live values: 大数字(CN26)+小单位(CN16),参考图式
+  // 排版,单位贴格子右缘、数字紧挨其左。数字统一白色,状态色交给图标与
+  // 微型进度条;仅热板超限时数字转红。数字过长会压住左上角图标时自动
+  // 退为整数。
   const float values[] = {static_cast<float>(s.exhaustPercent),
                           s.mcuC,
                           s.humidity,
@@ -904,19 +910,42 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
                           s.heaterBoardC,
                           s.voltageV,
                           s.currentA};
-  // 电压/电流不带 V/A 后缀:87px 格子里 26px 的 "24.1V" 右对齐后会
-  // 压住左上角图标,单位含义由仪表名(电压/电流)承载。
-  const char *units[] = {"%", "C", "%", "C", "%", "C", "", ""};
+  const char *units[] = {"%", "C", "%", "C", "%", "C", "V", "A"};
+  int16_t valueW[8];
+  int16_t unitW[8];
+  g.loadFont(FontCN16);
+  for (uint8_t i = 0; i < 8; ++i)
+    unitW[i] = units[i][0] ? g.textWidth(units[i]) : 0;
+  g.unloadFont();
   g.loadFont(FontCN26);
   for (uint8_t i = 0; i < 8; ++i) {
     const int16_t x = 300 + (i & 1) * 89;
     const int16_t y = 4 + (i >> 1) * 60;
-    char value[12], combined[16];
-    formatValue(value, sizeof(value), values[i], i >= 6 ? 1 : 0);
-    snprintf(combined, sizeof(combined), "%s%s", value, units[i]);
-    g.setTextColor(gaugeColor(i, s), PANEL);
+    char value[12];
+    const uint8_t baseDec = i >= 6 ? 1 : 0;
+    formatValue(value, sizeof(value), values[i], baseDec);
+    valueW[i] = g.textWidth(value);
+    // 图标底衬右缘约 x+27;数字右缘 = x+82-单位宽-2,左缘越界则取整。
+    if (units[i][0] && !isnan(values[i]) && valueW[i] > 54 - unitW[i]) {
+      formatValue(value, sizeof(value), values[i], 0);
+      valueW[i] = g.textWidth(value);
+    }
+    const bool fault = i == 5 && !isnan(s.heaterBoardC) &&
+                       s.heaterBoardC >= s.heaterBoardLimitC;
+    g.setTextColor(fault ? G_RED : TEXT, PANEL);
     g.setTextDatum(MR_DATUM);
-    g.drawString(combined, x + 83, y + 16);
+    g.drawString(value, x + 82 - unitW[i], y + 16);
+  }
+  g.unloadFont();
+  g.loadFont(FontCN16);
+  for (uint8_t i = 0; i < 8; ++i) {
+    if (!units[i][0] || isnan(values[i]))
+      continue;
+    const int16_t x = 300 + (i & 1) * 89;
+    const int16_t y = 4 + (i >> 1) * 60;
+    g.setTextColor(TEXT, PANEL);
+    g.setTextDatum(MR_DATUM);
+    g.drawString(units[i], x + 82, y + 16);
   }
   g.unloadFont();
   g.setTextDatum(TL_DATUM);
