@@ -41,11 +41,11 @@ struct Palette {
   uint16_t gCyan;
 };
 
-constexpr Palette kNightPalette = {0x0861, 0x10E3, 0x1924, 0x31A6, 0x9CF3,
+constexpr Palette kNightPalette = {0x0861, 0x10E3, 0x1924, 0x31A6, 0x8C72,
                                    0xFFFF, 0x2144, 0x06DD, 0xFD20, 0x4E69,
                                    0x7800, 0xF800, 0xFFE0, 0xF81F, 0x07FF};
 
-constexpr Palette kDayPalette = {0xE77C, 0xFFFF, 0xDF3B, 0xB5F6, 0x634C,
+constexpr Palette kDayPalette = {0xE77C, 0xFFFF, 0xDF3B, 0xB5F6, 0x6B6E,
                                  0x1903, 0xD75B, 0x0453, 0xC3A1, 0x34EA,
                                  0xA207, 0xD184, 0xB4A0, 0xA995, 0x0453};
 
@@ -197,9 +197,9 @@ void drawGaugeIcon(TFT_eSPI &g, GaugeIcon icon, int16_t x, int16_t y,
     }
     break;
   case GaugeIcon::Humidity:
-    g.fillTriangle(x, y - 11, x - 7, y + 3, x + 7, y + 3, c);
-    g.fillCircle(x, y + 3, 7, c);
-    g.fillCircle(x + 2, y + 1, 4, PANEL);
+    g.drawCircle(x, y + 3, 7, c);
+    g.drawLine(x, y - 11, x - 6, y - 1, c);
+    g.drawLine(x, y - 11, x + 6, y - 1, c);
     break;
   case GaugeIcon::Chamber:
     g.drawLine(x - 10, y - 2, x, y - 11, c);
@@ -215,8 +215,12 @@ void drawGaugeIcon(TFT_eSPI &g, GaugeIcon icon, int16_t x, int16_t y,
     g.drawLine(x + 5, y - 3, x + 8, y + 2, c);
     break;
   case GaugeIcon::Voltage:
-    g.fillTriangle(x + 2, y - 12, x - 7, y + 2, x, y + 1, c);
-    g.fillTriangle(x, y - 1, x + 7, y - 2, x - 3, y + 12, c);
+    g.drawLine(x + 2, y - 12, x - 7, y + 2, c);
+    g.drawLine(x - 7, y + 2, x, y + 1, c);
+    g.drawLine(x, y + 1, x - 3, y + 12, c);
+    g.drawLine(x - 3, y + 12, x + 7, y - 2, c);
+    g.drawLine(x + 7, y - 2, x, y - 1, c);
+    g.drawLine(x, y - 1, x + 2, y - 12, c);
     break;
   case GaugeIcon::Current:
     g.drawCircle(x, y, 10, c);
@@ -239,9 +243,9 @@ void drawBottomIcon(TFT_eSPI &g, ButtonIcon icon, int16_t x, int16_t y,
     g.fillTriangle(x - 6, y - 9, x - 6, y + 9, x + 9, y, c);
     break;
   case ButtonIcon::Preheat:
-    g.fillTriangle(x, y - 12, x - 8, y + 8, x + 8, y + 8, c);
-    g.fillCircle(x, y + 5, 7, c);
-    g.fillCircle(x + 1, y + 4, 3, PANEL_ALT);
+    g.drawCircle(x, y + 5, 7, c);
+    g.drawLine(x, y - 12, x - 6, y + 2, c);
+    g.drawLine(x, y - 12, x + 6, y + 2, c);
     break;
   case ButtonIcon::Light:
     g.drawCircle(x, y - 3, 8, c);
@@ -364,8 +368,8 @@ void drawMaterialSettings(TFT_eSPI &g, const UiSnapshot &s) {
     const int16_t y = 37 + i * 39;
     const bool selected = i == static_cast<uint8_t>(s.materialSettingField);
     const uint16_t rowBg = selected ? ACTIVE : PANEL;
-    g.fillRoundRect(20, y, 440, 34, 5, rowBg);
-    g.drawRoundRect(20, y, 440, 34, 5, selected ? ACCENT : BORDER);
+    g.fillRoundRect(20, y, 440, 34, 8, rowBg);
+    g.drawRoundRect(20, y, 440, 34, 8, selected ? ACCENT : BORDER);
     g.setTextColor(selected ? TEXT : MUTED, rowBg);
     g.setTextDatum(ML_DATUM);
     g.drawString(zh ? labelsZh[i] : labelsEn[i], 34, y + 17);
@@ -487,8 +491,8 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
     const int16_t y = 40 + row * 46;
     const bool active = item == selected;
     const uint16_t rowBg = active ? ACTIVE : PANEL;
-    g.fillRoundRect(14, y, 452, 39, 5, rowBg);
-    g.drawRoundRect(14, y, 452, 39, 5, active ? ACCENT : BORDER);
+    g.fillRoundRect(14, y, 452, 39, 8, rowBg);
+    g.drawRoundRect(14, y, 452, 39, 8, active ? ACCENT : BORDER);
     g.setTextDatum(ML_DATUM);
     g.setTextColor(active ? TEXT : MUTED, rowBg);
     g.drawString(chinese ? zh[item] : en[item], 27, y + 20);
@@ -726,13 +730,13 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
 
   // Reference-style dashboard: wide control zone, compact 2 x 4 gauges,
   // and a persistent five-button status bar.
-  g.fillRoundRect(4, 4, 292, 238, 6, PANEL);
-  g.drawRoundRect(4, 4, 292, 238, 6, BORDER);
-  // 行分隔统一为暗色细线(原先的彩色横线改为每行左侧识别色条)。
-  g.drawFastHLine(10, 60, 280, BORDER);
-  g.drawFastHLine(10, 120, 280, BORDER);
-  g.drawFastHLine(10, 180, 280, BORDER);
-  g.drawFastHLine(10, 239, 280, BORDER);
+  g.fillRoundRect(4, 4, 292, 238, 12, PANEL);
+  g.drawRoundRect(4, 4, 292, 238, 12, BORDER);
+  // 行分隔统一为暗色细线,iOS 分组列表式:与行文字左缘对齐内嵌。
+  g.drawFastHLine(16, 60, 274, BORDER);
+  g.drawFastHLine(16, 120, 274, BORDER);
+  g.drawFastHLine(16, 180, 274, BORDER);
+  g.drawFastHLine(16, 239, 274, BORDER);
   // 每行左侧识别色条:排风/仓温/打印后排风(随调色板,须每帧重建)。
   const uint16_t rowAccents[3] = {ACCENT, G_YELLOW, G_CYAN};
   for (uint8_t i = 0; i < 3; ++i) {
@@ -745,8 +749,8 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
     const int16_t x = 300 + (i & 1) * 89;
     const int16_t y = 4 + (i >> 1) * 60;
     const uint16_t c = gaugeColor(i, s);
-    g.fillRoundRect(x, y, 87, 56, 5, PANEL);
-    g.drawRoundRect(x, y, 87, 56, 5, BORDER);
+    g.fillRoundRect(x, y, 87, 56, 9, PANEL);
+    g.drawRoundRect(x, y, 87, 56, 9, BORDER);
     g.fillCircle(x + 15, y + 15, 11, PANEL_ALT); // 图标底衬圆片
     drawGaugeIcon(g, static_cast<GaugeIcon>(i), x + 15, y + 15, c);
     // 百分比型仪表(外排/湿度/热风)按实时值填充进度,其余画满宽状态色条。
@@ -774,13 +778,13 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
                          (i == 2 && s.mainFocus == MainFocus::Preheat) ||
                          (i == 3 && s.mainFocus == MainFocus::Light) ||
                          (i == 4 && s.mainFocus == MainFocus::Settings);
-    g.fillRoundRect(x, 248, 91, 68, 6, active ? ACTIVE : PANEL_ALT);
-    g.drawRoundRect(x, 248, 91, 68, 6,
+    g.fillRoundRect(x, 248, 91, 68, 10, active ? ACTIVE : PANEL_ALT);
+    g.drawRoundRect(x, 248, 91, 68, 10,
                     focused ? TEXT : (active ? ACCENT : BORDER));
     if (focused)
-      g.drawRoundRect(x + 2, 250, 87, 64, 5, WARN);
+      g.drawRoundRect(x + 2, 250, 87, 64, 8, WARN);
     drawBottomIcon(g, static_cast<ButtonIcon>(i), x + 45, 268,
-                   active ? WARN : TEXT);
+                   active ? ACCENT : TEXT);
     if (active) // 激活态底部小色条,强化“此路已开”的直觉
       g.fillRoundRect(x + 24, 309, 43, 3, 1, ACCENT);
   }
@@ -843,9 +847,9 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
       g.drawRoundRect(7, y, 286, 56, 4, WARN);
     g.setTextDatum(ML_DATUM);
     g.setTextColor(TEXT, PANEL);
-    g.drawString(chinese ? titlesZh[i] : titlesEn[i], 12, y + 14);
-    g.drawString(chinese ? subtitlesZh[i] : subtitlesEn[i], 12, y + 38);
-    drawToggle(g, 145, y + 18, toggled[i], i == 2 ? WARN : ACCENT);
+    g.drawString(chinese ? titlesZh[i] : titlesEn[i], 16, y + 14);
+    g.drawString(chinese ? subtitlesZh[i] : subtitlesEn[i], 16, y + 38);
+    drawToggle(g, 145, y + 18, toggled[i], GOOD); // iOS 式统一绿色开关
   }
 
   char line[32];
@@ -884,7 +888,8 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
     else if (i == 3)
       label = chinese ? (s.light ? "灯光开启" : "灯光关闭")
                       : (s.light ? "LIGHT ON" : "LIGHT OFF");
-    g.setTextColor(TEXT, buttonActive(i, s) ? ACTIVE : PANEL_ALT);
+    const bool on = buttonActive(i, s);
+    g.setTextColor(on ? ACCENT : TEXT, on ? ACTIVE : PANEL_ALT);
     g.setTextDatum(MC_DATUM);
     g.drawString(label, x + 45, 299);
   }
