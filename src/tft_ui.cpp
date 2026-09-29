@@ -259,10 +259,12 @@ void drawBottomIcon(TFT_eSPI &g, ButtonIcon icon, int16_t x, int16_t y,
   }
 }
 
-// iOS 风格滑动开关:48x22 圆角轨道 + 白色圆点,enabled 决定轨道色与圆点位置。
+// iOS 风格滑动开关:48x22 圆角轨道 + 圆点,enabled 决定轨道色与圆点位置。
+// 美化:关闭态浅底暗描边+灰色圆点,开启态轨道同色描边,层次更清晰。
 void drawToggle(TFT_eSPI &g, int16_t x, int16_t y, bool enabled, uint16_t c) {
-  g.fillRoundRect(x, y, 48, 22, 11, enabled ? c : BORDER);
-  g.fillCircle(enabled ? x + 37 : x + 11, y + 11, 9, TEXT);
+  g.fillRoundRect(x, y, 48, 22, 11, enabled ? c : PANEL_ALT);
+  g.drawRoundRect(x, y, 48, 22, 11, enabled ? c : BORDER);
+  g.fillCircle(enabled ? x + 37 : x + 11, y + 11, 9, enabled ? TEXT : MUTED);
 }
 
 // 仪表数值格式化:NAN(传感器无效)统一显示 "--",否则按 0/1 位小数输出,
@@ -677,6 +679,27 @@ void tintOtaBanner(TFT_eSPI &g, bool active, uint8_t pct) {
   g.fillRoundRect(px, py, (int16_t)((uint32_t)pw * pct / 100), ph, 4, 0x07E0);
 }
 
+// 主屏状态点的颜色:与状态灯优先级一致的简化映射(手动强排青、故障红、
+// 排气黄、打印蓝、预热紫、检测橙、待机绿)。
+uint16_t stateAccent(const UiSnapshot &s) {
+  if (s.manualExhaust)
+    return G_CYAN;
+  switch (s.state) {
+  case ChamberState::Fault:
+    return G_RED;
+  case ChamberState::Cooling:
+    return G_YELLOW;
+  case ChamberState::Printing:
+    return 0x0296; // 打印蓝(与状态灯 RGB 0,80,180 对应的 RGB565)
+  case ChamberState::Preheat:
+    return 0x78B6; // 预热紫(RGB 120,20,180)
+  case ChamberState::Detecting:
+    return WARN;
+  default:
+    return GOOD;
+  }
+}
+
 // 整屏页面分发函数(入口,负责按快照的分支转发到各页面绘制例程)。
 void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   // 每帧按快照里的生效主题重建调色板,日/夜切换与主题设置即时生效。
@@ -705,20 +728,42 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   // and a persistent five-button status bar.
   g.fillRoundRect(4, 4, 292, 238, 6, PANEL);
   g.drawRoundRect(4, 4, 292, 238, 6, BORDER);
-  g.drawFastHLine(8, 60, 284, BORDER);
-  g.drawFastHLine(8, 120, 284, G_RED);
-  g.drawFastHLine(8, 180, 284, ACCENT);
-  g.drawFastHLine(8, 239, 284, WARN);
+  // 行分隔统一为暗色细线(原先的彩色横线改为每行左侧识别色条)。
+  g.drawFastHLine(10, 60, 280, BORDER);
+  g.drawFastHLine(10, 120, 280, BORDER);
+  g.drawFastHLine(10, 180, 280, BORDER);
+  g.drawFastHLine(10, 239, 280, BORDER);
+  // 每行左侧识别色条:排风/仓温/打印后排风(随调色板,须每帧重建)。
+  const uint16_t rowAccents[3] = {ACCENT, G_YELLOW, G_CYAN};
+  for (uint8_t i = 0; i < 3; ++i) {
+    const int16_t y = 62 + i * 60;
+    g.fillRoundRect(8, y + 9, 3, 38, 1, rowAccents[i]);
+  }
 
-  // Right hand 2 x 4 instrument grid.
+  // Right hand 2 x 4 instrument grid: 图标底衬 + 底部微型进度条。
   for (uint8_t i = 0; i < 8; ++i) {
     const int16_t x = 300 + (i & 1) * 89;
     const int16_t y = 4 + (i >> 1) * 60;
+    const uint16_t c = gaugeColor(i, s);
     g.fillRoundRect(x, y, 87, 56, 5, PANEL);
     g.drawRoundRect(x, y, 87, 56, 5, BORDER);
-    g.drawFastHLine(x + 3, y + 53, 81, gaugeColor(i, s));
-    drawGaugeIcon(g, static_cast<GaugeIcon>(i), x + 15, y + 17,
-                  gaugeColor(i, s));
+    g.fillCircle(x + 15, y + 15, 11, PANEL_ALT); // 图标底衬圆片
+    drawGaugeIcon(g, static_cast<GaugeIcon>(i), x + 15, y + 15, c);
+    // 百分比型仪表(外排/湿度/热风)按实时值填充进度,其余画满宽状态色条。
+    g.fillRoundRect(x + 3, y + 50, 81, 4, 2, PANEL_ALT);
+    if (i == 0 || i == 2 || i == 4) {
+      const float v = i == 0   ? static_cast<float>(s.exhaustPercent)
+                      : i == 2 ? s.humidity
+                               : static_cast<float>(s.heaterFanPercent);
+      if (!isnan(v)) {
+        const int w =
+            static_cast<int>(constrain(v, 0.0f, 100.0f) * 0.81f + 0.5f);
+        if (w > 0)
+          g.fillRoundRect(x + 3, y + 50, w, 4, 2, c);
+      }
+    } else {
+      g.fillRoundRect(x + 3, y + 50, 81, 4, 2, c);
+    }
   }
 
   // Bottom five action buttons.
@@ -736,6 +781,8 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
       g.drawRoundRect(x + 2, 250, 87, 64, 5, WARN);
     drawBottomIcon(g, static_cast<ButtonIcon>(i), x + 45, 268,
                    active ? WARN : TEXT);
+    if (active) // 激活态底部小色条,强化“此路已开”的直觉
+      g.fillRoundRect(x + 24, 309, 43, 3, 1, ACCENT);
   }
 
   // Render all labels with the 16 px Chinese+ASCII VLW font.
@@ -751,12 +798,14 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
       s.mainFocus == MainFocus::NextMaterial ? WARN : MUTED;
   g.setTextColor(prevColor, PANEL);
   g.drawString(s.previousMaterial, 35, 23);
+  g.fillCircle(82, 23, 13, PANEL_ALT); // 箭头底衬,立体按钮感
   g.drawCircle(82, 23, 13, prevColor);
   g.drawString("<", 82, 23);
   g.setTextColor(materialColor, PANEL);
   g.drawString(s.material, 145, 20);
   if (s.mainFocus == MainFocus::CurrentMaterial)
     g.drawFastHLine(122, 32, 46, WARN);
+  g.fillCircle(207, 23, 13, PANEL_ALT);
   g.drawCircle(207, 23, 13, nextColor);
   g.setTextColor(nextColor, PANEL);
   g.drawString(">", 207, 23);
@@ -768,10 +817,12 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   formatClockField(dateBuf, sizeof(dateBuf), s.clock, true, false, 0);
   formatClockField(timeBuf, sizeof(timeBuf), s.clock, false, false, 0);
   g.setTextDatum(ML_DATUM);
-  g.setTextColor(WARN, PANEL);
+  const uint16_t stateColor = stateAccent(s);
+  g.fillCircle(15, 46, 4, stateColor); // 状态色点,一眼读出当前状态
+  g.setTextColor(stateColor, PANEL);
   g.drawString(s.manualExhaust ? (chinese ? "强制排气" : "MANUAL PURGE")
                                : tx.state,
-               12, 46);
+               24, 46);
   g.setTextDatum(MC_DATUM);
   g.setTextColor(s.networkConnected ? GOOD : MUTED, PANEL);
   g.drawString(dateBuf, 150, 46);
@@ -819,7 +870,7 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
     const int16_t y = 4 + (i >> 1) * 60;
     g.setTextColor(MUTED, PANEL);
     g.setTextDatum(MC_DATUM);
-    g.drawString(tx.gauges[i], x + 43, y + 43);
+    g.drawString(tx.gauges[i], x + 43, y + 40);
   }
   for (uint8_t i = 0; i < 5; ++i) {
     const int16_t x = 4 + i * 95;
@@ -835,7 +886,7 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
                       : (s.light ? "LIGHT ON" : "LIGHT OFF");
     g.setTextColor(TEXT, buttonActive(i, s) ? ACTIVE : PANEL_ALT);
     g.setTextDatum(MC_DATUM);
-    g.drawString(label, x + 45, 302);
+    g.drawString(label, x + 45, 299);
   }
   g.unloadFont();
 
