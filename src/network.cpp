@@ -218,6 +218,7 @@ void NetworkManager::begin(ChamberController &controller, UiModel &ui,
   WiFi.setHostname(hostname());
   WiFi.setAutoReconnect(true);
   if (!settings_.wifiEnabled) {
+    Serial.println(F("[NET] WiFi disabled (wifiEn=0), skipping."));
     state_ = NetState::Off;
     return;
   }
