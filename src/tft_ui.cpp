@@ -904,7 +904,9 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
                           s.heaterBoardC,
                           s.voltageV,
                           s.currentA};
-  const char *units[] = {"%", "C", "%", "C", "%", "C", "V", "A"};
+  // 电压/电流不带 V/A 后缀:87px 格子里 26px 的 "24.1V" 右对齐后会
+  // 压住左上角图标,单位含义由仪表名(电压/电流)承载。
+  const char *units[] = {"%", "C", "%", "C", "%", "C", "", ""};
   g.loadFont(FontCN26);
   for (uint8_t i = 0; i < 8; ++i) {
     const int16_t x = 300 + (i & 1) * 89;
