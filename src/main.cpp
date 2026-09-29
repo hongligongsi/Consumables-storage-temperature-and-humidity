@@ -23,10 +23,10 @@ constexpr uint8_t AIR_FAN_PWM_CHANNEL = 1;   // LEDC 通道:4 线排风风扇
 constexpr uint8_t BACKLIGHT_PWM_CHANNEL = 2; // LEDC 通道:TFT 背光
 constexpr uint8_t HOT_FAN_PWM_CHANNEL = 3;   // LEDC 通道:加热风扇
 // 加热总保险开关：
-// false = 仅运行状态机和 PID 计算，强制 GPIO38 加热 PWM 为 0，GPIO47“加热中”
+// false = 仅运行状态机和 PID 计算，强制 GPIO40 加热 PWM 为 0，GPIO47“加热中”
 //         状态输出也保持低电平；用于首次烧录和硬件调试，防止误加热。
-// true  = 允许 PID 驱动 GPIO38；当实际加热 PWM > 0 时，GPIO47 输出 3.3 V
-// 高电平。 只有确认 GPIO38/MOSFET 有效电平、NTC 型号与参数、INA226
+// true  = 允许 PID 驱动 GPIO40；当实际加热 PWM > 0 时，GPIO47 输出 3.3 V
+// 高电平。 只有确认 GPIO40/MOSFET 有效电平、NTC 型号与参数、INA226
 // 电流方向及加热板接线 全部正确后，才可以改为
 // true。过温或传感器故障仍会立即停止加热并拉低 GPIO47。
 constexpr bool HEATER_ENABLED = false;
@@ -442,6 +442,8 @@ bool screenIsSleeping(uint32_t now) {
 }
 
 // 采样一次触摸并换算成屏幕像素坐标(480x320 横屏,留 28px 边距)。
+// 映射目标 28..452 / 28..292 与校准两个采点位置(左上/右下)一致;
+// 限幅也钳在同一区间,防止触摸超出校准角点时线性外推出框。
 // 未触摸、超量程或校准跨度太小都返回 false。
 bool readTouchPoint(int16_t &screenX, int16_t &screenY) {
   const uint16_t rawX = readTouchAxis(true);
@@ -455,10 +457,10 @@ bool readTouchPoint(int16_t &screenX, int16_t &screenY) {
     return false;
   screenX = constrain(static_cast<int>(map(rawX, settings.touchXMin,
                                            settings.touchXMax, 28, 452)),
-                      0, 479);
+                      28, 452);
   screenY = constrain(static_cast<int>(map(rawY, settings.touchYMin,
                                            settings.touchYMax, 28, 292)),
-                      0, 319);
+                      28, 292);
   return true;
 }
 

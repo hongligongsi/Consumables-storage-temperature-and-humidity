@@ -1,6 +1,6 @@
 # 硬件接线与注意事项
 
-主控板 ESP32-S3-WROOM-1 **N16R8**（8MB Flash + 16MB PSRAM），
+主控板 ESP32-S3-WROOM-1 **N16R8**（16MB Flash + 8MB PSRAM），
 SCH_1-P1 原理图（2026-01-30，嘉立创EDA V1.0）。引脚名全部集中在
 [include/pins.h](../include/pins.h)，修改硬件版本时只需改这一个文件。
 
