@@ -10,7 +10,7 @@
 
 Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）为独立 3.3 V 状态输出，因此已启用。外接负载必须经光耦或驱动器。
 
-![主屏界面模拟渲染](docs/images/ui-main-night.png)
+chamber-web-preview.html   
 
 *主屏 480×320 界面预览（夜间配色，模拟渲染，示意数据；非实机照片）。状态色点、行首识别色条、仪表底衬圆片与微型进度条、底部激活色条均为固件实际绘制效果。*
 
@@ -87,128 +87,128 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 
 ## 功能特性总览
 
-| 模块 | 关键实现 | 说明 |
-| --- | --- | --- |
-| 状态机 | `ChamberController::update()`（`src/controller.cpp`） | 六态：`Idle / Detecting / Preheat / Printing / Cooling / Fault`，50 ms 更新一次 |
-| 仓温闭环 | AHT20（I²C）+ 位置式 PID | 目标为当前耗材的仓温下限，KP=8.0 / KI=0.04 / KD=15.0 |
-| 热板保护 | 独立 NTC + 热板 PID | 目标为「发热板温度保护」阈值（默认 80 ℃），KP=4.0 / KI=0.02 / KD=3.0 |
-| 功率输出 | 取两个 PID 的较小值 | 再依次经过电流软降、用户功率上限、3%/周期斜率限制 |
-| 自动排气 | 按仓温高出最低仓温的幅度分三档 | 高出 ≥10 ℃ 用最高风速，≥5 ℃ 用中值，否则最低风速 |
-| 打印结束排气 | 进入 `Cooling` 计时 | 风速/时长取自耗材预设，可在设置页与 REST 修改 |
-| 安全联锁 | 热板硬过温 + 仓温超上限 | 立即停加热、排气 100%、热板风扇全开，带 5 ℃/2 ℃ 回差 |
-| 电流限制 | INA226 分流采样 | 实测电流超限时按 3%/周期降压，读数失败视为传感器无效 |
-| 交互 | EC11 编码器 + 触摸（预留）+ 串口单键 | 旋转 / 单击 / 双击 / 长按四种手势 |
-| 显示 | TFT_eSPI，480×320 横屏 | PSRAM 内 16-bit 双缓冲 Sprite，独立低优先级渲染任务 |
-| 主题 | 日间 / 夜间 / 自动三档 | 自动模式按「日间开始时刻 / 夜间开始时刻」切换 |
-| 联网 | WiFiManager + WebServer(80) + PubSubClient + SNTP + ArduinoOTA | 定制配网门户、Web 管理页、REST、MQTT、NTP、OTA 全部非阻塞 |
-| 持久化 | NVS（`SettingsStore`） | 设置、耗材预设、手动校时基准；恢复出厂只删本固件拥有的键 |
+| 模块     | 关键实现                                                           | 说明                                                                      |
+| ------ | -------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| 状态机    | `ChamberController::update()`（`src/controller.cpp`）            | 六态：`Idle / Detecting / Preheat / Printing / Cooling / Fault`，50 ms 更新一次 |
+| 仓温闭环   | AHT20（I²C）+ 位置式 PID                                            | 目标为当前耗材的仓温下限，KP=8.0 / KI=0.04 / KD=15.0                                 |
+| 热板保护   | 独立 NTC + 热板 PID                                                | 目标为「发热板温度保护」阈值（默认 80 ℃），KP=4.0 / KI=0.02 / KD=3.0                       |
+| 功率输出   | 取两个 PID 的较小值                                                   | 再依次经过电流软降、用户功率上限、3%/周期斜率限制                                              |
+| 自动排气   | 按仓温高出最低仓温的幅度分三档                                                | 高出 ≥10 ℃ 用最高风速，≥5 ℃ 用中值，否则最低风速                                          |
+| 打印结束排气 | 进入 `Cooling` 计时                                                | 风速/时长取自耗材预设，可在设置页与 REST 修改                                              |
+| 安全联锁   | 热板硬过温 + 仓温超上限                                                  | 立即停加热、排气 100%、热板风扇全开，带 5 ℃/2 ℃ 回差                                       |
+| 电流限制   | INA226 分流采样                                                    | 实测电流超限时按 3%/周期降压，读数失败视为传感器无效                                            |
+| 交互     | EC11 编码器 + 触摸（预留）+ 串口单键                                        | 旋转 / 单击 / 双击 / 长按四种手势                                                   |
+| 显示     | TFT_eSPI，480×320 横屏                                            | PSRAM 内 16-bit 双缓冲 Sprite，独立低优先级渲染任务                                    |
+| 主题     | 日间 / 夜间 / 自动三档                                                 | 自动模式按「日间开始时刻 / 夜间开始时刻」切换                                                |
+| 联网     | WiFiManager + WebServer(80) + PubSubClient + SNTP + ArduinoOTA | 定制配网门户、Web 管理页、REST、MQTT、NTP、OTA 全部非阻塞                                  |
+| 持久化    | NVS（`SettingsStore`）                                           | 设置、耗材预设、手动校时基准；恢复出厂只删本固件拥有的键                                            |
 
 ## 控制状态机
 
 状态枚举定义在 `include/controller.h` 的 `ChamberState`，屏幕与 REST 输出的名称映射见下表。
 
-| 状态 | 屏幕文案（中/英） | REST `state` | 含义与进入条件 |
-| --- | --- | --- | --- |
-| `Idle` | 待机 / IDLE | `Idle` | 默认态：系统开启但无运动、无预热请求 |
-| `Detecting` | 检测中 / DETECT | `Detecting` | PIR 连续检测到运动，但尚未达到 `PIR启动延时` |
-| `Preheat` | 预热 / PREHEAT | `Preheat` | 「提前预热」被开启（`requestPreheat()` / 串口 `p` / REST `togglePreheat`），优先于 PIR |
-| `Printing` | 打印 / PRINT | `Printing` | 运动持续 ≥ `PIR启动延时`（默认 25 s，1–300 s 可调）后判定开始打印 |
-| `Cooling` | 排气 / EXHAUST | `Cooling` | ① 打印结束且「打印后排风」开启、时长为正时计时排气；② 安全联锁触发时的强制排气 |
-| `Fault` | 故障 / FAULT | `Fault` | 温度采样连续失效 3 s 后锁定 |
+| 状态          | 屏幕文案（中/英）    | REST `state` | 含义与进入条件                                                               |
+| ----------- | ------------ | ------------ | --------------------------------------------------------------------- |
+| `Idle`      | 待机 / IDLE    | `Idle`       | 默认态：系统开启但无运动、无预热请求                                                    |
+| `Detecting` | 检测中 / DETECT | `Detecting`  | PIR 连续检测到运动，但尚未达到 `PIR启动延时`                                           |
+| `Preheat`   | 预热 / PREHEAT | `Preheat`    | 「提前预热」被开启（`requestPreheat()` / 串口 `p` / REST `togglePreheat`），优先于 PIR |
+| `Printing`  | 打印 / PRINT   | `Printing`   | 运动持续 ≥ `PIR启动延时`（默认 25 s，1–300 s 可调）后判定开始打印                           |
+| `Cooling`   | 排气 / EXHAUST | `Cooling`    | ① 打印结束且「打印后排风」开启、时长为正时计时排气；② 安全联锁触发时的强制排气                             |
+| `Fault`     | 故障 / FAULT   | `Fault`      | 温度采样连续失效 3 s 后锁定                                                      |
 
 转移规则（`src/controller.cpp`）：
 
-| 当前态 | 条件 | 目标态 |
-| --- | --- | --- |
-| 任意 | `systemEnabled == false` | `Idle`（清冷却计时与安全标记） |
-| 任意（预热/打印中） | 传感器无效持续 ≥ 3 s（`SENSOR_FAULT_MS`） | `Fault`（锁定） |
-| `Fault` | — | 保持 `Fault`，需关闭再开启系统才允许重新进入状态机 |
-| 任意 | 热板 ≥ 保护温度 或 仓温 ≥ 耗材上限 | `Cooling`（含安全标记） |
-| `Cooling`（安全） | 热板 ≥ 保护温度 −5 ℃ 或 仓温 ≥ 上限 −2 ℃ | 继续 `Cooling`（回差） |
-| 任意 | 预热请求开启 | `Preheat` |
-| 任意 | PIR 达标 或 在 `Printing` 且距最近运动 < `PIR关闭延时` | `Printing` |
-| 任意 | PIR 运动持续但未达启动延时 | `Detecting` |
-| `Printing` | 运动停止超时，且「打印后排风」开启且时长 > 0 | `Cooling`（开始计时） |
-| `Printing` | 运动停止超时，且结束排气关闭或时长为 0 | `Idle` |
-| `Cooling` | 结束排气计时未满 | 继续 `Cooling` |
-| 其余 | — | `Idle` |
+| 当前态           | 条件                                       | 目标态                           |
+| ------------- | ---------------------------------------- | ----------------------------- |
+| 任意            | `systemEnabled == false`                 | `Idle`（清冷却计时与安全标记）            |
+| 任意（预热/打印中）    | 传感器无效持续 ≥ 3 s（`SENSOR_FAULT_MS`）         | `Fault`（锁定）                   |
+| `Fault`       | —                                        | 保持 `Fault`，需关闭再开启系统才允许重新进入状态机 |
+| 任意            | 热板 ≥ 保护温度 或 仓温 ≥ 耗材上限                    | `Cooling`（含安全标记）              |
+| `Cooling`（安全） | 热板 ≥ 保护温度 −5 ℃ 或 仓温 ≥ 上限 −2 ℃            | 继续 `Cooling`（回差）              |
+| 任意            | 预热请求开启                                   | `Preheat`                     |
+| 任意            | PIR 达标 或 在 `Printing` 且距最近运动 < `PIR关闭延时` | `Printing`                    |
+| 任意            | PIR 运动持续但未达启动延时                          | `Detecting`                   |
+| `Printing`    | 运动停止超时，且「打印后排风」开启且时长 > 0                 | `Cooling`（开始计时）               |
+| `Printing`    | 运动停止超时，且结束排气关闭或时长为 0                     | `Idle`                        |
+| `Cooling`     | 结束排气计时未满                                 | 继续 `Cooling`                  |
+| 其余            | —                                        | `Idle`                        |
 
 各状态的实际输出（`Outputs`）：
 
-| 状态 | 加热 | 排气 | 热板风扇 |
-| --- | --- | --- | --- |
-| `Preheat` / `Printing` | 双 PID 计算值（受电流、上限、斜率约束） | 自动排气开启时按分档风速 | 加热 > 0 或 热板 > 仓温 + 10 ℃ |
-| `Cooling` | 0 | 安全联锁 100%，否则取耗材「结束排气风速」 | 仅安全联锁时开启 |
-| `Fault` | 0 | 100% | 开启 |
-| `Idle` / `Detecting` | 0 | 0 | 关闭 |
+| 状态                     | 加热                     | 排气                      | 热板风扇                    |
+| ---------------------- | ---------------------- | ----------------------- | ----------------------- |
+| `Preheat` / `Printing` | 双 PID 计算值（受电流、上限、斜率约束） | 自动排气开启时按分档风速            | 加热 > 0 或 热板 > 仓温 + 10 ℃ |
+| `Cooling`              | 0                      | 安全联锁 100%，否则取耗材「结束排气风速」 | 仅安全联锁时开启                |
+| `Fault`                | 0                      | 100%                    | 开启                      |
+| `Idle` / `Detecting`   | 0                      | 0                       | 关闭                      |
 
 控制参数与常量（`src/controller.cpp`、`src/main.cpp`）：
 
-| 项 | 值 | 位置 |
-| --- | --- | --- |
-| 控制节拍 | 50 ms | `src/main.cpp` `loop()` |
-| 传感器采样周期 | 500 ms | `src/main.cpp` `loop()` |
-| 状态快照/刷屏周期 | 500 ms | `src/main.cpp` `loop()` |
-| 串口状态打印周期 | 2000 ms | `src/main.cpp` `loop()` |
-| 传感器失效判定 | 3 s | `SENSOR_FAULT_MS` |
-| 仓温 PID | KP 8.0 / KI 0.04 / KD 15.0，积分限幅 ±200 | `chamberPid()` |
-| 热板 PID | KP 4.0 / KI 0.02 / KD 3.0，积分限幅 ±300 | `boardPid()` |
-| PWM 斜率限制 | 3 %/周期（即 60 %/s） | `PWM_SLOPE_PER_50MS` |
-| 功率上限 | `setHeatLimit(100)`，默认 100 % | `setup()` |
-| 温度采样量程保护 | NTC −40–250 ℃、AHT20 −40–100 ℃ / 0–100 %RH、电流 \|I\| ≤ 32 A、电压 0–40 V | `readSensors()` |
+| 项         | 值                                                                 | 位置                      |
+| --------- | ----------------------------------------------------------------- | ----------------------- |
+| 控制节拍      | 50 ms                                                             | `src/main.cpp` `loop()` |
+| 传感器采样周期   | 500 ms                                                            | `src/main.cpp` `loop()` |
+| 状态快照/刷屏周期 | 500 ms                                                            | `src/main.cpp` `loop()` |
+| 串口状态打印周期  | 2000 ms                                                           | `src/main.cpp` `loop()` |
+| 传感器失效判定   | 3 s                                                               | `SENSOR_FAULT_MS`       |
+| 仓温 PID    | KP 8.0 / KI 0.04 / KD 15.0，积分限幅 ±200                              | `chamberPid()`          |
+| 热板 PID    | KP 4.0 / KI 0.02 / KD 3.0，积分限幅 ±300                               | `boardPid()`            |
+| PWM 斜率限制  | 3 %/周期（即 60 %/s）                                                  | `PWM_SLOPE_PER_50MS`    |
+| 功率上限      | `setHeatLimit(100)`，默认 100 %                                      | `setup()`               |
+| 温度采样量程保护  | NTC −40–250 ℃、AHT20 −40–100 ℃ / 0–100 %RH、电流 |I| ≤ 32 A、电压 0–40 V | `readSensors()`         |
 
 ## 引脚与接口分配
 
 全部引脚集中在 `include/pins.h` 的 `Pin` 命名空间，改板只改这一处。
 
-| 功能 | 宏 | GPIO | 说明 |
-| --- | --- | --- | --- |
-| 显示复位 | `TFT_RESET` | 9 | ST7796，SPI 接口 |
-| 显示 MISO | `TFT_SPI_MISO` | 10 | |
-| 显示 MOSI | `TFT_SPI_MOSI` | 11 | |
-| 显示时钟 | `TFT_SPI_SCLK` | 12 | |
-| 数据/命令 | `TFT_DATA_CMD` | 13 | |
-| 片选 | `TFT_CHIP_SELECT` | 14 | |
-| 背光 | `TFT_BACKLIGHT` | 21 | LEDC 通道 2，5 kHz，10 bit |
-| 触摸 YD / XR / YU / XL | `TFT_YD` / `TFT_XR` / `TFT_YU` / `TFT_XL` | 4 / 5 / 6 / 7 | 四线电阻触摸，`HAS_TOUCH_PANEL = false` 时完全停用 |
-| 编码器按键 | `ENCODER_KEY` | 15 | 输入上拉，单击 / 双击 / 长按 |
-| 编码器 B / A | `ENCODER_B` / `ENCODER_A` | 16 / 17 | 输入上拉，正交解码 |
-| 状态灯 | `RGB` | 18 | 单灯珠 WS2812（GRB，800 kHz） |
-| 蜂鸣器 | `BUZZER` | 1 | 数字输出 |
-| I²C 数据 / 时钟 | `I2C_SDA` / `I2C_SCL` | 42 / 41 | AHT20（仓温/湿度）+ INA226 |
-| 热端 PWM | `HOT_PWM` | 40 | LEDC 通道 0，20 kHz，10 bit |
-| 排气 PWM | `AIR_FAN_PWM` | 39 | LEDC 通道 1，25 kHz，10 bit |
-| 排气开关 | `AIR_FAN_DC` | 38 | 数字输出，排气 > 0 时置高 |
-| 照明使能 | `LED_ENABLE` | 37 | 数字输出 |
-| 热板风扇 | `HOT_FAN` | 36 | LEDC 通道 3，25 kHz，10 bit |
-| 人体感应 | `PIR` | 35 | 数字输入，高电平表示有运动 |
-| 主板风扇 | `BOARD_FAN` | 45 | 数字输出（strapping 脚，见风险说明） |
-| 热板 NTC | `ADC_NTC` | 3 | 12 bit ADC，11 dB 衰减 |
-| 打印中状态输出 | `PRINTING_STATUS` | 8 | 独立 3.3 V 输出，`HAS_STATUS_OUTPUTS = true` |
-| 加热中状态输出 | `HEATING_STATUS` | 47 | 独立 3.3 V 输出，`HEATER_ENABLED && heaterPercent > 0` 时置高 |
+| 功能                   | 宏                                         | GPIO          | 说明                                                    |
+| -------------------- | ----------------------------------------- | ------------- | ----------------------------------------------------- |
+| 显示复位                 | `TFT_RESET`                               | 9             | ST7796，SPI 接口                                         |
+| 显示 MISO              | `TFT_SPI_MISO`                            | 10            |                                                       |
+| 显示 MOSI              | `TFT_SPI_MOSI`                            | 11            |                                                       |
+| 显示时钟                 | `TFT_SPI_SCLK`                            | 12            |                                                       |
+| 数据/命令                | `TFT_DATA_CMD`                            | 13            |                                                       |
+| 片选                   | `TFT_CHIP_SELECT`                         | 14            |                                                       |
+| 背光                   | `TFT_BACKLIGHT`                           | 21            | LEDC 通道 2，5 kHz，10 bit                                |
+| 触摸 YD / XR / YU / XL | `TFT_YD` / `TFT_XR` / `TFT_YU` / `TFT_XL` | 4 / 5 / 6 / 7 | 四线电阻触摸，`HAS_TOUCH_PANEL = false` 时完全停用                |
+| 编码器按键                | `ENCODER_KEY`                             | 15            | 输入上拉，单击 / 双击 / 长按                                     |
+| 编码器 B / A            | `ENCODER_B` / `ENCODER_A`                 | 16 / 17       | 输入上拉，正交解码                                             |
+| 状态灯                  | `RGB`                                     | 18            | 单灯珠 WS2812（GRB，800 kHz）                               |
+| 蜂鸣器                  | `BUZZER`                                  | 1             | 数字输出                                                  |
+| I²C 数据 / 时钟          | `I2C_SDA` / `I2C_SCL`                     | 42 / 41       | AHT20（仓温/湿度）+ INA226                                  |
+| 热端 PWM               | `HOT_PWM`                                 | 40            | LEDC 通道 0，20 kHz，10 bit                               |
+| 排气 PWM               | `AIR_FAN_PWM`                             | 39            | LEDC 通道 1，25 kHz，10 bit                               |
+| 排气开关                 | `AIR_FAN_DC`                              | 38            | 数字输出，排气 > 0 时置高                                       |
+| 照明使能                 | `LED_ENABLE`                              | 37            | 数字输出                                                  |
+| 热板风扇                 | `HOT_FAN`                                 | 36            | LEDC 通道 3，25 kHz，10 bit                               |
+| 人体感应                 | `PIR`                                     | 35            | 数字输入，高电平表示有运动                                         |
+| 主板风扇                 | `BOARD_FAN`                               | 45            | 数字输出（strapping 脚，见风险说明）                               |
+| 热板 NTC               | `ADC_NTC`                                 | 3             | 12 bit ADC，11 dB 衰减                                   |
+| 打印中状态输出              | `PRINTING_STATUS`                         | 8             | 独立 3.3 V 输出，`HAS_STATUS_OUTPUTS = true`               |
+| 加热中状态输出              | `HEATING_STATUS`                          | 47            | 独立 3.3 V 输出，`HEATER_ENABLED && heaterPercent > 0` 时置高 |
 
 PWM 通道分配：
 
-| 通道 | 宏 | 频率 | 分辨率 | 引脚 |
-| --- | --- | --- | --- | --- |
-| 0 | `HOT_PWM_CHANNEL` | 20 kHz | 10 bit | GPIO40 |
-| 1 | `AIR_FAN_PWM_CHANNEL` | 25 kHz | 10 bit | GPIO39 |
-| 2 | `BACKLIGHT_PWM_CHANNEL` | 5 kHz | 10 bit | GPIO21 |
-| 3 | `HOT_FAN_PWM_CHANNEL` | 25 kHz | 10 bit | GPIO36 |
+| 通道 | 宏                       | 频率     | 分辨率    | 引脚     |
+| -- | ----------------------- | ------ | ------ | ------ |
+| 0  | `HOT_PWM_CHANNEL`       | 20 kHz | 10 bit | GPIO40 |
+| 1  | `AIR_FAN_PWM_CHANNEL`   | 25 kHz | 10 bit | GPIO39 |
+| 2  | `BACKLIGHT_PWM_CHANNEL` | 5 kHz  | 10 bit | GPIO21 |
+| 3  | `HOT_FAN_PWM_CHANNEL`   | 25 kHz | 10 bit | GPIO36 |
 
 状态灯（RGB）颜色与闪烁约定（`updateStatusRgb()`）：
 
-| 条件 | 颜色 | 闪烁 |
-| --- | --- | --- |
-| `Fault` | 红 | 快闪（180 ms） |
-| 加热中（`heaterPercent > 0`） | 橙 | 慢闪（450 ms） |
-| 手动强排 | 蓝 | 快闪（180 ms） |
-| `Cooling` | 橙黄 | 慢闪（450 ms） |
-| 热板风扇开启 | 紫 | 慢闪（450 ms） |
-| `Printing` | 蓝（0,80,180） | 常亮 |
-| `Preheat` | 紫（120,20,180） | 常亮 |
-| `Detecting` 或有运动 | 黄 | 慢闪（450 ms） |
-| 其他 | 绿（0,70,18） | 常亮 |
+| 条件                       | 颜色            | 闪烁         |
+| ------------------------ | ------------- | ---------- |
+| `Fault`                  | 红             | 快闪（180 ms） |
+| 加热中（`heaterPercent > 0`） | 橙             | 慢闪（450 ms） |
+| 手动强排                     | 蓝             | 快闪（180 ms） |
+| `Cooling`                | 橙黄            | 慢闪（450 ms） |
+| 热板风扇开启                   | 紫             | 慢闪（450 ms） |
+| `Printing`               | 蓝（0,80,180）   | 常亮         |
+| `Preheat`                | 紫（120,20,180） | 常亮         |
+| `Detecting` 或有运动         | 黄             | 慢闪（450 ms） |
+| 其他                       | 绿（0,70,18）    | 常亮         |
 
 NTC 换算：`readNtcCelsius(pin, seriesOhm, nominalOhm, beta)` 默认按 10 kΩ 上拉 / 10 kΩ / B=3950；热板实际调用为 100 kΩ / 100 kΩ / B=3950，采样值 `raw <= 0 || raw >= 4095` 时返回 `NAN`（视为无效）。
 
@@ -216,33 +216,34 @@ NTC 换算：`readNtcCelsius(pin, seriesOhm, nominalOhm, beta)` 默认按 10 kΩ
 
 `src/controller.cpp` 的 `MATERIALS[]` 与 `resetMaterialProfiles()` 给出 12 组出厂预设：
 
-| 耗材 | 仓温下限 (℃) | 仓温上限 (℃) | 自动排气最低风速 (%) | 自动排气最高风速 (%) | 结束排气风速 (%) | 结束排气时长 (s) |
-| --- | --- | --- | --- | --- | --- | --- |
-| PLA | 0 | 40 | 30 | 100 | 100 | 180 |
-| PETG | 25 | 50 | 30 | 80 | 80 | 180 |
-| TPU | 0 | 40 | 0 | 30 | 30 | 120 |
-| ABS | 40 | 70 | 10 | 30 | 30 | 300 |
-| ASA | 40 | 70 | 10 | 30 | 30 | 300 |
-| PC | 50 | 90 | 10 | 30 | 30 | 300 |
-| PA | 40 | 70 | 10 | 30 | 30 | 300 |
-| PVA | 0 | 40 | 20 | 60 | 60 | 180 |
-| PET | 25 | 50 | 30 | 80 | 80 | 180 |
-| PPA | 50 | 90 | 10 | 30 | 30 | 300 |
-| PEBA | 25 | 50 | 20 | 60 | 60 | 180 |
-| CUSTOM | 0 | 40 | 0 | 100 | 100 | 180 |
+| 耗材     | 仓温下限 (℃) | 仓温上限 (℃) | 自动排气最低风速 (%) | 自动排气最高风速 (%) | 结束排气风速 (%) | 结束排气时长 (s) |
+| ------ | -------- | -------- | ------------ | ------------ | ---------- | ---------- |
+| PLA    | 0        | 40       | 30           | 100          | 100        | 180        |
+| PETG   | 25       | 50       | 30           | 80           | 80         | 180        |
+| TPU    | 0        | 40       | 0            | 30           | 30         | 120        |
+| ABS    | 40       | 70       | 10           | 30           | 30         | 300        |
+| ASA    | 40       | 70       | 10           | 30           | 30         | 300        |
+| PC     | 50       | 90       | 10           | 30           | 30         | 300        |
+| PA     | 40       | 70       | 10           | 30           | 30         | 300        |
+| PVA    | 0        | 40       | 20           | 60           | 60         | 180        |
+| PET    | 25       | 50       | 30           | 80           | 80         | 180        |
+| PPA    | 50       | 90       | 10           | 30           | 30         | 300        |
+| PEBA   | 25       | 50       | 20           | 60           | 60         | 180        |
+| CUSTOM | 0        | 40       | 0            | 100          | 100        | 180        |
 
 预设修改的校验规则（`updateProfile()`，UI、REST、MQTT 三条路径共用）：
 
-| 参数 | 允许范围 | 约束 |
-| --- | --- | --- |
-| 仓温下限 `chamberMinC` | 0–90 ℃ | 与上限至少相差 5 ℃ |
-| 仓温上限 `chamberMaxC` | 5–100 ℃ | 同上 |
-| 最低风速 `fanMinPercent` | 0–100 % | 不高于最高风速 |
-| 最高风速 `fanMaxPercent` | 0–100 % | 不低于最低风速 |
-| 结束排气风速 `postExhaustPercent` | 0–100 % | — |
-| 结束排气时长 `postExhaustSeconds` | 0–1800 s | 0 表示关闭结束排气 |
+| 参数                          | 允许范围     | 约束          |
+| --------------------------- | -------- | ----------- |
+| 仓温下限 `chamberMinC`          | 0–90 ℃   | 与上限至少相差 5 ℃ |
+| 仓温上限 `chamberMaxC`          | 5–100 ℃  | 同上          |
+| 最低风速 `fanMinPercent`        | 0–100 %  | 不高于最高风速     |
+| 最高风速 `fanMaxPercent`        | 0–100 %  | 不低于最低风速     |
+| 结束排气风速 `postExhaustPercent` | 0–100 %  | —           |
+| 结束排气时长 `postExhaustSeconds` | 0–1800 s | 0 表示关闭结束排气  |
 
 编码器编辑步长（`adjustProfile()`）：仓温上下限 ±1 ℃、风速 ±1 %（受互相约束）、结束排气风速 ±5 %、结束排气时长 ±30 s（上限 1800 s）。
+
 
 安全阈值与限流：
 
