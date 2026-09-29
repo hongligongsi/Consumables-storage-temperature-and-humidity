@@ -835,6 +835,20 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   g.drawString(dateBuf, 150, 46);
   g.setTextDatum(MR_DATUM);
   g.drawString(timeBuf, 290, 46);
+  // WiFi 扇形信号图标,位于日期与时间之间:联网绿色,断网灰色并加红斜杠。
+  {
+    const int16_t wx = 207, wy = 52;
+    const uint16_t wc = s.networkConnected ? GOOD : MUTED;
+    g.drawCircle(wx, wy, 7, wc);
+    g.fillRect(wx - 8, wy + 1, 17, 8, PANEL); // 抹掉下半圆,只留上弧
+    g.drawCircle(wx, wy, 12, wc);
+    g.fillRect(wx - 13, wy + 1, 27, 13, PANEL);
+    g.fillCircle(wx, wy, 2, wc);
+    if (!s.networkConnected) {
+      g.drawLine(wx - 9, wy - 11, wx + 9, wy + 7, G_RED);
+      g.drawLine(wx - 8, wy - 11, wx + 10, wy + 7, G_RED);
+    }
+  }
   g.setTextDatum(MC_DATUM);
 
   const bool toggled[] = {s.autoExhaust, s.autoTemperature, s.postPrintExhaust};
