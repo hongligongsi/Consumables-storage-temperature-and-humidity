@@ -835,18 +835,20 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   g.drawString(dateBuf, 150, 46);
   g.setTextDatum(MR_DATUM);
   g.drawString(timeBuf, 290, 46);
-  // WiFi 扇形信号图标,位于日期与时间之间:联网绿色,断网灰色并加红斜杠。
+  // WiFi 扇形信号图标,紧跟状态文字之后:联网绿色,断网灰色并加红斜杠。
   {
-    const int16_t wx = 207, wy = 52;
+    const char *st =
+        s.manualExhaust ? (chinese ? "强制排气" : "MANUAL PURGE") : tx.state;
+    const int16_t wx = 24 + g.textWidth(st) + 12, wy = 50;
     const uint16_t wc = s.networkConnected ? GOOD : MUTED;
-    g.drawCircle(wx, wy, 7, wc);
-    g.fillRect(wx - 8, wy + 1, 17, 8, PANEL); // 抹掉下半圆,只留上弧
-    g.drawCircle(wx, wy, 12, wc);
-    g.fillRect(wx - 13, wy + 1, 27, 13, PANEL);
+    g.drawCircle(wx, wy, 9, wc);
+    g.fillRect(wx - 10, wy + 1, 21, 9, PANEL); // 抹掉下半圆,只留上弧
+    g.drawCircle(wx, wy, 5, wc);
+    g.fillRect(wx - 6, wy + 1, 13, 6, PANEL);
     g.fillCircle(wx, wy, 2, wc);
     if (!s.networkConnected) {
-      g.drawLine(wx - 9, wy - 11, wx + 9, wy + 7, G_RED);
-      g.drawLine(wx - 8, wy - 11, wx + 10, wy + 7, G_RED);
+      g.drawLine(wx - 7, wy - 9, wx + 7, wy + 5, G_RED);
+      g.drawLine(wx - 6, wy - 9, wx + 8, wy + 5, G_RED);
     }
   }
   g.setTextDatum(MC_DATUM);
@@ -932,7 +934,10 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
     const int16_t x = 300 + (i & 1) * 89;
     const int16_t y = 4 + (i >> 1) * 60;
     char value[12];
-    const uint8_t baseDec = (i == 0 || i == 4) ? 0 : 1;
+    uint8_t baseDec = (i == 0 || i == 4) ? 0 : 1;
+    // 温度超过 100 不再显示小数(如 104.3 → 104),短值保留一位小数。
+    if (baseDec && values[i] >= 100.0f)
+      baseDec = 0;
     formatValue(value, sizeof(value), values[i], baseDec);
     // 图标底衬右缘约 x+27,数字右缘 x+83,可用 56px。
     if (!isnan(values[i]) && g.textWidth(value) > 56) {
