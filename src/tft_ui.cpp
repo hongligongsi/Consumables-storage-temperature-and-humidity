@@ -872,12 +872,24 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
            s.postExhaustSeconds);
   g.drawString(line, 288, 220);
 
+  // 仪表名与单位合成一行底部说明(如 "电压 V"、"主控 ℃"),居中排布。
+  const float values[] = {static_cast<float>(s.exhaustPercent),
+                          s.mcuC,
+                          s.humidity,
+                          s.chamberC,
+                          static_cast<float>(s.heaterFanPercent),
+                          s.heaterBoardC,
+                          s.voltageV,
+                          s.currentA};
+  const char *units[] = {"%", "℃", "%", "℃", "%", "℃", "V", "A"};
   for (uint8_t i = 0; i < 8; ++i) {
     const int16_t x = 300 + (i & 1) * 89;
     const int16_t y = 4 + (i >> 1) * 60;
+    char cap[24];
+    snprintf(cap, sizeof(cap), "%s %s", tx.gauges[i], units[i]);
     g.setTextColor(MUTED, PANEL);
     g.setTextDatum(MC_DATUM);
-    g.drawString(tx.gauges[i], x + 43, y + 40);
+    g.drawString(cap, x + 43, y + 40);
   }
   for (uint8_t i = 0; i < 5; ++i) {
     const int16_t x = 4 + i * 95;
@@ -898,20 +910,9 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   }
   g.unloadFont();
 
-  // Render the eight live values: 大数字(CN26)在上、小单位(CN16)贴右缘
-  // 挂在其下,温度用 ℃(字库含 U+2103)。数字统一白色,状态色交给图标与
-  // 微型进度条;仅热板超限时数字转红。数字超宽(≥100/负温)自动退为整数。
-  // 坐标按字形墨迹测算:CN26 数字基线 = 中心+10,墨迹约占中心±10;
-  // CN16 基线 = 中心+6,℃ 墨迹为中心±7。
-  const float values[] = {static_cast<float>(s.exhaustPercent),
-                          s.mcuC,
-                          s.humidity,
-                          s.chamberC,
-                          static_cast<float>(s.heaterFanPercent),
-                          s.heaterBoardC,
-                          s.voltageV,
-                          s.currentA};
-  const char *units[] = {"%", "℃", "%", "℃", "%", "℃", "V", "A"};
+  // Render the eight live values: 大数字(CN26)右对齐、垂直居中于格子
+  // 上半区,单位已并入底部仪表名行。数字统一白色,状态色交给图标与
+  // 微型进度条;仅热板超限时数字转红。超宽(≥100/负温)自动退为整数。
   g.loadFont(FontCN26);
   for (uint8_t i = 0; i < 8; ++i) {
     const int16_t x = 300 + (i & 1) * 89;
@@ -927,18 +928,7 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
                        s.heaterBoardC >= s.heaterBoardLimitC;
     g.setTextColor(fault ? G_RED : TEXT, PANEL);
     g.setTextDatum(MR_DATUM);
-    g.drawString(value, x + 83, y + 12);
-  }
-  g.unloadFont();
-  g.loadFont(FontCN16);
-  for (uint8_t i = 0; i < 8; ++i) {
-    if (!units[i][0] || isnan(values[i]))
-      continue;
-    const int16_t x = 300 + (i & 1) * 89;
-    const int16_t y = 4 + (i >> 1) * 60;
-    g.setTextColor(TEXT, PANEL);
-    g.setTextDatum(MR_DATUM);
-    g.drawString(units[i], x + 83, y + 30);
+    g.drawString(value, x + 83, y + 15);
   }
   g.unloadFont();
   g.setTextDatum(TL_DATUM);
