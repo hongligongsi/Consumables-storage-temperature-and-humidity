@@ -21,41 +21,53 @@ constexpr int16_t SCREEN_W = 480; // 横屏宽(像素)
 constexpr int16_t SCREEN_H = 320; // 横屏高(像素)
 
 // 运行期调色板:日/夜两套配色,由 drawFrame 按快照的 theme 选择。
-// 参考图风格改版:夜间 = 亮蓝 iOS 风(蓝底白字、iOS 蓝色开关、黄色激活态、
-// 大数值配小单位);日间 = 同一设计语言的浅蓝白配色。色值均为 RGB888
-// 设计稿换算的 RGB565。
+// 一比一还原 printer-hmi-redesign.html:夜间 = 设计稿深色 HMI token
+// (青=气流 橙=温度 蓝=湿度 紫=电气,绿/黄/红 = 状态语义);
+// 日间 = 同一语义结构的浅色适配。色值均为设计稿 RGB888 换算的 RGB565。
 struct Palette {
   uint16_t bg;       // 页面底色
-  uint16_t panel;    // 面板/未选中行底色
-  uint16_t panelAlt; // 顶栏/按钮底色
-  uint16_t border;   // 描边
-  uint16_t muted;    // 次要文字
-  uint16_t text;     // 主要文字
-  uint16_t active;   // 选中行/激活按钮底色
-  uint16_t accent;   // 强调色
-  uint16_t warn;     // 告警/焦点色
-  uint16_t good;     // 正常/联网色
+  uint16_t panel;    // 卡片底色
+  uint16_t panelAlt; // 次级底色(开关轨道/输入底)
+  uint16_t border;   // 分隔线/描边
+  uint16_t line2;    // 高一级描边(箭头圆钮/开关关闭态)
+  uint16_t muted;    // 次要文字 t2
+  uint16_t ink3;     // 三级文字 t3
+  uint16_t text;     // 主要文字 t1
+  uint16_t active;   // 选中行底色
+  uint16_t accent;   // 强调青
+  uint16_t warn;     // 注意黄(=语义 amber)
+  uint16_t good;     // 正常绿
   uint16_t maroon;   // 故障页标题条
   uint16_t gRed;
   uint16_t gYellow;
-  uint16_t gMagenta;
+  uint16_t gMagenta; // 电气紫
   uint16_t gCyan;
+  uint16_t sky;      // 湿度蓝
+  uint16_t violet;   // 电气紫(=gMagenta)
+  uint16_t orange;   // 温度橙
+  uint16_t lamp;     // 灯光黄
 };
 
-constexpr Palette kNightPalette = {0x1B7A, 0x12B7, 0x0A33, 0x3C3C, 0xAE5E,
-                                   0xFFFF, 0x2BDD, 0x4E1E, 0xFEA7, 0x4EE9,
-                                   0xB145, 0xFA8A, 0xFEA7, 0xFB56, 0x5E5F};
+constexpr Palette kNightPalette = {0x0882, 0x1905, 0x2166, 0x29A8, 0x3A2A,
+                                   0xADB8, 0x7C73, 0xEF9E, 0x19E9, 0x3EBC,
+                                   0xFDA8, 0x46CF, 0x50C4, 0xFAEB, 0xFDA8,
+                                   0xB47F, 0x3EBC, 0x5D5F, 0xB47F, 0xFC47,
+                                   0xFE88};
 
-constexpr Palette kDayPalette = {0xEF9F, 0xFFFF, 0xD73F, 0xB67D, 0x5B91,
-                                 0x0908, 0xCF3F, 0x03DF, 0xDC80, 0x2D89,
-                                 0x88E3, 0xD9A6, 0xC440, 0xC233, 0x0C3F};
+constexpr Palette kDayPalette = {0xEF9E, 0xFFFF, 0xF7BE, 0xDF3D, 0xCEBC,
+                                 0x42AD, 0x63B0, 0x1926, 0xD77E, 0x0D57,
+                                 0xD402, 0x1D4B, 0x8967, 0xD228, 0xD402,
+                                 0x7A78, 0x0D57, 0x2BFA, 0x7A78, 0xEB43,
+                                 0xCD01};
 
 // 当前生效配色。渲染任务单线程写,drawFrame 每帧按快照主题刷新。
 uint16_t BG = kNightPalette.bg;
 uint16_t PANEL = kNightPalette.panel;
 uint16_t PANEL_ALT = kNightPalette.panelAlt;
 uint16_t BORDER = kNightPalette.border;
+uint16_t LINE2 = kNightPalette.line2;
 uint16_t MUTED = kNightPalette.muted;
+uint16_t INK3 = kNightPalette.ink3;
 uint16_t TEXT = kNightPalette.text;
 uint16_t ACTIVE = kNightPalette.active;
 uint16_t ACCENT = kNightPalette.accent;
@@ -66,6 +78,10 @@ uint16_t G_RED = kNightPalette.gRed;
 uint16_t G_YELLOW = kNightPalette.gYellow;
 uint16_t G_MAGENTA = kNightPalette.gMagenta;
 uint16_t G_CYAN = kNightPalette.gCyan;
+uint16_t SKY = kNightPalette.sky;
+uint16_t VIOLET = kNightPalette.violet;
+uint16_t ORANGE = kNightPalette.orange;
+uint16_t LAMP = kNightPalette.lamp;
 
 // 按主题号(0=日 1=夜)把整套调色板复制到上面的全局颜色变量;
 // drawFrame 每帧开头调用,所以切换主题下一帧即生效。
@@ -75,7 +91,9 @@ void applyPalette(uint8_t theme) {
   PANEL = p.panel;
   PANEL_ALT = p.panelAlt;
   BORDER = p.border;
+  LINE2 = p.line2;
   MUTED = p.muted;
+  INK3 = p.ink3;
   TEXT = p.text;
   ACTIVE = p.active;
   ACCENT = p.accent;
@@ -86,6 +104,23 @@ void applyPalette(uint8_t theme) {
   G_YELLOW = p.gYellow;
   G_MAGENTA = p.gMagenta;
   G_CYAN = p.gCyan;
+  SKY = p.sky;
+  VIOLET = p.violet;
+  ORANGE = p.orange;
+  LAMP = p.lamp;
+}
+
+// 前景色以 num/256 不透明度线性混入底色(RGB565 各通道插值)。
+// 用于设计稿里的 rgba 半透明:胶囊底 10%、描边 38%、图标盒 12% 等,
+// 运行时混合省掉为每个主题硬编码一整套预混合色。
+uint16_t mix(uint16_t fg, uint16_t bgc, uint8_t num) {
+  const uint32_t r1 = (fg >> 11) & 0x1F, g1 = (fg >> 5) & 0x3F, b1 = fg & 0x1F;
+  const uint32_t r2 = (bgc >> 11) & 0x1F, g2 = (bgc >> 5) & 0x3F,
+                 b2 = bgc & 0x1F;
+  return static_cast<uint16_t>(((r1 * num + r2 * (256 - num) + 128) >> 8)
+                                   << 11 |
+                               ((g1 * num + g2 * (256 - num) + 128) >> 8) << 5 |
+                               ((b1 * num + b2 * (256 - num) + 128) >> 8));
 }
 
 TFT_eSPI tft;                        // 底层屏幕驱动(SPI)
@@ -93,18 +128,8 @@ TFT_eSprite frame(&tft);             // 全屏离屏画布(双缓冲时两块帧
 QueueHandle_t renderQueue = nullptr; // 长度 1 的快照队列(主循环 → 渲染任务)
 bool spriteReady = false;            // 双缓冲 sprite 是否成功建立
 
-// 右侧 2x4 仪表的顺序:外排/主控/湿度/仓温/热风/热板/电压/电流(按 UI 标注图),
-// 数值数组与 texts().gauges 都按此枚举下标排列。
-enum class GaugeIcon : uint8_t {
-  Exhaust,
-  Mcu,
-  Humidity,
-  Chamber,
-  HeaterFan,
-  HeaterBoard,
-  Voltage,
-  Current
-};
+// 右侧 2x4 监控 tile 的显示顺序:外排/主控/湿度/仓温/热风/热板/电压/电流,
+// 数值数组、texts().gauges 与图标函数都按此下标排列。
 // 底部五个常驻按钮:人感状态/系统开关/预热/灯光/系统设置入口。
 enum class ButtonIcon : uint8_t { Idle, Print, Preheat, Light, Settings };
 
@@ -163,113 +188,140 @@ Texts texts(const UiSnapshot &s) {
   return out;
 }
 
-// 用基础图元手绘 8 个仪表小图标(风扇/芯片/水滴/仓体/热风/热板/闪电/表头),
-// 全部以 (x,y) 为中心,避免引入图标位图资源。
-void drawGaugeIcon(TFT_eSPI &g, GaugeIcon icon, int16_t x, int16_t y,
-                   uint16_t c) {
-  switch (icon) {
-  case GaugeIcon::Exhaust:
-  case GaugeIcon::HeaterFan: {
-    g.drawCircle(x, y, 9, c);
-    g.fillCircle(x, y, 2, c);
-    for (uint8_t i = 0; i < 4; ++i) {
-      const float a = i * 1.5708f;
-      const int16_t x1 = x + lroundf(cosf(a) * 3),
-                    y1 = y + lroundf(sinf(a) * 3);
-      const int16_t x2 = x + lroundf(cosf(a + .55f) * 8),
-                    y2 = y + lroundf(sinf(a + .55f) * 8);
-      g.drawLine(x1, y1, x2, y2, c);
-      g.drawLine(x1 + (y2 - y1) / 3, y1 - (x2 - x1) / 3, x2, y2, c);
-    }
-    if (icon == GaugeIcon::HeaterFan) {
-      g.drawFastHLine(x - 8, y + 12, 5, WARN);
-      g.drawFastHLine(x + 3, y + 12, 5, WARN);
+// 监控 tile 的小尺寸线性图标(11px 内径,对应设计稿 18px 图标的 4/9 缩放),
+// 顺序与 GaugeIcon 枚举一致:风扇/芯片/水滴/仓体/风线/热板/闪电/表盘。
+void drawTileIcon(TFT_eSPI &g, uint8_t i, int16_t x, int16_t y, uint16_t c) {
+  switch (i) {
+  case 0: // 外排:风扇
+    g.drawCircle(x, y, 5, c);
+    g.fillCircle(x, y, 1, c);
+    for (uint8_t k = 0; k < 3; ++k) {
+      const float a = k * 2.0944f - 1.5708f;
+      g.drawLine(x + lroundf(cosf(a) * 2), y + lroundf(sinf(a) * 2),
+                 x + lroundf(cosf(a) * 5), y + lroundf(sinf(a) * 5), c);
     }
     break;
-  }
-  case GaugeIcon::Mcu:
-    g.drawRect(x - 7, y - 7, 15, 15, c);
-    g.drawRect(x - 3, y - 3, 7, 7, c);
-    for (int8_t i = -6; i <= 6; i += 4) {
-      g.drawFastHLine(x - 11, y + i, 4, c);
-      g.drawFastHLine(x + 8, y + i, 4, c);
-      g.drawFastVLine(x + i, y - 11, 4, c);
-      g.drawFastVLine(x + i, y + 8, 4, c);
+  case 4: // 热风:风线
+    g.drawFastHLine(x - 5, y - 4, 7, c);
+    g.drawFastVLine(x + 2, y - 6, 2, c);
+    g.drawFastHLine(x - 5, y, 10, c);
+    g.drawFastVLine(x + 5, y - 2, 2, c);
+    g.drawFastHLine(x - 5, y + 4, 4, c);
+    g.drawFastVLine(x - 1, y + 2, 2, c);
+    break;
+  case 1: // 主控:芯片
+    g.drawRect(x - 4, y - 4, 9, 9, c);
+    g.drawRect(x - 1, y - 1, 3, 3, c);
+    for (int8_t t = -3; t <= 3; t += 3) {
+      g.drawFastVLine(x + t, y - 7, 2, c);
+      g.drawFastVLine(x + t, y + 6, 2, c);
+      g.drawFastHLine(x - 7, y + t, 2, c);
+      g.drawFastHLine(x + 6, y + t, 2, c);
     }
     break;
-  case GaugeIcon::Humidity:
-    g.drawCircle(x, y + 3, 7, c);
-    g.drawLine(x, y - 11, x - 6, y - 1, c);
-    g.drawLine(x, y - 11, x + 6, y - 1, c);
+  case 2: // 湿度:水滴
+    g.drawCircle(x, y + 1, 4, c);
+    g.drawLine(x, y - 6, x - 4, y - 1, c);
+    g.drawLine(x, y - 6, x + 4, y - 1, c);
     break;
-  case GaugeIcon::Chamber:
-    g.drawLine(x - 10, y - 2, x, y - 11, c);
-    g.drawLine(x, y - 11, x + 10, y - 2, c);
-    g.drawRect(x - 8, y - 2, 16, 12, c);
-    g.drawFastVLine(x, y + 2, 7, c);
+  case 3: // 仓温:仓体
+    g.drawLine(x - 6, y - 1, x, y - 6, c);
+    g.drawLine(x, y - 6, x + 6, y - 1, c);
+    g.drawRect(x - 4, y - 1, 9, 7, c);
     break;
-  case GaugeIcon::HeaterBoard:
-    g.drawRoundRect(x - 11, y - 8, 22, 16, 3, c);
-    g.drawLine(x - 7, y + 3, x - 3, y - 3, c);
-    g.drawLine(x - 3, y - 3, x + 1, y + 3, c);
-    g.drawLine(x + 1, y + 3, x + 5, y - 3, c);
-    g.drawLine(x + 5, y - 3, x + 8, y + 2, c);
+  case 5: // 热板:加热床
+    g.drawRoundRect(x - 6, y + 1, 13, 4, 2, c);
+    for (int8_t t = -4; t <= 4; t += 4)
+      g.drawFastVLine(x + t, y - 3, 3, c);
     break;
-  case GaugeIcon::Voltage:
-    g.drawLine(x + 2, y - 12, x - 7, y + 2, c);
-    g.drawLine(x - 7, y + 2, x, y + 1, c);
-    g.drawLine(x, y + 1, x - 3, y + 12, c);
-    g.drawLine(x - 3, y + 12, x + 7, y - 2, c);
-    g.drawLine(x + 7, y - 2, x, y - 1, c);
-    g.drawLine(x, y - 1, x + 2, y - 12, c);
+  case 6: // 电压:闪电
+    g.drawLine(x + 2, y - 7, x - 4, y + 1, c);
+    g.drawLine(x - 4, y + 1, x, y + 1, c);
+    g.drawLine(x, y + 1, x - 2, y + 7, c);
+    g.drawLine(x - 2, y + 7, x + 4, y - 1, c);
+    g.drawLine(x + 4, y - 1, x + 1, y - 1, c);
+    g.drawLine(x + 1, y - 1, x + 2, y - 7, c);
     break;
-  case GaugeIcon::Current:
-    g.drawCircle(x, y, 10, c);
-    g.drawLine(x, y, x + 5, y - 6, c);
-    g.drawFastHLine(x - 6, y + 5, 12, c);
-    g.fillCircle(x, y, 2, c);
+  case 7: // 电流:表盘
+    g.drawCircle(x, y + 2, 6, c);
+    g.fillRect(x - 7, y + 3, 15, 6, PANEL); // 抹掉下半圆,只留表盘弧
+    g.drawLine(x, y + 2, x + 3, y - 3, c);
+    g.fillCircle(x, y + 2, 1, c);
     break;
   }
 }
 
-// 手绘底部 5 个按钮图标(人感/打印播放/预热火焰/灯泡/设置齿轮)。
-void drawBottomIcon(TFT_eSPI &g, ButtonIcon icon, int16_t x, int16_t y,
-                    uint16_t c) {
+// 左列控制卡的 13px 线性图标(设计稿 22px 图标缩放):风扇/仓体/排风线。
+void drawCtlIcon(TFT_eSPI &g, uint8_t i, int16_t x, int16_t y, uint16_t c) {
+  switch (i) {
+  case 0: // 排气风扇
+    g.drawCircle(x, y, 6, c);
+    g.fillCircle(x, y, 2, c);
+    for (uint8_t k = 0; k < 3; ++k) {
+      const float a = k * 2.0944f - 1.5708f;
+      g.drawLine(x + lroundf(cosf(a) * 2), y + lroundf(sinf(a) * 2),
+                 x + lroundf(cosf(a) * 6), y + lroundf(sinf(a) * 6), c);
+    }
+    break;
+  case 1: // 打印仓温:仓体
+    g.drawLine(x - 7, y, x, y - 6, c);
+    g.drawLine(x, y - 6, x + 7, y, c);
+    g.drawRect(x - 5, y, 10, 7, c);
+    break;
+  case 2: // 打印结束排气:风线
+    g.drawFastHLine(x - 6, y - 4, 8, c);
+    g.drawFastVLine(x + 2, y - 6, 2, c);
+    g.drawFastHLine(x - 6, y, 11, c);
+    g.drawFastVLine(x + 5, y - 2, 2, c);
+    g.drawFastHLine(x - 6, y + 4, 5, c);
+    g.drawFastVLine(x - 1, y + 2, 2, c);
+    break;
+  }
+}
+
+// 底栏 5 个 14px 线性图标(设计稿:雷达/播放/火焰/灯泡/齿轮)。
+void drawNavIcon(TFT_eSPI &g, ButtonIcon icon, int16_t x, int16_t y,
+                 uint16_t c) {
   switch (icon) {
-  case ButtonIcon::Idle:
-    g.drawCircle(x, y, 9, c);
-    g.drawFastVLine(x, y - 12, 10, c);
+  case ButtonIcon::Idle: // 人感雷达
+    g.drawCircle(x, y, 6, c);
+    g.drawFastVLine(x, y - 10, 3, c);
+    g.drawFastVLine(x, y + 7, 3, c);
+    g.drawFastHLine(x - 10, y, 3, c);
+    g.drawFastHLine(x + 7, y, 3, c);
+    g.fillCircle(x, y, 1, c);
     break;
   case ButtonIcon::Print:
-    g.fillTriangle(x - 6, y - 9, x - 6, y + 9, x + 9, y, c);
+    g.fillTriangle(x - 4, y - 6, x - 4, y + 6, x + 7, y, c);
     break;
-  case ButtonIcon::Preheat:
-    g.drawCircle(x, y + 5, 7, c);
-    g.drawLine(x, y - 12, x - 6, y + 2, c);
-    g.drawLine(x, y - 12, x + 6, y + 2, c);
+  case ButtonIcon::Preheat: // 火焰
+    g.drawCircle(x, y + 2, 5, c);
+    g.drawLine(x - 2, y - 2, x, y - 9, c);
+    g.drawLine(x + 2, y - 2, x, y - 9, c);
     break;
-  case ButtonIcon::Light:
-    g.drawCircle(x, y - 3, 8, c);
-    g.drawFastHLine(x - 5, y + 7, 10, c);
-    g.drawFastHLine(x - 3, y + 10, 6, c);
+  case ButtonIcon::Light: // 灯泡
+    g.drawCircle(x, y - 2, 5, c);
+    g.drawFastHLine(x - 3, y + 5, 6, c);
+    g.drawFastHLine(x - 2, y + 8, 4, c);
     break;
-  case ButtonIcon::Settings:
-    g.drawCircle(x, y, 10, c);
-    g.drawCircle(x, y, 4, c);
-    g.drawFastVLine(x - 1, y - 13, 3, c);
-    g.drawFastVLine(x - 1, y + 11, 3, c);
-    g.drawFastHLine(x - 13, y - 1, 3, c);
-    g.drawFastHLine(x + 11, y - 1, 3, c);
+  case ButtonIcon::Settings: // 齿轮
+    g.drawCircle(x, y, 6, c);
+    g.fillCircle(x, y, 2, c);
+    for (uint8_t k = 0; k < 8; ++k) {
+      const float a = k * 0.7854f;
+      g.drawLine(x + lroundf(cosf(a) * 6), y + lroundf(sinf(a) * 6),
+                 x + lroundf(cosf(a) * 9), y + lroundf(sinf(a) * 9), c);
+    }
     break;
   }
 }
 
-// iOS 风格滑动开关:48x22 圆角轨道 + 圆点,enabled 决定轨道色与圆点位置。
-// 美化:关闭态浅底暗描边+灰色圆点,开启态轨道同色描边,层次更清晰。
+// 滑动开关:48x22 圆角轨道 + 圆点,对应设计稿 56x32 开关的 4/9 缩放。
+// 设计稿色彩心智:开启 = 绿色轨道 + 近白圆点;关闭 = 深灰轨道 + 灰圆点。
 void drawToggle(TFT_eSPI &g, int16_t x, int16_t y, bool enabled, uint16_t c) {
   g.fillRoundRect(x, y, 48, 22, 11, enabled ? c : PANEL_ALT);
-  g.drawRoundRect(x, y, 48, 22, 11, enabled ? c : BORDER);
-  g.fillCircle(enabled ? x + 37 : x + 11, y + 11, 9, enabled ? TEXT : MUTED);
+  g.drawRoundRect(x, y, 48, 22, 11, enabled ? c : LINE2);
+  g.fillCircle(enabled ? x + 37 : x + 11, y + 11, 9, enabled ? 0xF2FB : INK3);
 }
 
 // 仪表数值格式化:NAN(传感器无效)统一显示 "--",否则按 0/1 位小数输出,
@@ -282,14 +334,57 @@ void formatValue(char *dest, size_t size, float value, uint8_t decimals = 0) {
   snprintf(dest, size, decimals ? "%.1f" : "%.0f", value);
 }
 
-uint16_t gaugeColor(uint8_t index, const UiSnapshot &s) {
+// 仪表家族色:青=气流(外排/热风) 橙=温度(主控/仓温/热板) 蓝=湿度 紫=电气,
+// 对应设计稿 f-cyan / f-orange / f-sky / f-violet 四个物理量家族。
+uint16_t familyColor(uint8_t index) {
   // 不能是 static:调色板随日夜切换,数组须每帧重建。
-  const uint16_t colors[] = {G_RED,     GOOD, G_YELLOW, WARN,
-                             G_MAGENTA, WARN, G_CYAN,   GOOD};
-  if (index == 5 && !isnan(s.heaterBoardC) &&
-      s.heaterBoardC >= s.heaterBoardLimitC)
-    return G_RED;
+  const uint16_t colors[] = {ACCENT, ORANGE, SKY,    ORANGE,
+                             ACCENT, ORANGE, VIOLET, VIOLET};
   return colors[index];
+}
+
+// 仪表状态灯:0 正常绿 / 1 注意黄 / 2 告警红 / -1 传感器无效(灰点)。
+// 阈值取自设计稿 st() 语义(外排 70/88、主控 55/64、湿度 55、仓温 32、
+// 热风 70/88、热板 70/78、电压 23.6~24.9、电流 9/10.2);
+// 热板超过固件保护限值时无条件告警。
+int8_t gaugeStatus(uint8_t index, const UiSnapshot &s) {
+  const float values[] = {static_cast<float>(s.exhaustPercent), s.mcuC,
+                          s.humidity,
+                          s.chamberC,
+                          static_cast<float>(s.heaterFanPercent),
+                          s.heaterBoardC, s.voltageV, s.currentA};
+  const float v = values[index];
+  if (isnan(v))
+    return -1;
+  switch (index) {
+  case 0: return v < 70 ? 0 : v < 88 ? 1 : 2;
+  case 1: return v < 55 ? 0 : v < 64 ? 1 : 2;
+  case 2: return v <= 55 ? 0 : 1;
+  case 3: return v < 32 ? 0 : 1;
+  case 4: return v < 70 ? 0 : v < 88 ? 1 : 2;
+  case 5:
+    if (!isnan(s.heaterBoardC) && s.heaterBoardC >= s.heaterBoardLimitC)
+      return 2;
+    return v < 70 ? 0 : v < 78 ? 1 : 2;
+  case 6: return (v > 23.6f && v < 24.9f) ? 0 : 1;
+  default: return v < 9 ? 0 : v < 10.2f ? 1 : 2;
+  }
+}
+
+// 量程条填充百分比:与设计稿 full() 映射一致,按工程量程归一化
+// (仓温 0-50℃、热板 0-120℃、电压 18-30V、电流 0-15A)。
+uint8_t gaugeFill(uint8_t index, float v) {
+  if (isnan(v))
+    return 0;
+  float p;
+  switch (index) {
+  case 0: case 1: case 2: case 4: p = v; break;
+  case 3: p = v * 2; break;
+  case 5: p = v / 1.2f; break;
+  case 6: p = (v - 18) / 12 * 100; break;
+  default: p = v / 15 * 100; break;
+  }
+  return static_cast<uint8_t>(constrain(p, 0.0f, 100.0f) + 0.5f);
 }
 
 // 底部前 4 个按钮的"激活态"来源各不相同:0=PIR 有人、1=系统使能、
@@ -684,22 +779,18 @@ void tintOtaBanner(TFT_eSPI &g, bool active, uint8_t pct) {
   g.fillRoundRect(px, py, (int16_t)((uint32_t)pw * pct / 100), ph, 4, 0x07E0);
 }
 
-// 主屏状态点的颜色:与状态灯优先级一致的简化映射(手动强排青、故障红、
-// 排气黄、打印蓝、预热紫、检测橙、待机绿)。
-uint16_t stateAccent(const UiSnapshot &s) {
+// 顶部状态胶囊颜色:手动强排青、故障红、检测/排气黄、预热橙,其余绿。
+uint16_t statusColor(const UiSnapshot &s) {
   if (s.manualExhaust)
-    return G_CYAN;
+    return ACCENT;
   switch (s.state) {
   case ChamberState::Fault:
     return G_RED;
   case ChamberState::Cooling:
-    return G_YELLOW;
-  case ChamberState::Printing:
-    return TEXT; // 打印态:蓝底上深蓝不可见,转白色
-  case ChamberState::Preheat:
-    return 0x78B6; // 预热紫(RGB 120,20,180)
   case ChamberState::Detecting:
     return WARN;
+  case ChamberState::Preheat:
+    return ORANGE;
   default:
     return GOOD;
   }
@@ -729,166 +820,18 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   const bool chinese = s.language == Language::Chinese;
   g.fillScreen(BG);
 
-  // Reference-style dashboard: wide control zone, compact 2 x 4 gauges,
-  // and a persistent five-button status bar.
-  g.fillRoundRect(4, 4, 292, 238, 12, PANEL);
-  g.drawRoundRect(4, 4, 292, 238, 12, BORDER);
-  // 行分隔统一为暗色细线,iOS 分组列表式:与行文字左缘对齐内嵌。
-  g.drawFastHLine(16, 60, 274, BORDER);
-  g.drawFastHLine(16, 120, 274, BORDER);
-  g.drawFastHLine(16, 180, 274, BORDER);
-  g.drawFastHLine(16, 239, 274, BORDER);
-  // 每行左侧识别色条:排风/仓温/打印后排风(随调色板,须每帧重建)。
-  const uint16_t rowAccents[3] = {ACCENT, G_YELLOW, G_CYAN};
-  for (uint8_t i = 0; i < 3; ++i) {
-    const int16_t y = 62 + i * 60;
-    g.fillRoundRect(8, y + 9, 3, 38, 1, rowAccents[i]);
-  }
+  // 一比一还原 printer-hmi-redesign.html:1080x720 设计稿按 4/9 等比缩放。
+  // 顶栏信息带(6,6,468x44) | 左列 3 行控制卡(6,56,247x186,行高 62) |
+  // 右侧 2x4 监控矩阵(105x42,起 x259) | 底栏 5 键(88x66,y248)。
+  // 卡片锚点同时贴合触摸热区:材料箭头 x58-106/x184-230(y<60)、
+  // 中间 x108-182 打开耗材设置、开关列 x132-208(y62-244)、底栏 y>=246。
+  g.fillRoundRect(6, 6, 468, 44, 8, PANEL);
+  g.drawRoundRect(6, 6, 468, 44, 8, BORDER);
+  g.fillRoundRect(6, 56, 247, 186, 8, PANEL);
+  g.drawRoundRect(6, 56, 247, 186, 8, BORDER);
+  g.drawFastHLine(18, 118, 222, BORDER);
+  g.drawFastHLine(18, 180, 222, BORDER);
 
-  // Right hand 2 x 4 instrument grid: 图标底衬 + 底部微型进度条。
-  for (uint8_t i = 0; i < 8; ++i) {
-    const int16_t x = 300 + (i & 1) * 89;
-    const int16_t y = 4 + (i >> 1) * 60;
-    const uint16_t c = gaugeColor(i, s);
-    g.fillRoundRect(x, y, 87, 56, 9, PANEL);
-    g.drawRoundRect(x, y, 87, 56, 9, BORDER);
-    g.fillCircle(x + 15, y + 15, 11, PANEL_ALT); // 图标底衬圆片
-    drawGaugeIcon(g, static_cast<GaugeIcon>(i), x + 15, y + 15, c);
-    // 百分比型仪表(外排/湿度/热风)按实时值填充进度,其余画满宽状态色条。
-    g.fillRoundRect(x + 3, y + 50, 81, 4, 2, PANEL_ALT);
-    if (i == 0 || i == 2 || i == 4) {
-      const float v = i == 0   ? static_cast<float>(s.exhaustPercent)
-                      : i == 2 ? s.humidity
-                               : static_cast<float>(s.heaterFanPercent);
-      if (!isnan(v)) {
-        const int w =
-            static_cast<int>(constrain(v, 0.0f, 100.0f) * 0.81f + 0.5f);
-        if (w > 0)
-          g.fillRoundRect(x + 3, y + 50, w, 4, 2, c);
-      }
-    } else {
-      g.fillRoundRect(x + 3, y + 50, 81, 4, 2, c);
-    }
-  }
-
-  // Bottom five action buttons. 参考图式激活态:底色不变,图标/文字/描边
-  // 转为黄色,底部小色条同步黄色。
-  for (uint8_t i = 0; i < 5; ++i) {
-    const int16_t x = 4 + i * 95;
-    const bool active = buttonActive(i, s);
-    const bool focused = (i == 1 && s.mainFocus == MainFocus::System) ||
-                         (i == 2 && s.mainFocus == MainFocus::Preheat) ||
-                         (i == 3 && s.mainFocus == MainFocus::Light) ||
-                         (i == 4 && s.mainFocus == MainFocus::Settings);
-    g.fillRoundRect(x, 248, 91, 68, 10, PANEL_ALT);
-    g.drawRoundRect(x, 248, 91, 68, 10,
-                    focused ? TEXT : (active ? G_YELLOW : BORDER));
-    if (focused)
-      g.drawRoundRect(x + 2, 250, 87, 64, 8, WARN);
-    drawBottomIcon(g, static_cast<ButtonIcon>(i), x + 45, 268,
-                   active ? G_YELLOW : TEXT);
-    if (active) // 激活态底部小色条,强化“此路已开”的直觉
-      g.fillRoundRect(x + 24, 309, 43, 3, 1, G_YELLOW);
-  }
-
-  // Render all labels with the 16 px Chinese+ASCII VLW font.
-  g.loadFont(FontCN16);
-
-  // Material carousel and compact runtime status. 参考图:耗材名与箭头
-  // 均为白色,聚焦编辑时转黄色提示。
-  g.setTextDatum(MC_DATUM);
-  const uint16_t prevColor =
-      s.mainFocus == MainFocus::PreviousMaterial ? WARN : TEXT;
-  const uint16_t materialColor =
-      s.mainFocus == MainFocus::CurrentMaterial ? WARN : TEXT;
-  const uint16_t nextColor =
-      s.mainFocus == MainFocus::NextMaterial ? WARN : TEXT;
-  g.setTextColor(prevColor, PANEL);
-  g.drawString(s.previousMaterial, 35, 23);
-  g.fillCircle(82, 23, 13, PANEL_ALT); // 箭头底衬,立体按钮感
-  g.drawCircle(82, 23, 13, prevColor);
-  g.drawString("<", 82, 23);
-  g.setTextColor(materialColor, PANEL);
-  g.drawString(s.material, 145, 20);
-  if (s.mainFocus == MainFocus::CurrentMaterial)
-    g.drawFastHLine(122, 32, 46, WARN);
-  g.fillCircle(207, 23, 13, PANEL_ALT);
-  g.drawCircle(207, 23, 13, nextColor);
-  g.setTextColor(nextColor, PANEL);
-  g.drawString(">", 207, 23);
-  g.drawString(s.nextMaterial, 260, 23);
-  // 日期在耗材行下方居中(面板中心
-  // x=150),时间靠右对齐,状态文字左对齐与下方行标签同列。
-  char dateBuf[16];
-  char timeBuf[16];
-  formatClockField(dateBuf, sizeof(dateBuf), s.clock, true, false, 0);
-  formatClockField(timeBuf, sizeof(timeBuf), s.clock, false, false, 0);
-  g.setTextDatum(ML_DATUM);
-  const uint16_t stateColor = stateAccent(s);
-  g.fillCircle(15, 46, 4, stateColor); // 状态色点,一眼读出当前状态
-  g.setTextColor(stateColor, PANEL);
-  g.drawString(s.manualExhaust ? (chinese ? "强制排气" : "MANUAL PURGE")
-                               : tx.state,
-               24, 46);
-  g.setTextDatum(MC_DATUM);
-  g.setTextColor(s.networkConnected ? GOOD : MUTED, PANEL);
-  g.drawString(dateBuf, 150, 46);
-  g.setTextDatum(MR_DATUM);
-  g.drawString(timeBuf, 290, 46);
-  // WiFi 扇形信号图标,紧跟状态文字之后:联网绿色,断网灰色并加红斜杠。
-  {
-    const char *st =
-        s.manualExhaust ? (chinese ? "强制排气" : "MANUAL PURGE") : tx.state;
-    const int16_t wx = 24 + g.textWidth(st) + 12, wy = 50;
-    const uint16_t wc = s.networkConnected ? GOOD : MUTED;
-    g.drawCircle(wx, wy, 9, wc);
-    g.fillRect(wx - 10, wy + 1, 21, 9, PANEL); // 抹掉下半圆,只留上弧
-    g.drawCircle(wx, wy, 5, wc);
-    g.fillRect(wx - 6, wy + 1, 13, 6, PANEL);
-    g.fillCircle(wx, wy, 2, wc);
-    if (!s.networkConnected) {
-      g.drawLine(wx - 7, wy - 9, wx + 7, wy + 5, G_RED);
-      g.drawLine(wx - 6, wy - 9, wx + 8, wy + 5, G_RED);
-    }
-  }
-  g.setTextDatum(MC_DATUM);
-
-  const bool toggled[] = {s.autoExhaust, s.autoTemperature, s.postPrintExhaust};
-  const char *titlesZh[] = {"排气风扇", "打印仓温", "打印结束"};
-  const char *titlesEn[] = {"EXHAUST FAN", "CHAMBER TEMP", "PRINT FINISH"};
-  const char *subtitlesZh[] = {"自动控制", "自动控制", "开启排气"};
-  const char *subtitlesEn[] = {"AUTO CONTROL", "AUTO CONTROL", "POST EXHAUST"};
-  for (uint8_t i = 0; i < 3; ++i) {
-    const int16_t y = 62 + i * 60;
-    const bool focused = static_cast<uint8_t>(s.mainFocus) ==
-                         static_cast<uint8_t>(MainFocus::AutoExhaust) + i;
-    if (focused)
-      g.drawRoundRect(7, y, 286, 56, 4, WARN);
-    g.setTextDatum(ML_DATUM);
-    g.setTextColor(TEXT, PANEL);
-    g.drawString(chinese ? titlesZh[i] : titlesEn[i], 16, y + 14);
-    g.drawString(chinese ? subtitlesZh[i] : subtitlesEn[i], 16, y + 38);
-    drawToggle(g, 145, y + 18, toggled[i], G_CYAN); // iOS 式蓝色开关(参考图)
-  }
-
-  char line[32];
-  g.setTextDatum(MR_DATUM);
-  g.setTextColor(MUTED, PANEL);
-  snprintf(line, sizeof(line), "%s %u%%", tx.minimum, s.exhaustMinPercent);
-  g.drawString(line, 288, 76);
-  snprintf(line, sizeof(line), "%s %u%%", tx.maximum, s.exhaustMaxPercent);
-  g.drawString(line, 288, 100);
-  snprintf(line, sizeof(line), "%s %.0f℃", tx.minimum, s.profileMinC);
-  g.drawString(line, 288, 136);
-  snprintf(line, sizeof(line), "%s %.0f℃", tx.maximum, s.profileMaxC);
-  g.drawString(line, 288, 160);
-  snprintf(line, sizeof(line), "%s %u%%", tx.fanSpeed, s.postExhaustPercent);
-  g.drawString(line, 288, 196);
-  snprintf(line, sizeof(line), "%s %us", chinese ? "时间" : "TIME",
-           s.postExhaustSeconds);
-  g.drawString(line, 288, 220);
-
-  // 仪表名与单位合成一行底部说明(如 "电压 V"、"主控 ℃"),居中排布。
   const float values[] = {static_cast<float>(s.exhaustPercent),
                           s.mcuC,
                           s.humidity,
@@ -898,17 +841,165 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
                           s.voltageV,
                           s.currentA};
   const char *units[] = {"%", "℃", "%", "℃", "%", "℃", "V", "A"};
+  int16_t unitX[8];
+
+  // 监控矩阵卡壳 + 状态灯点 + 量程条(设计稿 tile:状态灯与量程条双编码)。
   for (uint8_t i = 0; i < 8; ++i) {
-    const int16_t x = 300 + (i & 1) * 89;
-    const int16_t y = 4 + (i >> 1) * 60;
-    char cap[24];
-    snprintf(cap, sizeof(cap), "%s %s", tx.gauges[i], units[i]);
-    g.setTextColor(MUTED, PANEL);
-    g.setTextDatum(MC_DATUM);
-    g.drawString(cap, x + 43, y + 40);
+    const int16_t x = 259 + (i & 1) * 110;
+    const int16_t y = 56 + (i >> 1) * 48;
+    const int8_t st = gaugeStatus(i, s);
+    const uint16_t stC =
+        st < 0 ? INK3 : st == 0 ? GOOD : st == 1 ? WARN : G_RED;
+    g.fillRoundRect(x, y, 105, 42, 7, PANEL);
+    g.drawRoundRect(x, y, 105, 42, 7, BORDER);
+    g.fillCircle(x + 97, y + 7, 2, stC); // 状态灯:绿/黄/红,无效灰
+    g.fillRoundRect(x + 7, y + 37, 91, 3, 1, mix(TEXT, PANEL, 13));
+    const uint8_t fill = gaugeFill(i, values[i]);
+    if (fill > 0) {
+      const uint16_t fam = familyColor(i);
+      g.fillRoundRect(x + 7, y + 37, fill * 91 / 100, 3, 1,
+                      st == 2 ? G_RED : st == 1 ? WARN : fam);
+    }
   }
+
+  // 底栏 5 键:激活态按设计稿语义配色(绿=开启/橙=预热/黄=灯光),
+  // 激活时底/边/图标/文字/底部色条同转该色。
   for (uint8_t i = 0; i < 5; ++i) {
-    const int16_t x = 4 + i * 95;
+    const int16_t x = 6 + i * 95;
+    const bool active = buttonActive(i, s);
+    const uint16_t c = i == 2 ? ORANGE : i == 3 ? LAMP : GOOD;
+    g.fillRoundRect(x, 248, 88, 66, 7, active ? mix(c, PANEL, 26) : PANEL);
+    g.drawRoundRect(x, 248, 88, 66, 7, active ? mix(c, PANEL, 97) : BORDER);
+    const bool focused = (i == 1 && s.mainFocus == MainFocus::System) ||
+                         (i == 2 && s.mainFocus == MainFocus::Preheat) ||
+                         (i == 3 && s.mainFocus == MainFocus::Light) ||
+                         (i == 4 && s.mainFocus == MainFocus::Settings);
+    if (focused)
+      g.drawRoundRect(x + 2, 250, 84, 62, 5, WARN);
+    drawNavIcon(g, static_cast<ButtonIcon>(i), x + 44, 268, active ? c : INK3);
+    if (active) // 设计稿底栏 ::after 小色条
+      g.fillRoundRect(x + 39, 300, 11, 3, 1, c);
+  }
+
+  // ---- 文本层 1:16px 中英 VLW ----
+  g.loadFont(FontCN16);
+
+  // 顶部信息带·材料轮播(锚定触摸热区);箭头为线性 chevron,
+  // 当前材料为青字胶囊(10% 青底 + 38% 青边),编码器聚焦转黄。
+  g.setTextDatum(MC_DATUM);
+  g.setTextColor(
+      s.mainFocus == MainFocus::PreviousMaterial ? WARN : MUTED, PANEL);
+  g.drawString(s.previousMaterial, 35, 17);
+  g.drawCircle(82, 17, 10,
+               s.mainFocus == MainFocus::PreviousMaterial ? WARN : LINE2);
+  g.drawLine(85, 12, 79, 17,
+             s.mainFocus == MainFocus::PreviousMaterial ? WARN : MUTED);
+  g.drawLine(79, 17, 85, 22,
+             s.mainFocus == MainFocus::PreviousMaterial ? WARN : MUTED);
+  {
+    const bool curFocus = s.mainFocus == MainFocus::CurrentMaterial;
+    const uint16_t chipBg =
+        curFocus ? mix(WARN, PANEL, 26) : mix(ACCENT, PANEL, 26);
+    const uint16_t chipBd =
+        curFocus ? mix(WARN, PANEL, 97) : mix(ACCENT, PANEL, 97);
+    const int16_t cw = g.textWidth(s.material) + 18;
+    g.fillRoundRect(145 - cw / 2, 7, cw, 20, 5, chipBg);
+    g.drawRoundRect(145 - cw / 2, 7, cw, 20, 5, chipBd);
+    g.setTextColor(curFocus ? WARN : ACCENT, chipBg);
+    g.drawString(s.material, 145, 17);
+  }
+  g.drawCircle(207, 17, 10,
+               s.mainFocus == MainFocus::NextMaterial ? WARN : LINE2);
+  g.drawLine(204, 12, 210, 17,
+             s.mainFocus == MainFocus::NextMaterial ? WARN : MUTED);
+  g.drawLine(210, 17, 204, 22,
+             s.mainFocus == MainFocus::NextMaterial ? WARN : MUTED);
+  g.setTextColor(MUTED, PANEL);
+  g.drawString(s.nextMaterial, 260, 17);
+
+  // 顶部信息带·状态胶囊:状态色点 + 状态文字 + WiFi 信号图标,
+  // 胶囊底/边为状态色 10%/35% 混合(设计稿 pill + 呼吸灯)。
+  const uint16_t sc = statusColor(s);
+  const uint16_t pillBg = mix(sc, PANEL, 26);
+  const char *st =
+      s.manualExhaust ? (chinese ? "强制排气" : "MANUAL PURGE") : tx.state;
+  const int16_t stw = g.textWidth(st);
+  g.fillRoundRect(12, 27, stw + 56, 20, 10, pillBg);
+  g.drawRoundRect(12, 27, stw + 56, 20, 10, mix(sc, PANEL, 89));
+  g.fillCircle(21, 37, 2, sc);
+  g.setTextDatum(ML_DATUM);
+  g.setTextColor(sc, pillBg);
+  g.drawString(st, 27, 37);
+  {
+    // WiFi 扇形信号(缩小到 r7 以放进胶囊):联网绿,断网灰加红斜杠。
+    const int16_t wx = 27 + stw + 14, wy = 37;
+    const uint16_t wc = s.networkConnected ? GOOD : MUTED;
+    g.drawCircle(wx, wy, 7, wc);
+    g.fillRect(wx - 8, wy + 1, 17, 7, pillBg); // 抹掉下半圆,只留上弧
+    g.drawCircle(wx, wy, 4, wc);
+    g.fillRect(wx - 5, wy + 1, 11, 4, pillBg);
+    g.fillCircle(wx, wy, 2, wc);
+    if (!s.networkConnected) {
+      g.drawLine(wx - 5, wy - 6, wx + 6, wy + 5, G_RED);
+      g.drawLine(wx - 4, wy - 6, wx + 7, wy + 5, G_RED);
+    }
+  }
+
+  // 顶部信息带·时钟日期(时间在 26px 数字层绘制,右对齐)。
+  char dateBuf[16];
+  char timeBuf[16];
+  formatClockField(dateBuf, sizeof(dateBuf), s.clock, true, false, 0);
+  formatClockField(timeBuf, sizeof(timeBuf), s.clock, false, false, 0);
+  g.setTextDatum(MR_DATUM);
+  g.setTextColor(INK3, PANEL);
+  g.drawString(dateBuf, 468, 39);
+
+  // 左列 3 行控制卡:族色识别条 + 图标盒 + 标题 + 参数行 + 绿色开关。
+  // 设计稿的 ± 步进按钮不还原(参数编辑走 EC11/耗材设置页),
+  // 参数就地显示为一行区间文本。
+  const bool toggled[] = {s.autoExhaust, s.autoTemperature, s.postPrintExhaust};
+  const char *titlesZh[] = {"排气风扇", "打印仓温", "打印结束"};
+  const char *titlesEn[] = {"EXHAUST FAN", "CHAMBER TEMP", "PRINT FINISH"};
+  for (uint8_t i = 0; i < 3; ++i) {
+    const int16_t y = 56 + i * 62;
+    const bool focused = static_cast<uint8_t>(s.mainFocus) ==
+                         static_cast<uint8_t>(MainFocus::AutoExhaust) + i;
+    if (focused)
+      g.drawRoundRect(8, y + 2, 243, 58, 6, WARN);
+    const uint16_t fam = i == 1 ? WARN : ACCENT; // 设计稿:行2 琥珀,行1/3 青
+    g.fillRoundRect(6, y + 4, 2, 54, 1, fam);
+    g.fillRoundRect(15, y + 21, 20, 20, 5, mix(fam, PANEL, 31));
+    drawCtlIcon(g, i, 25, y + 31, fam);
+    g.setTextDatum(ML_DATUM);
+    g.setTextColor(TEXT, PANEL);
+    g.drawString(chinese ? titlesZh[i] : titlesEn[i], 41, y + 18);
+    char par[24];
+    if (i == 0)
+      snprintf(par, sizeof(par), "%u%%~%u%%", s.exhaustMinPercent,
+               s.exhaustMaxPercent);
+    else if (i == 1)
+      snprintf(par, sizeof(par), "%.0f~%.0f℃", s.profileMinC, s.profileMaxC);
+    else
+      snprintf(par, sizeof(par), "%u%%·%us", s.postExhaustPercent,
+               s.postExhaustSeconds);
+    g.setTextColor(MUTED, PANEL);
+    g.drawString(par, 41, y + 37);
+    drawToggle(g, 145, y + 20, toggled[i], GOOD);
+  }
+
+  // 监控矩阵:族色小图标 + 标签。
+  for (uint8_t i = 0; i < 8; ++i) {
+    const int16_t x = 259 + (i & 1) * 110;
+    const int16_t y = 56 + (i >> 1) * 48;
+    drawTileIcon(g, i, x + 9, y + 7, familyColor(i));
+    g.setTextDatum(ML_DATUM);
+    g.setTextColor(MUTED, PANEL);
+    g.drawString(tx.gauges[i], x + 17, y + 7);
+  }
+
+  // 底栏按钮文字(动态状态文案,激活态转语义色)。
+  for (uint8_t i = 0; i < 5; ++i) {
+    const int16_t x = 6 + i * 95;
     const char *label = tx.buttons[i];
     if (i == 0)
       label = chinese ? (s.pirMotion ? "检测到" : "未检测")
@@ -920,34 +1011,45 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
       label = chinese ? (s.light ? "灯光开启" : "灯光关闭")
                       : (s.light ? "LIGHT ON" : "LIGHT OFF");
     const bool on = buttonActive(i, s);
-    g.setTextColor(on ? G_YELLOW : TEXT, PANEL_ALT);
+    const uint16_t c = i == 2 ? ORANGE : i == 3 ? LAMP : GOOD;
+    g.setTextColor(on ? c : MUTED, on ? mix(c, PANEL, 26) : PANEL);
     g.setTextDatum(MC_DATUM);
-    g.drawString(label, x + 45, 299);
+    g.drawString(label, x + 44, 287);
   }
   g.unloadFont();
 
-  // Render the eight live values: 大数字(CN26)右对齐、垂直居中于格子
-  // 上半区,单位已并入底部仪表名行。数字统一白色,状态色交给图标与
-  // 微型进度条;仅热板超限时数字转红。超宽(≥100/负温)自动退为整数。
+  // ---- 文本层 2:26px 数字(大时钟 + 族色读数) ----
   g.loadFont(FontCN26);
+  g.setTextColor(TEXT, PANEL);
+  g.setTextDatum(MR_DATUM);
+  g.drawString(timeBuf, 468, 16);
   for (uint8_t i = 0; i < 8; ++i) {
-    const int16_t x = 300 + (i & 1) * 89;
-    const int16_t y = 4 + (i >> 1) * 60;
+    const int16_t x = 259 + (i & 1) * 110;
+    const int16_t y = 56 + (i >> 1) * 48;
     char value[12];
     uint8_t baseDec = (i == 0 || i == 4) ? 0 : 1;
     // 温度超过 100 不再显示小数(如 104.3 → 104),短值保留一位小数。
     if (baseDec && values[i] >= 100.0f)
       baseDec = 0;
     formatValue(value, sizeof(value), values[i], baseDec);
-    // 图标底衬右缘约 x+27,数字右缘 x+83,可用 56px。
-    if (!isnan(values[i]) && g.textWidth(value) > 56) {
-      formatValue(value, sizeof(value), values[i], 0);
-    }
-    const bool fault = i == 5 && !isnan(s.heaterBoardC) &&
-                       s.heaterBoardC >= s.heaterBoardLimitC;
-    g.setTextColor(fault ? G_RED : TEXT, PANEL);
-    g.setTextDatum(MR_DATUM);
-    g.drawString(value, x + 83, y + 15);
+    if (!isnan(values[i]) && g.textWidth(value) > 73)
+      formatValue(value, sizeof(value), values[i], 0); // 超宽兜底取整
+    const bool breach = i == 5 && !isnan(s.heaterBoardC) &&
+                        s.heaterBoardC >= s.heaterBoardLimitC;
+    g.setTextColor(breach ? G_RED : familyColor(i), PANEL);
+    g.setTextDatum(ML_DATUM);
+    g.drawString(value, x + 8, y + 25);
+    unitX[i] = x + 8 + g.textWidth(value) + 3;
+  }
+  g.unloadFont();
+
+  // ---- 文本层 3:16px 单位后缀(跟随读数尾部) ----
+  g.loadFont(FontCN16);
+  g.setTextDatum(ML_DATUM);
+  for (uint8_t i = 0; i < 8; ++i) {
+    const int16_t y = 56 + (i >> 1) * 48;
+    g.setTextColor(INK3, PANEL);
+    g.drawString(units[i], unitX[i], y + 25);
   }
   g.unloadFont();
   g.setTextDatum(TL_DATUM);
