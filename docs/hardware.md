@@ -4,11 +4,17 @@
 SCH_1-P1 原理图（2026-01-30，嘉立创EDA V1.0）。引脚名全部集中在
 [include/pins.h](../include/pins.h)，修改硬件版本时只需改这一个文件。
 
-原理图：[hardware/mainboard-sch-p1.png](../hardware/mainboard-sch-p1.png)（2.4 MB）。
+原理图：[hardware/sch-p1-2026-01-30.png](../hardware/sch-p1-2026-01-30.png)
+（2026-01-30 高清版）；整机接线：[hardware/wiring-diagram.png](../hardware/wiring-diagram.png)；
+主界面 UI 功能标注：[docs/images/ui-main-desc.png](images/ui-main-desc.png)。
 
-> **2026-09-22 校正说明**：早期版本引脚推断有误，对照最新原理图发现 6 处严重
-> 错位（风扇 PWM、发热板 MOS、PIR、ADC 采样等全部串位）。下方为校正后的值，
-> 上板烧录前务必以此为准。
+> **2026-09-29 复核（重要）**：2026-09-22 那次「校正」把引脚改错了——它是按
+> **ESP32 classic** 的脚位习惯改的（classic 上 GPIO39/40 是 ADC），但本板是
+> **ESP32-S3**：ADC 只有 GPIO1~10（ADC1）与 GPIO11~20（ADC2，与 WiFi 冲突禁用），
+> GPIO35~40 是纯数字 IO。实机日志每 500ms 报
+> `[E][esp32-hal-adc.c:158] __analogReadRaw(): Pin 39 is not ADC pin!`、温度显示
+> nan，实锤 ADC_NTC=39 非法。本次对照 2026-01-30 原理图网络名逐一回滚，
+> 下表为**当前生效值**（与原理图一致）。
 
 ## 引脚映射
 
@@ -52,20 +58,20 @@ SPI 频率 27 MHz。驱动在 `platformio.ini` 的 `build_flags` 中以
 | --- | --- | --- | --- |
 | `RGB` | 18 | WS2812B DIN | LED 灯带，板载 WS2811S MOS 驱动 |
 | `BUZZER` | 1 | BUZ | 蜂鸣器 TF0405-1-4P，2.7 kHz |
-| `AIR_FAN_PWM` | 2 | PWM | 排气风扇 4 线 PWM 调速（CN6） |
-| `AIR_FAN_DC` | 35 | MOS_G | 排气风扇电源 MOS Q4 栅极 |
-| `HOT_FAN` | 36 | MOS_G | 加热风扇 MOS Q5 栅极 |
-| `LED_ENABLE` | 37 | MOS_G | LED 灯带 MOS Q6 栅极 |
-| `HOT_PWM` | 38 | HOT_PWM | 发热板 MPT40N08S MOS 栅极 |
-| `BOARD_FAN` | 45 | BOARD_FAN | 主板散热风扇 MOS Q7 栅极 |
+| `AIR_FAN_PWM` | 39 | AIR_FAN_PWM | 排气风扇 4 线 PWM 调速（CN6） |
+| `AIR_FAN_DC` | 38 | AIR_FAN_DC | 排气风扇电源 MOS Q4 栅极 |
+| `HOT_FAN` | 36 | HOT_FAN | 加热风扇 MOS Q5 栅极 |
+| `LED_ENABLE` | 37 | LED | LED 灯带 MOS Q6 栅极 |
+| `HOT_PWM` | 40 | HOT_PWM | 发热板 MPT40N08S MOS 栅极 |
+| `BOARD_FAN` | 45 | BOARD_FAN | 主板散热风扇 MOS Q7 栅极（strapping，见下） |
 
 ### 传感器
 
 | 信号 | GPIO | 原理图网络名 | 说明 |
 | --- | --- | --- | --- |
-| `PIR` | 3 | PIR | 红外感应模块 CN3 输出（SR 红外感应） |
-| `ADC_NTC` | 39 | ADC_T | 发热板 NTC 热敏电阻（ZX-NTC1.25-P2ZZ）采样 |
-| `ADC_VCC` | 40 | ADC_VCC | 电压分压采样（INA226 Vin+ 前置） |
+| `PIR` | 35 | PIR | 红外感应模块输出（HC-SR501） |
+| `ADC_NTC` | 3 | ADC_NTC | 发热板 NTC 热敏电阻（ZX-NTC1.25-P2ZZ）采样，ADC1_CH2 |
+| `ADC_VCC` | 2 | IO2 | 24 V 分压采样（R16 10k + R18 1k，量程 36.3 V），ADC1_CH1；固件暂未用，电压走 INA226 |
 | `I2C_SCL` | 41 | SCL | I²C 总线（AHT20 + INA226） |
 | `I2C_SDA` | 42 | SDA | I²C 总线（AHT20 + INA226） |
 
@@ -102,20 +108,46 @@ USB-UART 走内置 USB-SERIAL-JTAG bridge（UART0），无需占用 GPIO43/44。
 - **GPIO33 / GPIO34** — ROM / RTC 功能
 - **GPIO43 / GPIO44** — UART0 默认 RX / TX（已由 USB-SERIAL-JTAG 取代）
 
-## 2026-09-22 校正的 6 处错位
+## 引脚校正史（2026-09-22 → 2026-09-29）
 
-对照原理图发现以下旧值全部打错脚，现已修正：
+### 2026-09-22：一次误判（已回滚）
 
-| 常量 | 旧值 | 新值 | 旧值问题 |
+9-22 那次「校正」是**按 ESP32 classic 的脚位习惯改的**：classic 的 ADC1 确实挂在
+GPIO36/37/38/39/40（GPIO39 = ADC1_CH3、GPIO40 = ADC1_CH0），所以那次改动看起来
+「把 ADC 挪到 39/40 很合理」。
+
+但**本板是 ESP32-S3**，ADC 分布完全不同：
+
+| 芯片 | ADC1 | ADC2 | GPIO35~40 |
 | --- | --- | --- | --- |
-| `PIR` | 35 | **3** | GPIO35 是风扇 MOS 栅极（数字输出），接成输入读 PIR 必失败 |
-| `AIR_FAN_PWM` | 39 | **2** | 风扇 PWM 打在 NTC 采样脚，风扇不转 + ADC 被干扰 |
-| `AIR_FAN_DC` | 38 | **35** | 风扇电源 MOS 栅极 |
-| `HOT_PWM` | 40 | **38** | 发热板 PWM 打在电压分压脚，加热不工作 + INA226 被干扰 |
-| `ADC_NTC` | 3 | **39** | NTC 温度采样读 PIR 输出脚，温度必然错 |
-| `BOARD_FAN` | 48 | **45** | GPIO48 是模组板载 LED，GPIO45 才是主板散热风扇 MOS |
+| ESP32 classic | GPIO32~39 | GPIO0/2/4/12~15/25~27 | ADC / 输入专用 |
+| **ESP32-S3（本板）** | **GPIO1~10** | GPIO11~20（与 WiFi 冲突，禁用） | **纯数字 IO，无 ADC** |
 
-新增 `ADC_VCC = 40`（电压分压 / INA226 Vin+ 采样）。
+所以在 S3 上 `ADC_NTC = 39` 会让 `analogRead()` 直接报
+`Pin 39 is not ADC pin!`，温度恒为 nan —— 这就是 9-29 复查的触发点。
+
+### 2026-09-29：对照 2026-01-30 原理图回滚
+
+下表给出 9-22 误改后、9-29 回滚后的完整对照（网络名取自 2026-01-30 原理图）：
+
+| 常量 | 原始值 | 9-22 误改 | **9-29 生效值** | 原理图网络名 |
+| --- | --- | --- | --- | --- |
+| `PIR` | 3 | 35 | **35** | PIR |
+| `AIR_FAN_PWM` | 2 | 39 | **39** | AIR_FAN_PWM |
+| `AIR_FAN_DC` | 35 | 38 | **38** | AIR_FAN_DC |
+| `HOT_PWM` | 38 | 40 | **40** | HOT_PWM |
+| `ADC_NTC` | 39 | 3 | **3** | ADC_NTC |
+| `ADC_VCC` | 40 | 40 | **2** | IO2 |
+| `BOARD_FAN` | 45 | 45 | **45** | BOARD_FAN |
+| `LED_ENABLE` | 37 | 37 | **37** | LED |
+| `HOT_FAN` | 36 | 36 | **36** | HOT_FAN |
+
+要点：9-22 的「新值」和 9-29 的「生效值」其实是同一批数字，只是**方向不同**。
+原始值（`PIR=35`、`AIR_FAN_DC=38`、`HOT_PWM=40`）本来就是对的，
+9-22 把它们改到了 ADC 脚位上；9-29 又原样改回来。**结论：以原理图网络名为准，
+不要按「哪个脚是 ADC」去猜。**
+
+`ADC_VCC` 是 9-22 新增的常量，原始值写成 40，9-29 按原理图网络名 `IO2` 改为 **2**。
 
 ## 上电前必须复核
 
@@ -127,19 +159,24 @@ USB-UART 走内置 USB-SERIAL-JTAG bridge（UART0），无需占用 GPIO43/44。
 `constexpr bool HEATER_ENABLED = false;`。此状态下 PID 会算出占空比但
 **不输出 PWM**，加热不会误启动。
 
-确认 `GPIO38` 的 `HOT_PWM`、`GPIO39` 的 NTC 引脚与 MOSFET 有效电平均正确后，
+确认 `GPIO40` 的 `HOT_PWM`、`GPIO3` 的 NTC 引脚与 MOSFET 有效电平均正确后，
 才可改为 `true`。
 
 ### 2. 热板 NTC 参数
 
-加热模块有独立两芯 NTC，接 `ADC_NTC`（GPIO39）。当前按
-**100 kΩ / B3950** 预设换算：
+加热模块有独立两芯 NTC，接 `ADC_NTC`（**GPIO3**，ADC1_CH2）。NTC 型号为
+**ZX-NTC1.25-P2ZZ**，原理图上分压上臂电阻 **R14 = 10 kΩ**，故 `seriesOhm` 应取
+10 kΩ。当前预设换算（已按原理图校正）：
 
 ```cpp
-heaterBoardTemp = readNtcCelsius(Pin::ADC_NTC, 100000.0f, 100000.0f, 3950.0f);
+heaterBoardTemp = readNtcCelsius(Pin::ADC_NTC, 10000.0f, 10000.0f, 3950.0f);
 ```
 
-通用 NTC 默认模型为 10 kΩ / B3950，两者不可混用。确认实际型号后再改。
+`readNtcCelsius(pin, seriesOhm, nominalOhm, beta)` 的公式为
+`R_ntc = seriesOhm × raw / (4095 − raw)`，其中 `seriesOhm` 是**与 NTC 串联的那只
+固定电阻**（即 R14），`nominalOhm` 是 NTC 在 25 ℃ 的标称阻值。此前误按
+**100 kΩ / B3950** 预设（`seriesOhm = nominalOhm = 100000.0f`），与 R14 = 10 kΩ
+不符，会把温度算错。若实物 NTC 阻值/β 与预设不同，请以万用表实测 25 ℃ 阻值为准再改。
 
 ### 3. INA226 地址与分流电阻
 

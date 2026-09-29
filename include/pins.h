@@ -1,18 +1,23 @@
 #pragma once
 
-// ESP32-S3 N16R8 主控板。引脚名与 SCH_1-P1 原理图中的网络名对应。
+// ESP32-S3 N16R8 主控板。引脚名与 SCH_1-P1 原理图(2026-01-30)中的网络名对应。
 // 修改硬件版本时,只需在此文件调整映射。
 //
-// ==== 2026-09-22 校正记录 ====
-// 对照最新原理图(mainboard-sch-p1.png)发现多处错位,原因是早期版本引脚号
-// 推断有误。按实物 N16R8 + 原理图重新核:
-//   GPIO3 = PIR(红外感应)     之前误写为 ADC_NTC
-//   GPIO2 = AIR_FAN_PWM(4线风扇PWM) 之前误写为 GPIO39
-//   GPIO35 = AIR_FAN_DC(风扇电源MOS)  之前误写为 PIR
-//   GPIO38 = HOT_PWM(发热板MPT40N08S) 之前误写为 AIR_FAN_DC
-//   GPIO39 = ADC_NTC(NTC热敏采样)      之前误写为 AIR_FAN_PWM
-//   GPIO40 = ADC_VCC(电压分压/INA226 Vin+) 之前误写为 HOT_PWM(现独立)
-//   GPIO45 = BOARD_FAN(主板散热风扇MOS) 之前误写为 48(悬空)
+// ==== 2026-09-29 复核(对照 2026-01-30 原理图 + 实机日志) ====
+// 2026-09-22 那次「校正」是按 ESP32 **classic** 的脚位习惯误改的:S3 的 ADC
+// 只有 GPIO1~10(ADC1)/GPIO11~20(ADC2,与 WiFi 冲突),GPIO35~40 是纯数字 IO。
+// 实机日志每 500ms 报 "Pin 39 is not ADC pin!"、温度 nan,实锤 ADC_NTC=39 非法。
+// 本次按原理图网络名逐一回滚:
+//   GPIO35 = PIR          (IO35→PIR, pin28)
+//   GPIO39 = AIR_FAN_PWM  (IO39→AIR_FAN_PWM, pin32)
+//   GPIO38 = AIR_FAN_DC   (IO38→AIR_FAN_DC, pin31)
+//   GPIO40 = HOT_PWM      (IO40→HOT_PWM, pin33)
+//   GPIO3  = ADC_NTC      (IO3→ADC_NTC, pin15, ADC1_CH2)
+//   GPIO2  = ADC_VCC      (IO2→ADC_VCC, pin38, ADC1_CH1, 24V 分压)
+//   GPIO45 = BOARD_FAN    保留(模组下方注释明确写「使用IO45时确保上电时外部
+//                          电路不会将 IO45 拉高」,即设计者已知并接受该 strapping)
+// 注意:IO35/36/37 在 OPI PSRAM 模组上被 PSRAM 占用;本板 PSRAM 已禁用
+// (platformio.ini 换 qio_qspi),故可用。若恢复 PSRAM,这三脚必须换。
 
 namespace Pin {
 // 无触摸显示屏保持 false;更换为四线电阻触摸版本并完成校准后改为 true。
@@ -49,20 +54,22 @@ constexpr int I2C_SDA = 42;
 constexpr int I2C_SCL = 41;
 
 // ---- 风扇 ----
-constexpr int AIR_FAN_PWM = 2; // 4 线 PWM 调速(CN6)
-constexpr int AIR_FAN_DC = 35; // 风扇电源 MOS Q4 栅极
-constexpr int HOT_FAN = 36;    // 加热风扇 MOS Q5 栅极
-constexpr int BOARD_FAN = 45;  // 主板散热风扇 MOS Q7 栅极
+constexpr int AIR_FAN_PWM = 39; // 4 线 PWM 调速(CN6)
+constexpr int AIR_FAN_DC = 38;  // 风扇电源 MOS Q4 栅极
+constexpr int HOT_FAN = 36;     // 加热风扇 MOS Q5 栅极
+constexpr int BOARD_FAN = 45;   // 主板散热风扇 MOS Q7 栅极(strapping,见上)
 
 // ---- 加热 ----
-constexpr int HOT_PWM = 38; // 发热板 MPT40N08S MOS 栅极
+constexpr int HOT_PWM = 40; // 发热板 MPT40N08S MOS 栅极
 
 // ---- 传感器 ----
 // 注意: GPIO3 也是 strapping 脚,但默认浮空、不参与启动(Strap JTAG 选择需先烧
 // STRAP_JTAG_SEL eFuse 才生效),接 PIR 输出无冲突。
-constexpr int PIR = 3;      // 红外感应模块输出(CN3)
-constexpr int ADC_NTC = 39; // 发热板 NTC 热敏电阻采样(ZX-NTC1.25-P2ZZ)
-constexpr int ADC_VCC = 40; // 电压分压采样(INA226 Vin+)
+constexpr int ADC_NTC = 3;  // 发热板 NTC 热敏电阻采样(ZX-NTC1.25-P2ZZ),ADC1_CH2
+constexpr int ADC_VCC = 2;  // 电压分压采样(INA226 Vin+ 前置),ADC1_CH1。
+                            // 该脚为 strapping(上电需为高):24V 分压网络静态
+                            // ≈2.2V,恰为高电平,不影响启动。
+constexpr int PIR = 35;     // 红外感应模块输出(CN3)
 
 // ---- H2 / H3 扩展排针 ----
 // Gerber 飞针网表 + 原理图确认:

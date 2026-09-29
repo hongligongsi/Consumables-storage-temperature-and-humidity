@@ -125,3 +125,47 @@ Get-ChildItem "$env:USERPROFILE\.platformio\packages\framework-arduinoespressif3
 首次上电若设备进入 `FilamentChamber-Setup` 配置热点，说明烧录成功。连上该热点
 配网后，可由 ArduinoOTA 继续无线升级（OTA 主机名 `chamber`，每台设备的独立
 密码可在 `http://chamber.local/` 查看，详见 [networking.md](networking.md)）。
+
+## 串口写入中途中断（PermissionError 13）
+
+典型现象——镜像写到九成左右突然断掉：
+
+```
+Writing at 0x0013354a... (93 %)
+A serial exception error occurred: Cannot configure port, something went wrong.
+Original message: PermissionError(13, '拒绝访问。', None, 5)
+```
+
+**这不是 esptool 或固件的问题，是 Windows 串口句柄在传输途中失效了。**
+`write_flash` 每写一段都要重新配置串口，一旦句柄被夺走或设备从总线掉下来，
+`SetCommState` 就返回拒绝访问。注意此时 **app0 已被写入大半、内容不完整**，
+设备上电校验不过会回滚到 `app1`；若 `app1` 为空则反复重启，必须重新烧录一次。
+
+按下面顺序排查，多数情况第 1、2 条就能解决：
+
+1. **关掉所有占用串口的程序**：`pio device monitor`、VSCode 串口监视器、串口助手、
+   PuTTY，以及上一次残留的 esptool。不确定就拔插一次 USB 后立刻烧录。
+2. **降低写入波特率**。`platformio.ini` 已设 `upload_speed = 460800`；用原始
+   esptool 命令时把 `--baud 921600` 改成 `--baud 460800`。仍失败就改 `115200`
+   复测——若 115200 能一次写完，说明瓶颈在 USB 链路而不是驱动。
+3. **换线、换口、去掉集线器**：用短一点的数据线直插主机后置 USB 口，避开 USB hub
+   和延长线。ESP32-S3-DevKitC-1 有两个 USB-C 口，**优先用标着 `UART` 的那个
+   （板载 CP2102/CH340 桥）**，比标着 `USB` 的原生 USB-CDC 口稳定得多。
+   先用 `pio device list` 看清端口对应的芯片型号再动手。
+4. **关掉 Windows 的 USB 节能**：设备管理器 → 端口 → 对应 COM 口 → 属性 →
+   电源管理 → 取消勾选「允许计算机关闭此设备以节约电源」；电源选项 → 高级设置 →
+   USB 设置 → USB 选择性暂停 → 已禁用。该项会在长时间传输中途挂起设备，正是
+   「写到一半拒绝访问」的常见成因。
+5. **手动进下载模式**：按住 `BOOT` → 点一下 `RST` → 松开 `BOOT`，让芯片稳定停在
+   下载模式，再执行烧录，避开自动复位的时序竞争。必要时给 esptool 加
+   `--before no_reset`。
+6. **暂时停掉杀毒/安全软件**，或把 esptool 进程与串口加入白名单。
+7. 以上都无效时，先 `erase_flash` 整片擦除再重烧；或改用无线 OTA 绕过 USB：
+   设备若能正常启动，打开 `http://chamber.local/` 直接上传 `firmware.bin`。
+
+### 判断设备是掉线还是被占用
+
+- 烧录中 COM 号**跳变**（如 COM5 → COM7），或设备管理器里端口闪一下消失再出现
+  → 是 USB 掉线/重枚举，走第 3、4 条。
+- COM 号不变、只是报拒绝访问 → 多半是别的进程占着，走第 1 条。
+

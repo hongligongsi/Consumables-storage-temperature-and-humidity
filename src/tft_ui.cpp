@@ -92,7 +92,7 @@ TFT_eSprite frame(&tft);             // 全屏离屏画布(双缓冲时两块帧
 QueueHandle_t renderQueue = nullptr; // 长度 1 的快照队列(主循环 → 渲染任务)
 bool spriteReady = false;            // 双缓冲 sprite 是否成功建立
 
-// 右侧 2x4 仪表的顺序:排风/主板/湿度/仓温/热风/热板/电压/电流,
+// 右侧 2x4 仪表的顺序:外排/主控/湿度/仓温/热风/热板/电压/电流(按 UI 标注图),
 // 数值数组与 texts().gauges 都按此枚举下标排列。
 enum class GaugeIcon : uint8_t {
   Exhaust,
@@ -144,7 +144,7 @@ Texts texts(const UiSnapshot &s) {
            "最低",
            "最高",
            "风速",
-           {"排风", "主板", "湿度", "仓温", "热风", "热板", "电压", "电流"},
+           {"外排", "主控", "湿度", "仓温", "热风", "热板", "电压", "电流"},
            {"未打印", "工作中", "提前预热", "灯光", "系统设置"}};
   } else {
     out = {"SMART CHAMBER",
@@ -657,8 +657,8 @@ volatile uint8_t gOtaPct = 0;     // 进度 0..100
 void tintOtaBanner(TFT_eSPI &g, bool active, uint8_t pct) {
   if (!active)
     return;
-  const int16_t barH = 46;                // 横幅高度
-  const int16_t y = SCREEN_H - barH;      // 贴底
+  const int16_t barH = 46;                                   // 横幅高度
+  const int16_t y = SCREEN_H - barH;                         // 贴底
   g.fillRoundRect(6, y, SCREEN_W - 12, barH - 8, 6, 0x1082); // 深灰底
   g.drawRoundRect(6, y, SCREEN_W - 12, barH - 8, 6, 0xFFE0); // 黄描边
   // 状态文案与百分比:用项目自带 16px 中英 VLW 字体
@@ -876,10 +876,12 @@ void uiRenderTask(void *) {
     if (spriteReady) {
       frame.frameBuffer(backBuffer);
       drawFrame(frame, snapshot);
+      tintOtaBanner(frame, gOtaActive, gOtaPct);
       frame.pushSprite(0, 0);
       backBuffer = backBuffer == 1 ? 2 : 1;
     } else {
       drawFrame(tft, snapshot);
+      tintOtaBanner(tft, gOtaActive, gOtaPct);
     }
   }
 }
@@ -894,11 +896,19 @@ void TftUi::begin() {
   tft.setAttribute(UTF8_SWITCH, 1);
   tft.fillScreen(BG);
 
+  // 默认不创建全屏 sprite:本板大块 PSRAM 分配会挂死(实测 ps_calloc 200B 正常、
+  // 300KB 起卡住并触发任务看门狗复位,整块设备因此不断重启)。而 PSRAM 已并入
+  // 默认堆,走内部 RAM 的 calloc(614KB) 同样会落进 PSRAM 卡住,所以必须整块
+  // 跳过分配,而不是只关掉 PSRAM_ENABLE。跳过即落到既定的「直绘降级」分支:
+  // 屏幕可用(可能有闪烁),且不再拖累控制节拍与联网。
+  // 换板或修好 PSRAM 后,在 platformio.ini 加 -DTFT_SPRITE_IN_PSRAM 恢复双缓冲。
+#if defined(TFT_SPRITE_IN_PSRAM)
   if (psramFound()) {
     frame.setColorDepth(16);
     frame.setAttribute(PSRAM_ENABLE, 1);
     spriteReady = frame.createSprite(SCREEN_W, SCREEN_H, 2) != nullptr;
   }
+#endif
   doubleBuffered_ = spriteReady;
   Serial.printf("TFT: %s, PSRAM free=%u bytes\n",
                 spriteReady ? "480x320 double buffer"
@@ -929,4 +939,10 @@ void TftUi::render(const UiSnapshot &snapshot) {
   // A length-one queue deliberately drops stale frames if SPI is still busy.
   // Rendering is never allowed to fall back into the PID/Arduino loop task.
   xQueueOverwrite(static_cast<QueueHandle_t>(queue_), &snapshot);
+}
+
+// 主循环每帧调用,传入 OTA 状态。写文件级原子量,渲染任务下一帧读取。
+void TftUi::setOtaProgress(bool active, uint8_t pct) {
+  gOtaActive = active;
+  gOtaPct = pct;
 }

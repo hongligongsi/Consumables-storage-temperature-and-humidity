@@ -212,8 +212,12 @@ void NetworkManager::begin(ChamberController &controller, UiModel &ui,
   // 固件有效性确认:启动进入这里说明本版本已稳定(未在看门狗/早期崩溃前挂掉),
   // 标记应用有效,取消失败回滚标志。若新版在 setup 早期崩溃,引导器会自动
   // 回退到上一分区(双槽 OTA 的生产级回滚保障)。
+  // TEMP-DEBUG 已清理:曾用 heap_caps 分级探测确认「内部 RAM 正常 / PSRAM 大块
+  // 分配挂死」。根因与处置见 platformio.ini 的 PSRAM 注释段。
   esp_ota_mark_app_valid_cancel_rollback();
   WiFi.onEvent(onWifiEvent);
+  // 注意:WiFi.mode() 会初始化 WiFi/LWIP 并做大块分配。若 PSRAM 被并入默认堆
+  // 且硬件不可靠,这里会死等到任务看门狗复位(表现为设备反复重启、看不到 WiFi)。
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(hostname());
   WiFi.setAutoReconnect(true);

@@ -3,3 +3,10 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# 本地工具/会话缓存(抓串口脚本、裁剪图片、记忆日志等),不属于固件源码
+.workbuddy/
+# 编辑器/终端误存的临时文件
+*.tmp
+h
+

@@ -177,7 +177,7 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 | 照明使能 | `LED_ENABLE` | 37 | 数字输出 |
 | 热板风扇 | `HOT_FAN` | 36 | LEDC 通道 3，25 kHz，10 bit |
 | 人体感应 | `PIR` | 35 | 数字输入，高电平表示有运动 |
-| 主板风扇 | `BOARD_FAN` | 48 | 数字输出 |
+| 主板风扇 | `BOARD_FAN` | 45 | 数字输出（strapping 脚，见风险说明） |
 | 热板 NTC | `ADC_NTC` | 3 | 12 bit ADC，11 dB 衰减 |
 | 打印中状态输出 | `PRINTING_STATUS` | 8 | 独立 3.3 V 输出，`HAS_STATUS_OUTPUTS = true` |
 | 加热中状态输出 | `HEATING_STATUS` | 47 | 独立 3.3 V 输出，`HEATER_ENABLED && heaterPercent > 0` 时置高 |
@@ -448,9 +448,11 @@ Get-ChildItem "$env:USERPROFILE\.platformio\packages\framework-arduinoespressif3
 
 Gerber 飞针网表确认本板上的 ST7796 为 SPI 连接：`RST=GPIO9`、`MISO=10`、`MOSI=11`、`SCLK=12`、`DC=13`、`CS=14`、`BL=21`；电阻触摸为 `YD=4`、`XR=5`、`YU=6`、`XL=7`。`TftUi` 已使用 TFT_eSPI 提供横屏主页面：耗材导航、三项自动控制、八格仪表及五个底部入口。电阻触摸坐标须在实机上校准后加入。
 
-同样需要在首次上电前复核 `include/pins.h` 的 `ADC_NTC` 引脚。热端控制已默认由 `HEATER_ENABLED = false` 锁定；确认 GPIO40 的 `HOT_PWM`、NTC 引脚和 MOSFET 有效电平后，才改为 `true`。GPIO1 为蜂鸣器，GPIO40 为热端 PWM，GPIO39 为排气风扇 PWM。
+同样需要在首次上电前复核 `include/pins.h` 的 `ADC_NTC` 引脚。热端控制已默认由 `HEATER_ENABLED = false` 锁定；确认 GPIO40 的 `HOT_PWM`、GPIO3 的 NTC 引脚和 MOSFET 有效电平后，才改为 `true`。GPIO1 为蜂鸣器，GPIO40 为热端 PWM，GPIO39 为排气风扇 PWM，GPIO45 为主板风扇。
 
-仓温闭环采用 I²C 上的 AHT20。接线图显示加热模块有独立两芯 NTC，因此 `ADC_NTC` 已接入热板保护链，暂按 100 kΩ/B3950 模型换算。确认实际 NTC 型号与 PCB GPIO 前不可开启加热。
+> **注意 ESP32-S3 的 ADC 分布**：只有 GPIO1~10 是 ADC1、GPIO11~20 是 ADC2（与 WiFi 冲突，禁用），GPIO35~40 **是纯数字 IO，不能做 ADC**。2026-09-22 曾按 ESP32 classic 的脚位习惯把 `ADC_NTC` 改到 GPIO39，导致实机每 500 ms 报 `Pin 39 is not ADC pin!`、温度恒为 nan；2026-09-29 已按 2026-01-30 原理图网络名回滚。
+
+仓温闭环采用 I²C 上的 AHT20。接线图显示加热模块有独立两芯 NTC，因此 `ADC_NTC`（GPIO3）已接入热板保护链，按原理图 R14 = 10 kΩ 分压、10 kΩ/B3950 模型换算。确认实际 NTC 阻值/β 前不可开启加热。
 
 主板 INA226 已按原理图 R15=10 mΩ、I²C 0x40 和 1 mA/LSB 接入 `Ina226Sensor`；若实物地址不同，可在 `ina226.begin(Wire)` 中调整。它用于加热电流的软降功率，读取失败会在加热状态触发故障保护。
 
@@ -459,7 +461,7 @@ Gerber 飞针网表确认本板上的 ST7796 为 SPI 连接：`RST=GPIO9`、`MIS
 | # | 项目 | 固件当前设定 | 依据位置 | 需要确认的动作 |
 | --- | --- | --- | --- | --- |
 | 1 | 加热总开关 | `HEATER_ENABLED = false` | `src/main.cpp` | 复核 GPIO40 PWM、NTC 引脚与 MOSFET 有效电平后改为 `true` |
-| 2 | 热板 NTC 型号/分压 | 100 kΩ / 100 kΩ / B3950 | `readSensors()`、`readNtcCelsius()` | 万用表测常温阻值，按实物参数改写 |
+| 2 | 热板 NTC 型号/分压 | 10 kΩ / 10 kΩ / B3950（R14 = 10 kΩ） | `readSensors()`、`readNtcCelsius()` | 万用表测常温阻值，按实物参数改写 |
 | 3 | 热板 NTC 引脚 | `ADC_NTC = GPIO3` | `include/pins.h` | 对照原理图网络名与 PCB 焊盘 |
 | 4 | INA226 地址与分流 | `0x40`、R15 = 10 mΩ、1 mA/LSB | `src/ina226_sensor.cpp` | 核对实物丝印与分流电阻，必要时调整地址 |
 | 5 | 仓温传感器安装位 | AHT20（I²C） | `src/main.cpp` | 确认位于仓内且具代表性，避开热风直吹 |
@@ -468,7 +470,7 @@ Gerber 飞针网表确认本板上的 ST7796 为 SPI 连接：`RST=GPIO9`、`MIS
 | 8 | 排气风扇双路 | `AIR_FAN_DC`(38) + `AIR_FAN_PWM`(39) | `src/main.cpp` | 确认两路接线与风扇调速方式 |
 | 9 | 显示与背光 | ST7796 SPI，480×320，BL=GPIO21 | `platformio.ini`、`include/pins.h` | 花屏/白屏时核对 TFT_eSPI 配置与 `setRotation(1)` |
 | 10 | 限流闭环 | 电压/电流采样接入但未标定 | `src/controller.cpp` | 用钳形表或分流比对读数后启用完整电流闭环 |
-| 11 | 主板风扇条件 | MCU > 60 ℃ 或 电流 > 0.05 A 等 | `src/controller.cpp` | 确认 GPIO48 驱动方式与风道方向 |
+| 11 | 主板风扇条件 | MCU > 60 ℃ 或 电流 > 0.05 A 等 | `src/controller.cpp` | 确认 GPIO45 驱动方式与风道方向（GPIO45 为 strapping 脚，上电须为低） |
 | 12 | 环境总电流 | 热板 + 风扇 + 灯带同开 | — | 核对电源额定功率与线径 |
 
 ## 常见问题
@@ -511,6 +513,9 @@ Gerber 飞针网表确认本板上的 ST7796 为 SPI 连接：`RST=GPIO9`、`MIS
 
 **Q：编译时提示找不到 `boot_app0.bin`。**
 该文件来自 Arduino 框架包而非本工程。用「编译与烧录」章节给出的 `Get-ChildItem` 命令定位实际路径后替换即可。
+
+**Q：烧录写到九成左右报 `PermissionError(13, '拒绝访问')` 中断。**
+串口句柄在传输途中失效，与固件无关。此时 `app0` 只写了一半，必须重烧一次。排查顺序：关掉所有占用串口的程序 → 把波特率降到 `460800`／`115200` → 换短线直插主机、优先用板上 `UART` 口 → 关闭 Windows USB 节能 → 按住 `BOOT` 手动进下载模式。详见[编译烧录文档](docs/build-and-flash.md#串口写入中途中断permissionerror-13)。
 
 **Q：恢复出厂后预留的注册码数据会丢吗？**
 不会。恢复出厂只删除本固件拥有的设置键与耗材键，未知键一律保留。

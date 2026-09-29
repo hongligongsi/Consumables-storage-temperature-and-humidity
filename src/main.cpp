@@ -214,9 +214,10 @@ void emergencyStop(const char *reason) {
 // 每 500ms 读一路传感器并做量程合理性检查,越界值一律置 NAN,
 // 控制器据此把对应传感器判为无效(NAN 不会参与加热决策)。
 void readSensors() {
-  // 加热模块的独立 NTC 两芯线接入 ADC_NTC；当前按 100 kΩ/B3950 预设。
-  // PCB 网表或实物 NTC 型号不同，必须先在 pins.h/此处改正再开启加热。
-  heaterBoardTemp = readNtcCelsius(Pin::ADC_NTC, 100000.0f, 100000.0f, 3950.0f);
+  // 加热模块的独立 NTC 两芯线接入 ADC_NTC(GPIO3, ADC1_CH2)，型号 ZX-NTC1.25-P2ZZ。
+  // 原理图分压上臂 R14 = 10 kΩ，故 seriesOhm = nominalOhm = 10000.0f。
+  // 实物 NTC 阻值/β 不同时，以万用表实测 25 ℃ 阻值为准改正后再开启加热。
+  heaterBoardTemp = readNtcCelsius(Pin::ADC_NTC, 10000.0f, 10000.0f, 3950.0f);
   if (ahtAvailable) {
     sensors_event_t h, t;
     if (aht.getEvent(&h, &t) && isfinite(t.temperature) &&
