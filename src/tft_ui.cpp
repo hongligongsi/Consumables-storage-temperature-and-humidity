@@ -353,7 +353,7 @@ void drawMaterialSettings(TFT_eSPI &g, const UiSnapshot &s) {
                           static_cast<float>(s.exhaustMaxPercent),
                           static_cast<float>(s.postExhaustPercent),
                           static_cast<float>(s.postExhaustSeconds)};
-  const char *units[] = {"C", "C", "%", "%", "%", "s"};
+  const char *units[] = {"℃", "℃", "%", "%", "%", "s"};
 
   g.fillScreen(BG);
   g.fillRect(0, 0, SCREEN_W, 32, PANEL_ALT);
@@ -560,7 +560,7 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
       snprintf(value, sizeof(value), "%u%%", v.heaterFanPercent);
       break;
     case SystemSettingField::HeaterProtection:
-      snprintf(value, sizeof(value), "%uC", v.heaterBoardLimitC);
+      snprintf(value, sizeof(value), "%u℃", v.heaterBoardLimitC);
       break;
     case SystemSettingField::Theme:
       // 0=日间 1=夜间 2=自动(按日/夜开始时刻切换)
@@ -862,9 +862,9 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   g.drawString(line, 288, 76);
   snprintf(line, sizeof(line), "%s %u%%", tx.maximum, s.exhaustMaxPercent);
   g.drawString(line, 288, 100);
-  snprintf(line, sizeof(line), "%s %.0fC", tx.minimum, s.profileMinC);
+  snprintf(line, sizeof(line), "%s %.0f℃", tx.minimum, s.profileMinC);
   g.drawString(line, 288, 136);
-  snprintf(line, sizeof(line), "%s %.0fC", tx.maximum, s.profileMaxC);
+  snprintf(line, sizeof(line), "%s %.0f℃", tx.maximum, s.profileMaxC);
   g.drawString(line, 288, 160);
   snprintf(line, sizeof(line), "%s %u%%", tx.fanSpeed, s.postExhaustPercent);
   g.drawString(line, 288, 196);
@@ -898,10 +898,11 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   }
   g.unloadFont();
 
-  // Render the eight live values: 大数字(CN26)+小单位(CN16),参考图式
-  // 排版,单位贴格子右缘、数字紧挨其左。数字统一白色,状态色交给图标与
-  // 微型进度条;仅热板超限时数字转红。数字过长会压住左上角图标时自动
-  // 退为整数。
+  // Render the eight live values: 大数字(CN26)在上、小单位(CN16)贴右缘
+  // 挂在其下,温度用 ℃(字库含 U+2103)。数字统一白色,状态色交给图标与
+  // 微型进度条;仅热板超限时数字转红。数字超宽(≥100/负温)自动退为整数。
+  // 坐标按字形墨迹测算:CN26 数字基线 = 中心+10,墨迹约占中心±10;
+  // CN16 基线 = 中心+6,℃ 墨迹为中心±7。
   const float values[] = {static_cast<float>(s.exhaustPercent),
                           s.mcuC,
                           s.humidity,
@@ -910,31 +911,23 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
                           s.heaterBoardC,
                           s.voltageV,
                           s.currentA};
-  const char *units[] = {"%", "C", "%", "C", "%", "C", "V", "A"};
-  int16_t valueW[8];
-  int16_t unitW[8];
-  g.loadFont(FontCN16);
-  for (uint8_t i = 0; i < 8; ++i)
-    unitW[i] = units[i][0] ? g.textWidth(units[i]) : 0;
-  g.unloadFont();
+  const char *units[] = {"%", "℃", "%", "℃", "%", "℃", "V", "A"};
   g.loadFont(FontCN26);
   for (uint8_t i = 0; i < 8; ++i) {
     const int16_t x = 300 + (i & 1) * 89;
     const int16_t y = 4 + (i >> 1) * 60;
     char value[12];
-    const uint8_t baseDec = i >= 6 ? 1 : 0;
+    const uint8_t baseDec = (i == 0 || i == 4) ? 0 : 1;
     formatValue(value, sizeof(value), values[i], baseDec);
-    valueW[i] = g.textWidth(value);
-    // 图标底衬右缘约 x+27;数字右缘 = x+82-单位宽-2,左缘越界则取整。
-    if (units[i][0] && !isnan(values[i]) && valueW[i] > 54 - unitW[i]) {
+    // 图标底衬右缘约 x+27,数字右缘 x+83,可用 56px。
+    if (!isnan(values[i]) && g.textWidth(value) > 56) {
       formatValue(value, sizeof(value), values[i], 0);
-      valueW[i] = g.textWidth(value);
     }
     const bool fault = i == 5 && !isnan(s.heaterBoardC) &&
                        s.heaterBoardC >= s.heaterBoardLimitC;
     g.setTextColor(fault ? G_RED : TEXT, PANEL);
     g.setTextDatum(MR_DATUM);
-    g.drawString(value, x + 82 - unitW[i], y + 16);
+    g.drawString(value, x + 83, y + 12);
   }
   g.unloadFont();
   g.loadFont(FontCN16);
@@ -945,7 +938,7 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
     const int16_t y = 4 + (i >> 1) * 60;
     g.setTextColor(TEXT, PANEL);
     g.setTextDatum(MR_DATUM);
-    g.drawString(units[i], x + 82, y + 16);
+    g.drawString(units[i], x + 83, y + 30);
   }
   g.unloadFont();
   g.setTextDatum(TL_DATUM);
