@@ -1,0 +1,40 @@
+# 耗材仓项目 · 长期要点
+
+ESP32-S3 N16R8 智能耗材仓(温湿度 + 加热 + 排风),PlatformIO + TFT_eSPI 480×320 横屏。
+仓库公开(GitHub: hongligongsi/Consumables-storage-temperature-and-humidity),严禁提交凭据。
+
+## 构建与烧录
+- `pio run` 编译 / `pio run -t upload --upload-port COM4` 烧录;`git push` 需 dangerouslyDisableSandbox
+- platform 锁 `espressif32@6.7.0`(core 2.x):保留 `ledcSetup`/`ledcAttachPin` 旧 API,升级平台前必须先迁移
+- TFT_eSPI 必须带 `-DUSE_FSPI_PORT`,否则 SPI 寄存器基址算成 0 → StoreProhibited 崩溃
+
+## ⚠️ 串口日志分流(排障必读,踩过坑)
+`platformio.ini` 的 `-DARDUINO_USB_CDC_ON_BOOT=1` 让 Arduino `Serial` 走 **S3 原生 USB-CDC(板载 USB 口)**;
+FTDI→COM4(UART0) **只剩 ESP-ROM 与 ESP-IDF 日志**(`entry 0x`、`[E][Preferences.cpp]` 等)。
+**所以在 COM4 看不到 `chamber=` 周期上报、AHT20 打印,是正常现象,不代表设备卡死。**
+要抓应用日志:临时注释该宏 → 烧录 → 抓完**务必恢复并重烧**。
+- 判据:只看 COM4 时,`BOOT_OK` = 出现 `entry 0x`
+
+## PSRAM 与显示
+- 板载 8MB OPI PSRAM 硬件不可用(大块分配挂死总线)。用 `qio_qspi` 变体 → PSRAM 不并入堆
+- 因此渲染走 `TFT: direct-render fallback, PSRAM free=0 bytes`,**属预期,非故障**
+
+## 硬件现状
+- AHT20 / INA226(0x40, 10mOhm) 当前报 `not detected` → 温湿度读数 nan,待排查 I²C 接线/供电
+- 设备唯一 ID `NetworkManager::chipId()`:eFuse 48 位 MAC 全宽异或(双射),格式 `CH-XXXXXXXXXXXX`,兼作 OTA 密码
+
+## UI 工作流
+- 设备主屏:`src/tft_ui.cpp`(调色板/图标/布局);快照 `UiSnapshot` 由 ui_model 产出,clock/humidity/chipId 由 main.cpp 补填
+- 触摸热区在 `src/main.cpp`(notifyTouch 分区),**改视觉必须同步热区或避开锚点**
+- 屏上 mockup:`.workbuddy/tmp/ui-main-mockup.html` → 无头 Chrome
+  `chrome --headless --disable-gpu --force-device-scale-factor=2 --window-size=W,H --user-data-dir=.workbuddy/tmp/chrome-profile --screenshot=OUT.png file:///...`
+- 浏览器模拟器:`tools/ui_preview.html`
+- 管理页:`include/web_page.h`(PROGMEM raw string,无 mock 段)↔ `tools/web_management_preview.html`(含 mock)
+  改完用正则 `R"HTML\((.*)\)HTML";` 反提取 + difflib 与预览稿比对,校验 raw string 未破损
+- 字号换算脚本 `tools/genvlw.py` 生成 `include/font_cn16.h`/`font_cn26.h`;
+  已排除 `web_page.h`/`wifi_portal_page.h`(其中文只由浏览器渲染,纳入只会白占 Flash)
+
+## .workbuddy 入库策略
+`.gitignore` 由整体忽略改为**逐项放行**:`memory/`、`sch3x3/`、`crop_pins.py`、`serial_dump.py`、
+`tmp/palette_calc.py`、`tmp/ui-main-mockup.html` 入库;
+**明确排除** `tmp/chrome-profile/`(含 Cookies/Login Data 等凭据)与 `tmp/*.png`(公开仓库)。

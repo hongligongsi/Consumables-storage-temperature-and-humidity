@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>打印机 HMI 配色 · 日间 / 夜间双模</title>
+<style>
+  * { margin: 0; box-sizing: border-box; }
+
+  /* ===== 页面自身也用双模变量（与方案同构，作为示例） ===== */
+  :root {
+    color-scheme: light;
+    --page-bg: #F5F6F8;
+    --page-card: #FFFFFF;
+    --page-card-2: #F0F2F5;
+    --page-line: #E2E6EC;
+    --page-line-2: #C8CED8;
+    --page-text: #16181D;
+    --page-muted: #646B78;
+    --page-accent: #0E8FA3;
+    --shadow: 0 6px 22px rgba(16,24,32,.08);
+    --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --page-bg: #0F1115;
+    --page-card: #171A20;
+    --page-card-2: #1F242C;
+    --page-line: #292F38;
+    --page-line-2: #3A424E;
+    --page-text: #E7EBF1;
+    --page-muted: #8B95A5;
+    --page-accent: #3FD4E4;
+    --shadow: 0 6px 22px rgba(0,0,0,.4);
+  }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page-bg: #0F1115;
+      --page-card: #171A20;
+      --page-card-2: #1F242C;
+      --page-line: #292F38;
+      --page-line-2: #3A424E;
+      --page-text: #E7EBF1;
+      --page-muted: #8B95A5;
+      --page-accent: #3FD4E4;
+      --shadow: 0 6px 22px rgba(0,0,0,.4);
+    }
+  }
+
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--page-bg); color: var(--page-text);
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+    transition: background .2s ease, color .2s ease;
+  }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 40px 20px 80px; }
+
+  /* ---------- 页头 ---------- */
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 26px; }
+  .head-main { max-width: 70ch; }
+  .head h1 { font-size: 1.5rem; letter-spacing: -.01em; }
+  .head p { color: var(--page-muted); font-size: .88rem; margin-top: 8px; }
+  .kicker {
+    display: inline-block; font-size: .7rem; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--page-accent); background: var(--page-card);
+    border: 1px solid var(--page-line); padding: 3px 9px; border-radius: 99px; margin-bottom: 12px;
+    box-shadow: var(--shadow);
+  }
+
+  /* ---------- 主题开关 ---------- */
+  .seg { display: inline-flex; background: var(--page-card); border: 1px solid var(--page-line); border-radius: 10px; padding: 3px; gap: 2px; box-shadow: var(--shadow); }
+  .seg button { border: 0; background: none; color: var(--page-muted); font: inherit; font-size: .8rem; padding: 7px 13px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+  .seg button[aria-pressed="true"] { background: var(--page-card-2); color: var(--page-text); font-weight: 600; }
+  .seg-label { font-size: .72rem; color: var(--page-muted); display: block; margin-bottom: 7px; letter-spacing: .03em; }
+
+  /* ---------- 速览表 ---------- */
+  .panel { background: var(--page-card); border: 1px solid var(--page-line); border-radius: 14px; padding: 18px 20px; margin-bottom: 26px; box-shadow: var(--shadow); }
+  .panel h2 { font-size: .94rem; }
+  .panel .sub { font-size: .8rem; color: var(--page-muted); margin: 4px 0 14px; }
+  .tbl-scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .82rem; min-width: 760px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--page-line); }
+  th { font-weight: 600; color: var(--page-muted); font-size: .72rem; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: 0; }
+  .nm { font-weight: 600; white-space: nowrap; }
+  .nm small { display: block; font-weight: 400; color: var(--page-muted); font-size: .7rem; }
+  .pair { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .chip { width: 18px; height: 18px; border-radius: 5px; flex: none; border: 1px solid rgba(128,128,128,.35); }
+  .pair code { font-family: var(--mono); font-size: .74rem; color: var(--page-muted); }
+  .pm { font-size: .74rem; color: var(--page-muted); white-space: nowrap; }
+
+  /* ---------- 方案行 ---------- */
+  .scheme {
+    display: grid; gap: 18px; align-items: start; margin-bottom: 18px;
+    grid-template-columns: minmax(230px, .92fr) minmax(280px, 1.25fr) minmax(280px, 1.25fr);
+    background: var(--page-card); border: 1px solid var(--page-line);
+    border-radius: 16px; padding: 20px; box-shadow: var(--shadow);
+  }
+  .s-info h3 { font-size: 1.04rem; }
+  .s-info h3 small { font-weight: 400; color: var(--page-muted); font-size: .76rem; margin-left: 6px; }
+  .s-tag { display: inline-block; margin-top: 7px; font-size: .68rem; padding: 3px 8px; border-radius: 99px; background: var(--page-card-2); color: var(--page-muted); border: 1px solid var(--page-line); }
+  .s-mood { font-size: .82rem; color: var(--page-muted); margin-top: 10px; }
+  .s-note { font-size: .76rem; color: var(--page-muted); margin-top: 12px; padding-left: 11px; border-left: 2px solid var(--page-line-2); }
+  .copy { width: 100%; margin-top: 16px; padding: 10px; border: 1px solid var(--page-line); background: var(--page-card-2); color: var(--page-text); border-radius: 10px; font: inherit; font-size: .78rem; cursor: pointer; transition: .15s; }
+  .copy:hover { border-color: var(--page-line-2); }
+  .copy:active { transform: scale(.99); }
+
+  /* ---------- 双模预览 ---------- */
+  .pv { border-radius: 12px; padding: 12px; border: 1px solid var(--page-line); background: var(--page-card-2); }
+  .pv-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .pv-badge { font-size: .68rem; letter-spacing: .04em; padding: 3px 8px; border-radius: 99px; background: var(--page-card); border: 1px solid var(--page-line); color: var(--page-muted); }
+  .pv-scheme { font-size: .68rem; font-family: var(--mono); color: var(--page-muted); }
+
+  .hmi { padding: 12px; border-radius: 11px; font-size: 12px; line-height: 1.45; background: var(--p-bg); color: var(--p-text); border: 1px solid var(--p-line); }
+  .hmi-top { display: flex; align-items: center; justify-content: space-between; padding-bottom: 9px; border-bottom: 1px solid var(--p-line); }
+  .hmi-title { font-weight: 600; font-size: 12.5px; }
+  .hmi-clock { font-family: var(--mono); font-size: 11px; color: var(--p-muted); }
+  .hmi-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+  .m { background: var(--p-surface); border: 1px solid var(--p-line); border-radius: 9px; padding: 7px 9px; }
+  .m .k { display: block; font-size: 10px; color: var(--p-muted); letter-spacing: .03em; }
+  .m b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .c-acc { color: var(--p-accent); }
+  .c-warn { color: var(--p-warn); }
+  .c-danger { color: var(--p-danger); }
+  .c-ok { color: var(--p-ok); }
+  .hmi-bar { height: 6px; border-radius: 99px; background: var(--p-surface2); overflow: hidden; }
+  .hmi-bar i { display: block; height: 100%; background: var(--p-accent); border-radius: 99px; }
+  .hmi-sub { display: flex; justify-content: space-between; gap: 8px; margin-top: 7px; font-size: 10.5px; color: var(--p-muted); font-variant-numeric: tabular-nums; }
+  .hmi-alert { margin-top: 10px; padding: 7px 10px; border-radius: 8px; background: var(--p-surface); border-left: 3px solid var(--p-warn); color: var(--p-warn); font-size: 11px; }
+  .hmi-err { margin-top: 7px; padding: 7px 10px; border-radius: 8px; background: var(--p-surface); border-left: 3px solid var(--p-danger); color: var(--p-danger); font-size: 11px; }
+  .hmi-btns { display: flex; gap: 8px; margin-top: 10px; }
+  .b-acc { background: var(--p-accent); color: var(--p-accentInk); padding: 8px 15px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+  .b-ghost { background: transparent; color: var(--p-danger); border: 1px solid var(--p-danger); padding: 7px 15px; border-radius: 8px; font-size: 12px; }
+
+  /* ---------- 色卡 ---------- */
+  .sw { display: flex; flex-wrap: wrap; gap: 8px 6px; margin-top: 11px; }
+  .sw-item { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; text-align: left; border-radius: 7px; }
+  .sw-item i { display: block; width: 46px; height: 28px; border-radius: 7px; border: 1px solid rgba(128,128,128,.35); }
+  .sw-item span { display: block; margin-top: 3px; font-family: var(--mono); font-size: 8.5px; color: var(--page-muted); text-transform: uppercase; letter-spacing: -.03em; }
+  .sw-item:hover i { outline: 2px solid var(--page-accent); outline-offset: 2px; }
+
+  /* ---------- 说明区 ---------- */
+  .notes { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); margin-top: 30px; }
+  .note-card { background: var(--page-card); border: 1px solid var(--page-line); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .note-card h4 { font-size: .86rem; margin-bottom: 9px; }
+  .note-card ul { list-style: none; font-size: .79rem; color: var(--page-muted); }
+  .note-card li { padding-left: 14px; position: relative; margin-bottom: 6px; }
+  .note-card li::before { content: ""; position: absolute; left: 0; top: .6em; width: 5px; height: 5px; border-radius: 99px; background: var(--page-accent); }
+  code { font-family: var(--mono); font-size: .92em; }
+  .note-card code { background: var(--page-card-2); padding: 1px 5px; border-radius: 5px; }
+
+  :focus-visible { outline: 2px solid var(--page-accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (max-width: 1080px) {
+    .scheme { grid-template-columns: 1fr 1fr; }
+    .s-info { grid-column: 1 / -1; }
+  }
+  @media (max-width: 680px) {
+    .wrap { padding: 24px 14px 56px; }
+    .scheme { grid-template-columns: 1fr; padding: 16px; }
+    .head h1 { font-size: 1.2rem; }
+  }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(8px);
+    background: #1F2329; color: #fff; padding: 10px 18px; border-radius: 9px;
+    font-size: .83rem; z-index: 99; opacity: 0; pointer-events: none;
+    transition: opacity .2s, transform .2s;
+  }
+  #toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="head">
+    <div class="head-main">
+      <span class="kicker">Printer HMI · Dual Mode Color</span>
+      <h1>日间 / 夜间双模配色</h1>
+      <p>6 套体系，每套都含日间与夜间两组完整变量。同一色相贯穿两种模式，只调明度与饱和度——不是简单反色。每行右侧两个预览实时对照，点色块复制单个色值，点按钮整段复制双模 CSS。</p>
+    </div>
+    <div>
+      <span class="seg-label">页面主题</span>
+      <div class="seg" id="seg" role="group" aria-label="页面主题切换">
+        <button type="button" data-theme-val="auto" aria-pressed="true">跟随系统</button>
+        <button type="button" data-theme-val="light" aria-pressed="false">日间</button>
+        <button type="button" data-theme-val="dark" aria-pressed="false">夜间</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="panel">
+    <h2>速览对比</h2>
+    <p class="sub">左列看观看环境（底色），右列看品牌感（主色）。深浅两底色差异越大，说明这套体系在两个环境下的适配越充分。</p>
+    <div class="tbl-scroll">
+      <table>
+        <thead>
+          <tr><th>方案</th><th>日间 · 底色 / 主色</th><th>夜间 · 底色 / 主色</th><th>日间状态色 正常/警告/危险</th><th>定位</th></tr>
+        </thead>
+        <tbody id="summary"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <main id="schemes"></main>
+
+  <section class="notes">
+    <div class="note-card">
+      <h4>日间 / 夜间的四条差异规则</h4>
+      <ul>
+        <li>夜间不用纯黑底、不用纯白字，避免眩光；用深灰 + 微暖白</li>
+        <li>夜间卡片比底色更亮（层叠感），日间卡片比底色更白（投影感）</li>
+        <li>同色相在夜间整体提亮约 20% 并降饱和，否则会「发闷」</li>
+        <li>日间靠描边分界，夜间靠明度分界，描边只做辅助</li>
+      </ul>
+    </div>
+    <div class="note-card">
+      <h4>状态色必须两种模式各一套</h4>
+      <ul>
+        <li><code>#DC2626</code> 在深色底上会糊成一团，夜间要换成 <code>#F87171</code></li>
+        <li>同理正常色 <code>#15803D</code> → <code>#4ADE80</code></li>
+        <li>主色两模式保持同一色相，只改明度，品牌感才连贯</li>
+        <li>红绿不可单独承载信息，两种模式都要配图标或文字</li>
+      </ul>
+    </div>
+    <div class="note-card">
+      <h4>接入方式（复制即可用）</h4>
+      <ul>
+        <li>复制的 CSS 同时覆盖 <code>:root</code>、<code>[data-theme="dark"]</code> 和系统偏好媒体查询</li>
+        <li>优先级：手动指定 &gt; 系统偏好 &gt; 日间兜底</li>
+        <li>配套 <code>color-scheme</code> 声明，滚动条与原生表单控件同步变色</li>
+        <li>固件端 TFT 可直接取某一组做 RGB565 转换</li>
+      </ul>
+    </div>
+  </section>
+
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var TOKENS = [
+    ['bg', '背景'], ['surface', '卡片'], ['surface2', '卡片2 / 轨道'], ['line', '描边'],
+    ['text', '主文字'], ['muted', '次文字'], ['accent', '主色'], ['accentInk', '主色上文字'],
+    ['warn', '警告'], ['danger', '危险'], ['ok', '正常']
+  ];
+
+  function M(bg, surface, surface2, line, text, muted, accent, accentInk, warn, danger, ok) {
+    return { bg: bg, surface: surface, surface2: surface2, line: line, text: text, muted: muted,
+             accent: accent, accentInk: accentInk, warn: warn, danger: danger, ok: ok };
+  }
+
+  var SCHEMES = [
+    {
+      name: '工控青', en: 'Industrial Teal', tag: '沿用现有 · 双击场景',
+      mood: '冷静、精密，像仪器面板。青色是工控设备最稳的选择，不容易看腻。',
+      note: '日间把青压暗到 #0E8FA3 才够对比，夜间提亮到 #3FD4E4 保留通透感 —— 色相始终锁在 187°。',
+      day:   M('#F4F7F9','#FFFFFF','#E9F1F4','#D7E3E8','#10242A','#5F7580','#0E8FA3','#FFFFFF','#C2740A','#D92D20','#12805C'),
+      night: M('#0E1216','#1A222B','#222C37','#2A3542','#E8EEF4','#8A9AAB','#3FD4E4','#06171A','#FFB547','#FF5D5D','#43D97E')
+    },
+    {
+      name: '熔炉橙', en: 'Forge Orange', tag: '热感 · 打印机原生',
+      mood: '橙直接对应喷头与热床，用户不需要学习就有直觉，是打印机最贴题的选色。',
+      note: '日间橙要压到 #D9531F 才压得住白底；夜间回到 #FF7A33 的鲜亮，配合近黑底形成「炉火」感。',
+      day:   M('#FAF5F1','#FFFFFF','#F5EAE2','#E8D9CD','#2A1C12','#7A6455','#D9531F','#FFFFFF','#B45309','#DC2626','#15803D'),
+      night: M('#14110F','#1E1917','#2A2320','#3A302B','#F2EAE4','#A2938B','#FF7A33','#22120A','#FFC24B','#FF5252','#6FD08C')
+    },
+    {
+      name: '实验室蓝', en: 'Lab Blue', tag: '浅底优先 · 管理后台',
+      mood: '洁净、克制，深蓝主色在强光下依然清晰。适合网页管理端与白天车间。',
+      note: '日间是本套主场；夜间另配深蓝底 #0B1220 而非直接反色，主色提亮到 #5CA8FF，蓝调保持一致。',
+      day:   M('#F2F5F9','#FFFFFF','#E9EFF6','#D3DEEA','#16202C','#6B7C8F','#2563EB','#FFFFFF','#D97706','#DC2626','#16A34A'),
+      night: M('#0B1220','#141D2E','#1D283C','#2A3852','#E4ECF7','#8698B3','#5CA8FF','#06111F','#FBBF24','#F87171','#4ADE80')
+    },
+    {
+      name: '石墨绿', en: 'Graphite Green', tag: '长时值守 · 低刺激',
+      mood: '稳定、低刺激。绿色天然带「就绪」暗示，适合长时间盯屏的监控位。',
+      note: '绿色系难点是主色容易和「正常」色撞车，所以主色用偏青的 #0F8A6B，正常色用偏黄的 #3F9142 拉开差距。',
+      day:   M('#F3F6F5','#FFFFFF','#E8EFEC','#D4E0DB','#10201C','#64796F','#0F8A6B','#FFFFFF','#B7791F','#D92D20','#3F9142'),
+      night: M('#0D1413','#16201D','#1E2B27','#2B3B36','#E6F0EC','#8AA39B','#2FA37A','#06110D','#F0B429','#EF4444','#7BD16A')
+    },
+    {
+      name: '车间高可视', en: 'Hi-Vis Workshop', tag: '强光 · 油污环境',
+      mood: '安全、醒目。黄底配黑字在油污与强光下辨识度最高，是车间面板的标准做法。',
+      note: '夜间必须整体降饱和，否则荧光黄会刺眼；夜间改用 #FFD147，底色带一点暖绿缓和高亮冲击。',
+      day:   M('#F4F2EC','#FFFFFF','#EAE6DA','#D6D0BE','#1A1A17','#6E6A5C','#F2C200','#1A1A17','#EA580C','#DC2626','#15803D'),
+      night: M('#12130F','#1C1E18','#262A21','#363A2E','#F0F1E8','#9AA08C','#FFD147','#1A1A17','#FF8A3D','#FF6B5D','#6FD08C')
+    },
+    {
+      name: '午夜紫', en: 'Midnight Violet', tag: '消费级 · 品牌向',
+      mood: '新潮、有品牌感。紫主色偏离常规工控观感，适合面向 C 端或众筹设备。',
+      note: '日间用深紫 #6D45D9 保证白底可读，夜间换成高明度 #A78BFA；两层紫同色相，观感连续。',
+      day:   M('#F7F5FB','#FFFFFF','#EFEAF8','#DED5EE','#1E1730','#6E6684','#6D45D9','#FFFFFF','#C2740A','#D92D20','#15803D'),
+      night: M('#0F0D17','#191527','#221C34','#302846','#EDE9F7','#9A93B5','#A78BFA','#150F26','#FBBF24','#FB7185','#4ADE80')
+    }
+  ];
+
+  /* ---------- toast + 复制 ---------- */
+  var toastEl = document.getElementById('toast');
+  var toastTimer;
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('on'); }, 1900);
+  }
+  function copyText(text, okMsg) {
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var done = false;
+      try { done = document.execCommand('copy'); } catch (e) { done = false; }
+      ta.remove();
+      showToast(done ? okMsg : '复制失败，请手动选择文本');
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { showToast(okMsg); }).catch(fallback);
+    } else { fallback(); }
+  }
+
+  /* ---------- 双模 CSS 生成 ---------- */
+  function varName(k) {
+    return k === 'surface2' ? 'surface-2' : (k === 'accentInk' ? 'accent-ink' : k);
+  }
+  function decls(t, pad) {
+    return TOKENS.map(function (tk) { return pad + '--' + varName(tk[0]) + ': ' + t[tk[0]] + ';'; }).join('\n');
+  }
+  function cssBlock(s) {
+    return [
+      '/* ' + s.name + ' · ' + s.en + ' — 日间 / 夜间双模 */',
+      '',
+      '/* 1) 日间：默认兜底 */',
+      ':root {',
+      '  color-scheme: light;',
+      decls(s.day, '  '),
+      '}',
+      '',
+      '/* 2) 夜间：手动指定优先 */',
+      ':root[data-theme="dark"] {',
+      '  color-scheme: dark;',
+      decls(s.night, '  '),
+      '}',
+      '',
+      '/* 3) 夜间：跟随系统偏好（用户未手动指定日间时生效） */',
+      '@media (prefers-color-scheme: dark) {',
+      '  :root:not([data-theme="light"]) {',
+      '    color-scheme: dark;',
+      decls(s.night, '    '),
+      '  }',
+      '}'
+    ].join('\n');
+  }
+
+  /* ---------- 渲染 ---------- */
+  function previewVars(t) {
+    return TOKENS.map(function (tk) { return '--p-' + tk[0] + ':' + t[tk[0]]; }).join(';');
+  }
+  function hmiHtml() {
+    return [
+      '<div class="hmi">',
+        '<div class="hmi-top">',
+          '<span class="hmi-title">Voron 2.4 · 打印中</span>',
+          '<span class="hmi-clock">02:14</span>',
+        '</div>',
+        '<div class="hmi-metrics">',
+          '<div class="m"><span class="k">喷嘴</span><b class="c-warn">215°</b></div>',
+          '<div class="m"><span class="k">热床</span><b class="c-warn">60°</b></div>',
+          '<div class="m"><span class="k">腔温</span><b>41°</b></div>',
+        '</div>',
+        '<div class="hmi-bar"><i style="width:68%"></i></div>',
+        '<div class="hmi-sub"><span>层 214 / 320</span><span class="c-ok">预计 1h12m</span><span class="c-acc">68%</span></div>',
+        '<div class="hmi-alert">耗材余量偏低</div>',
+        '<div class="hmi-err">热端风扇转速异常</div>',
+        '<div class="hmi-btns"><span class="b-acc">暂停打印</span><span class="b-ghost">停止</span></div>',
+      '</div>'
+    ].join('');
+  }
+  function swatchHtml(t) {
+    return TOKENS.map(function (tk) {
+      return '<button type="button" class="sw-item" data-hex="' + t[tk[0]] + '" title="' + tk[1] + ' ' + t[tk[0]] + '">' +
+               '<i style="background:' + t[tk[0]] + '"></i><span>' + t[tk[0]].slice(1) + '</span></button>';
+    }).join('');
+  }
+  function pvHtml(label, sub, t) {
+    return '<div class="pv" style="' + previewVars(t) + '">' +
+             '<div class="pv-head"><span class="pv-badge">' + label + '</span><span class="pv-scheme">' + sub + '</span></div>' +
+             hmiHtml() +
+             '<div class="sw">' + swatchHtml(t) + '</div>' +
+           '</div>';
+  }
+
+  var summaryEl = document.getElementById('summary');
+  var schemesEl = document.getElementById('schemes');
+  var rows = [], cards = [];
+
+  SCHEMES.forEach(function (s, i) {
+    rows.push(
+      '<tr>',
+        '<td class="nm">' + s.name + '<small>' + s.en + '</small></td>',
+        '<td><div class="pair">' +
+          '<span class="chip" style="background:' + s.day.bg + '"></span>' +
+          '<span class="chip" style="background:' + s.day.accent + '"></span>' +
+          '<code>' + s.day.bg + ' / ' + s.day.accent + '</code></div></td>',
+        '<td><div class="pair">' +
+          '<span class="chip" style="background:' + s.night.bg + '"></span>' +
+          '<span class="chip" style="background:' + s.night.accent + '"></span>' +
+          '<code>' + s.night.bg + ' / ' + s.night.accent + '</code></div></td>',
+        '<td><div class="pair">' +
+          ['ok', 'warn', 'danger'].map(function (k) {
+            return '<span class="chip" style="background:' + s.day[k] + '"></span>';
+          }).join('') +
+          '<code>' + s.day.ok + ' ' + s.day.warn + ' ' + s.day.danger + '</code></div></td>',
+        '<td class="pm">' + s.tag + '</td>',
+      '</tr>'
+    );
+
+    cards.push(
+      '<article class="scheme">',
+        '<div class="s-info">',
+          '<h3>' + s.name + '<small>' + s.en + '</small></h3>',
+          '<span class="s-tag">' + s.tag + '</span>',
+          '<p class="s-mood">' + s.mood + '</p>',
+          '<p class="s-note">' + s.note + '</p>',
+          '<button type="button" class="copy" data-idx="' + i + '">复制日间 + 夜间变量</button>',
+        '</div>',
+        pvHtml('日间 · Light', 'light', s.day),
+        pvHtml('夜间 · Dark', 'dark', s.night),
+      '</article>'
+    );
+  });
+
+  summaryEl.innerHTML = rows.join('');
+  schemesEl.innerHTML = cards.join('');
+
+  schemesEl.addEventListener('click', function (e) {
+    var sw = e.target.closest('.sw-item');
+    if (sw) { copyText(sw.dataset.hex, '已复制 ' + sw.dataset.hex); return; }
+    var cp = e.target.closest('.copy');
+    if (cp) {
+      var s = SCHEMES[Number(cp.dataset.idx)];
+      copyText(cssBlock(s), s.name + ' 双模变量已复制');
+    }
+  });
+
+  /* ---------- 页面主题开关（与方案同一套机制） ---------- */
+  var seg = document.getElementById('seg');
+  var root = document.documentElement;
+  var KEY = 'hmi-palette-page-theme';
+
+  function applyTheme(val) {
+    if (val === 'auto') { root.removeAttribute('data-theme'); }
+    else { root.setAttribute('data-theme', val); }
+    Array.prototype.forEach.call(seg.querySelectorAll('button'), function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.themeVal === val));
+    });
+  }
+
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (err) { saved = null; }
+  var q = new URLSearchParams(location.search).get('theme');
+  applyTheme((q === 'dark' || q === 'light') ? q : (saved || 'auto'));
+
+  seg.addEventListener('click', function (e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    applyTheme(btn.dataset.themeVal);
+    try { localStorage.setItem(KEY, btn.dataset.themeVal); } catch (err) { /* 隐私模式忽略 */ }
+  });
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HMI 配色方案板 · 5 个审美家族 / 16 套双模方案</title>
+<style>
+  * { margin: 0; box-sizing: border-box; }
+
+  :root {
+    color-scheme: light;
+    --bg: #F4F5F7;
+    --card: #FFFFFF;
+    --card-2: #F3F5F7;
+    --line: #E1E5EA;
+    --line-2: #C6CDD6;
+    --text: #14161B;
+    --muted: #656C79;
+    --accent: #0E8FA3;
+    --shadow-sm: 0 1px 2px rgba(16,24,32,.04), 0 4px 14px rgba(16,24,32,.06);
+    --shadow-lg: 0 2px 6px rgba(16,24,32,.05), 0 14px 40px rgba(16,24,32,.09);
+    --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0E1014;
+    --card: #16191F;
+    --card-2: #1D2128;
+    --line: #272B33;
+    --line-2: #3A404A;
+    --text: #E6E9EF;
+    --muted: #8A93A2;
+    --accent: #3FD4E4;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.35);
+    --shadow-lg: 0 2px 6px rgba(0,0,0,.4), 0 14px 40px rgba(0,0,0,.5);
+  }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0E1014; --card: #16191F; --card-2: #1D2128; --line: #272B33; --line-2: #3A404A;
+      --text: #E6E9EF; --muted: #8A93A2; --accent: #3FD4E4;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.35);
+      --shadow-lg: 0 2px 6px rgba(0,0,0,.4), 0 14px 40px rgba(0,0,0,.5);
+    }
+  }
+
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    background-image: radial-gradient(1200px 480px at 12% -8%, rgba(14,143,163,.07), transparent 60%);
+    transition: background-color .2s ease, color .2s ease;
+  }
+  .wrap { max-width: 1360px; margin: 0 auto; padding: 44px 22px 88px; }
+
+  /* ---------- 页头 ---------- */
+  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; flex-wrap: wrap; margin-bottom: 26px; }
+  .head-main { max-width: 74ch; }
+  .kicker {
+    display: inline-block; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--accent); border: 1px solid var(--line); background: var(--card);
+    padding: 4px 10px; border-radius: 99px; margin-bottom: 13px; box-shadow: var(--shadow-sm);
+  }
+  .head h1 { font-size: 1.62rem; letter-spacing: -.02em; line-height: 1.28; }
+  .head p { color: var(--muted); font-size: .88rem; margin-top: 9px; }
+  .head p b { color: var(--text); font-weight: 600; }
+
+  .seg { display: inline-flex; background: var(--card); border: 1px solid var(--line); border-radius: 11px; padding: 3px; gap: 2px; box-shadow: var(--shadow-sm); }
+  .seg button { border: 0; background: none; color: var(--muted); font: inherit; font-size: .79rem; padding: 7px 13px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+  .seg button[aria-pressed="true"] { background: var(--card-2); color: var(--text); font-weight: 600; }
+  .seg-label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: 6px; letter-spacing: .04em; }
+
+  /* ---------- 家族筛选 ---------- */
+  .filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+  .fchip {
+    display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line);
+    background: var(--card); color: var(--muted); font: inherit; font-size: .79rem;
+    padding: 7px 13px; border-radius: 99px; cursor: pointer; transition: .15s; box-shadow: var(--shadow-sm);
+  }
+  .fchip:hover { border-color: var(--line-2); color: var(--text); }
+  .fchip[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); font-weight: 600; }
+  .fdot { width: 9px; height: 9px; border-radius: 99px; flex: none; }
+  .fchip .cnt { font-family: var(--mono); font-size: .68rem; opacity: .62; }
+
+  /* ---------- 方案卡 ---------- */
+  .grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); }
+  .sc { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; }
+  .sc[hidden] { display: none; }
+  .sc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .sc-head h3 { font-size: 1.05rem; letter-spacing: -.01em; }
+  .sc-head h3 small { font-weight: 400; color: var(--muted); font-size: .74rem; margin-left: 7px; letter-spacing: 0; }
+  .fam { font-size: .67rem; padding: 3px 9px; border-radius: 99px; background: var(--card-2); color: var(--muted); border: 1px solid var(--line); white-space: nowrap; }
+  .mood { font-size: .81rem; color: var(--muted); margin: 7px 0 15px; min-height: 2.7em; }
+
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .half { border-radius: 13px; padding: 10px; border: 1px solid var(--line); background: var(--card-2); }
+  .half-tag { display: flex; align-items: center; justify-content: space-between; font-size: .66rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .half-tag em { font-style: normal; font-family: var(--mono); font-size: .64rem; opacity: .75; }
+
+  .hmi { border-radius: 10px; padding: 11px; background: var(--p-bg); color: var(--p-text); border: 1px solid var(--p-line); font-size: 11.5px; }
+  .hmi-top { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--p-line); font-size: 11px; font-weight: 600; }
+  .hmi-top span:last-child { font-family: var(--mono); font-weight: 400; font-size: 10px; color: var(--p-muted); }
+  .hmi-m { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: 9px 0; }
+  .m { background: var(--p-surface); border: 1px solid var(--p-line); border-radius: 8px; padding: 6px 8px; }
+  .m .k { display: block; font-size: 9.5px; color: var(--p-muted); }
+  .m b { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .c-warn { color: var(--p-warn); }
+  .c-ok { color: var(--p-ok); }
+  .c-acc { color: var(--p-accent); }
+  .hmi-bar { height: 5px; border-radius: 99px; background: var(--p-surface2); overflow: hidden; }
+  .hmi-bar i { display: block; height: 100%; background: var(--p-accent); border-radius: 99px; }
+  .hmi-sub { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; color: var(--p-muted); font-variant-numeric: tabular-nums; }
+  .hmi-alert { margin-top: 9px; padding: 6px 9px; border-radius: 7px; background: var(--p-surface); border-left: 3px solid var(--p-warn); color: var(--p-warn); font-size: 10.5px; }
+  .hmi-btns { display: flex; gap: 7px; margin-top: 9px; }
+  .b-acc { background: var(--p-accent); color: var(--p-accentInk); padding: 6px 12px; border-radius: 7px; font-size: 11px; font-weight: 600; }
+  .b-ghost { border: 1px solid var(--p-danger); color: var(--p-danger); padding: 5px 12px; border-radius: 7px; font-size: 11px; }
+
+  /* 色带 */
+  .sw { display: flex; gap: 2px; margin-top: 10px; }
+  .sw-item { flex: 1; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 3px; }
+  .sw-item i { display: block; height: 24px; background: currentColor; border-radius: 3px; }
+  .sw-item:first-child i { border-radius: 5px 3px 3px 5px; }
+  .sw-item:last-child i { border-radius: 3px 5px 5px 3px; }
+  .sw-item:hover i { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .sc-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .hexes { font-family: var(--mono); font-size: .7rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .copy { flex: none; border: 1px solid var(--line); background: var(--card-2); color: var(--text); font: inherit; font-size: .76rem; padding: 8px 14px; border-radius: 9px; cursor: pointer; transition: .15s; }
+  .copy:hover { border-color: var(--line-2); }
+  .copy:active { transform: scale(.98); }
+
+  /* ---------- 底部说明 ---------- */
+  .notes { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-top: 30px; }
+  .nc { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 17px 19px; box-shadow: var(--shadow-sm); }
+  .nc h4 { font-size: .86rem; margin-bottom: 9px; }
+  .nc ul { list-style: none; font-size: .78rem; color: var(--muted); }
+  .nc li { padding-left: 14px; position: relative; margin-bottom: 6px; }
+  .nc li::before { content: ""; position: absolute; left: 0; top: .6em; width: 5px; height: 5px; border-radius: 99px; background: var(--accent); }
+  code { font-family: var(--mono); font-size: .92em; }
+  .nc code { background: var(--card-2); padding: 1px 5px; border-radius: 5px; }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (max-width: 1180px) { .grid { grid-template-columns: 1fr; } }
+  @media (max-width: 560px) {
+    .wrap { padding: 26px 14px 60px; }
+    .duo { grid-template-columns: 1fr; }
+    .head h1 { font-size: 1.28rem; }
+  }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(8px);
+    background: #1F2329; color: #fff; padding: 10px 18px; border-radius: 9px;
+    font-size: .82rem; z-index: 99; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+  }
+  #toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="head">
+    <div class="head-main">
+      <span class="kicker">Palette Board · 5 Families · 16 Schemes</span>
+      <h1>配色方案板：按审美家族铺开</h1>
+      <p>每一套都含<b>日间 + 夜间</b>两组完整变量，同色相贯穿双模。点色带复制单个色值，点按钮复制整段双模 CSS。<br>挑的时候别看单个色块——<b>先看它给你的感觉</b>，再回来对 hex。</p>
+    </div>
+    <div>
+      <span class="seg-label">页面主题</span>
+      <div class="seg" id="seg" role="group" aria-label="页面主题切换">
+        <button type="button" data-theme-val="auto" aria-pressed="true">跟随系统</button>
+        <button type="button" data-theme-val="light" aria-pressed="false">日间</button>
+        <button type="button" data-theme-val="dark" aria-pressed="false">夜间</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="filter" id="filter" role="group" aria-label="按家族筛选"></div>
+
+  <main class="grid" id="grid"></main>
+
+  <section class="notes">
+    <div class="nc">
+      <h4>为什么上一版"不好看"</h4>
+      <ul>
+        <li>6 套全是同一气质：低饱和 + 灰蓝中性色，换色相不换审美</li>
+        <li>中性色是"中性灰"，没有跟着主色偏色，画面发灰</li>
+        <li>主色不够饱和，缺少一个明确的视觉焦点</li>
+      </ul>
+    </div>
+    <div class="nc">
+      <h4>这一版改了什么</h4>
+      <ul>
+        <li>按家族分组：工业 / 科技 / 复古 / 自然 / 极简，气质先分野</li>
+        <li>中性色跟着主色带一点同向色偏，整体不再发灰</li>
+        <li>科技与霓虹家族把饱和度拉满，极简家族只留一个跳色</li>
+      </ul>
+    </div>
+    <div class="nc">
+      <h4>日间 / 夜间的四条规则</h4>
+      <ul>
+        <li>夜间不用纯黑底、纯白字；卡片比底色亮一层做分层</li>
+        <li>日间靠描边分界，夜间靠明度分界</li>
+        <li>状态色两种模式各一套：<code>#DC2626</code> → <code>#F87171</code></li>
+        <li>导出 CSS 三层优先级：手动指定 &gt; 系统偏好 &gt; 日间兜底</li>
+      </ul>
+    </div>
+  </section>
+
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* [key, 中文名] —— 顺序即色带顺序，也是导出 CSS 的变量顺序 */
+  var TOKENS = [
+    ['bg', '背景'], ['surface', '卡片'], ['surface2', '卡片2'], ['line', '描边'],
+    ['text', '主文字'], ['muted', '次文字'], ['accent', '主色'], ['accentInk', '主色文字'],
+    ['warn', '警告'], ['danger', '危险'], ['ok', '正常']
+  ];
+
+  var FAMILIES = [
+    { key: 'all',       name: '全部',     dot: 'linear-gradient(135deg,#0E8FA3,#FF7A33,#7C5CFF)' },
+    { key: 'industrial',name: '工业仪表', dot: '#0E8FA3' },
+    { key: 'tech',      name: '科技霓虹', dot: '#00E5FF' },
+    { key: 'retro',     name: '复古终端', dot: '#FFB000' },
+    { key: 'natural',   name: '自然莫兰迪', dot: '#6B8CA8' },
+    { key: 'minimal',   name: '极简黑白', dot: '#4F46E5' }
+  ];
+
+  function M(bg, surface, surface2, line, text, muted, accent, accentInk, warn, danger, ok) {
+    return { bg: bg, surface: surface, surface2: surface2, line: line, text: text, muted: muted,
+             accent: accent, accentInk: accentInk, warn: warn, danger: danger, ok: ok };
+  }
+
+  var S = [
+    /* ============ A 工业仪表 ============ */
+    { fam: 'industrial', name: '工控青', en: 'Industrial Teal', mood: '冷静、精密。最"安全"的一套，青色是仪器面板的通用语，久看不腻。',
+      day:   M('#F4F7F9','#FFFFFF','#E9F1F4','#CFDEE4','#0B242B','#57707B','#0E8FA3','#FFFFFF','#B86A00','#C92218','#0F7A55'),
+      night: M('#0E1216','#1A222B','#222C37','#2A3542','#E8EEF4','#8A9AAB','#3FD4E4','#04191C','#FFB547','#FF5D5D','#43D97E') },
+
+    { fam: 'industrial', name: '熔炉橙', en: 'Forge Orange', mood: '热感、机械。橙直接对应喷头与热床，用户不用学就有直觉。',
+      day:   M('#FBF4EE','#FFFFFF','#F5E7DB','#E7CDB8','#2B1B10','#7C6250','#C64A15','#FFFFFF','#8A5A00','#C92218','#3F6B35'),
+      night: M('#14110F','#1E1917','#2A2320','#3A302B','#F4EAE2','#A2938B','#FF7A33','#200F05','#FFC24B','#FF5252','#6FD08C') },
+
+    { fam: 'industrial', name: '石墨绿', en: 'Graphite Green', mood: '稳定、低刺激。绿色自带"就绪"暗示，适合长时间盯屏的值守位。',
+      day:   M('#EEF3F1','#FFFFFF','#DFE9E5','#C4D5CF','#0E211C','#5B736B','#0B7A5A','#FFFFFF','#8A5A00','#C92218','#2E8B4E'),
+      night: M('#0D1413','#16201D','#1E2B27','#2B3B36','#E6F0EC','#8AA39B','#2FA37A','#04140F','#F0B429','#EF4444','#7BD16A') },
+
+    /* ============ B 科技霓虹 ============ */
+    { fam: 'tech', name: '电光青', en: 'Electric Cyan', mood: '干净锐利。纯正电光蓝 + 近黑底，像高端仪器或旗舰打印机的开屏瞬间。',
+      day:   M('#F1F6FC','#FFFFFF','#E2EBF8','#C7D9EF','#08121E','#5A7191','#0062FF','#FFFFFF','#B85C00','#C92218','#0F7A55'),
+      night: M('#05070A','#0D1117','#141B24','#1E2833','#DBE6F2','#7C8FA6','#00E5FF','#001316','#FFB020','#FF4D4D','#00E676') },
+
+    { fam: 'tech', name: '霓虹蓝紫', en: 'Neon Indigo', mood: '有未来感。蓝紫主色天生带科技品牌气质，适合面向 C 端的产品。',
+      day:   M('#F4F4FD','#FFFFFF','#E7E6FB','#D2D0F1','#100E2B','#63608A','#4F32EE','#FFFFFF','#B85C00','#C92218','#0F7A55'),
+      night: M('#07061A','#100E28','#181538','#262250','#E4E1FF','#8E8ABC','#7C5CFF','#0A0620','#FBBF24','#FF4D6D','#3DDC97') },
+
+    { fam: 'tech', name: '激光品红', en: 'Laser Magenta', mood: '张扬、有攻击性。品红是能量感最强的颜色，用在进度与运行动作上极具冲击。',
+      day:   M('#FCF3F8','#FFFFFF','#F7E4EE','#EDCBE0','#24101B','#7E5A6D','#C7007A','#FFFFFF','#8A5A00','#C92218','#0F7A55'),
+      night: M('#0A0510','#140A18','#1E0F24','#2C1634','#F6E6F5','#A582A3','#FF2E93','#220016','#FFB020','#FF5252','#3DDC97') },
+
+    { fam: 'tech', name: '毒液青柠', en: 'Venom Lime', mood: '极强辨识度。青柠绿在深底上像发光，适合想要一眼记住的设备。',
+      day:   M('#F5F7EE','#FFFFFF','#EAEFD8','#D4DFB7','#161A0C','#6C7452','#4C7A00','#FFFFFF','#B85C00','#C92218','#0F7A55'),
+      night: M('#060A06','#0E1410','#161E18','#222E26','#E4F5E0','#84A08A','#B6FF3C','#0C1900','#FFB020','#FF5252','#00E676') },
+
+    /* ============ C 复古终端 ============ */
+    { fam: 'retro', name: '琥珀终端', en: 'Amber Terminal', mood: '仪器房的怀旧感。琥珀色是早期显示器的经典配色，自带"专业设备"的信任感。',
+      day:   M('#F8F1E4','#FFFCF5','#F1E5CF','#DFCEAF','#2B2113','#7D6C4E','#96470A','#FFFCF5','#B87A00','#A81C1C','#3F6B35'),
+      night: M('#14100A','#1E1810','#2A2216','#3A2F1E','#F7E9CF','#A28E6A','#FFB000','#1A0E00','#FF6B35','#FF5252','#7BD16A') },
+
+    { fam: 'retro', name: '磷光绿 CRT', en: 'CRT Phosphor', mood: '终端绿的极致。深绿底 + 磷光绿字，是"正在运行"最有说服力的视觉表达。',
+      day:   M('#EFF5EF','#FFFFFF','#DFEBE1','#C6D9C9','#0E1A10','#5C7361','#0A6647','#FFFFFF','#8A5A00','#A81C1C','#4C8A2E'),
+      night: M('#04120A','#0A1A10','#102418','#1A3123','#D8F5E0','#7BA88C','#33FF66','#02150A','#FFB020','#FF5252','#9EFF3D') },
+
+    { fam: 'retro', name: '胶片暖纸', en: 'Film Paper', mood: '纸感与温度。暖纸底 + 烧橙主色，像老胶片或牛皮纸标签，适合家居向设备。',
+      day:   M('#F6EFE2','#FFFBF4','#EEE3CF','#DCCAA8','#2A2318','#7A6E58','#BC3F0C','#FFFBF4','#7A5A00','#A81C1C','#3F6B35'),
+      night: M('#16120D','#201A13','#2B231A','#3B3024','#F5EBDC','#A89A82','#FF7A45','#1B0A03','#E0A040','#FF5C5C','#8FD07A') },
+
+    { fam: 'retro', name: '蓝晒图', en: 'Blueprint', mood: '工程蓝图感。深蓝底配浅蓝线条，两种模式都偏深，气质硬核且独特。',
+      day:   M('#EDF3F9','#FFFFFF','#DFE9F4','#C4D7E9','#0A1F33','#4F6B85','#0A5A9E','#FFFFFF','#8A5A00','#A81C1C','#0F7A55'),
+      night: M('#071A2E','#0D2540','#143252','#1F4470','#DCEBFA','#7A9CBE','#7FD4FF','#041420','#FFC24B','#FF6B6B','#4ADE80') },
+
+    /* ============ D 自然莫兰迪 ============ */
+    { fam: 'natural', name: '雾霭蓝灰', en: 'Mist Blue', mood: '安静、高级。低饱和蓝灰配柔光底，像清晨的雾，久看不累也不会土。',
+      day:   M('#EDF1F4','#FFFFFF','#E1E8ED','#CCD7DF','#1A2127','#68757F','#547E9E','#FFFFFF','#B07A2A','#A85A5A','#4C7A5E'),
+      night: M('#141A1E','#1D2529','#262F35','#343F47','#E7EDF1','#8B99A3','#9DBAD4','#0C1317','#D9A85C','#D98686','#8FBF9B') },
+
+    { fam: 'natural', name: '陶土', en: 'Clay', mood: '温暖、有手作感。陶土橙配米白，像陶器与亚麻，适合家居或文创属性设备。',
+      day:   M('#F7F1EC','#FFFDFB','#F0E5DC','#DDC9BA','#2A211C','#7A6A60','#AE5F41','#FFFDFB','#9A7000','#A04545','#5C7A50'),
+      night: M('#171310','#211B17','#2C241E','#3D322A','#F5EAE2','#A79889','#E09A78','#1B0D06','#E8B44A','#E88080','#9CC08C') },
+
+    { fam: 'natural', name: '苔原苔绿', en: 'Moss', mood: '自然、克制。苔藓绿配灰米底，气质偏户外与环保，不刺眼也不沉闷。',
+      day:   M('#F0F3EC','#FFFFFF','#E4EADD','#CFDAC0','#1C2216','#6B7560','#5F8244','#FFFFFF','#9A7000','#A85A5A','#7A9B2E'),
+      night: M('#12160F','#1A2015','#232B1C','#323D28','#E9F0E0','#8E9A82','#A8C97F','#0D1406','#D9A85C','#D98686','#C8E06A') },
+
+    /* ============ E 极简黑白 ============ */
+    { fam: 'minimal', name: '墨白', en: 'Ink Mono', mood: '最克制的一套。全站只有黑与白，颜色只留给状态——信息层级反而最清楚。',
+      day:   M('#FAFAFA','#FFFFFF','#F0F0F0','#DEDEDE','#0A0A0A','#737373','#0A0A0A','#FFFFFF','#A86200','#B81C1C','#0F7A55'),
+      night: M('#0A0A0A','#141414','#1C1C1C','#2A2A2A','#F5F5F5','#8C8C8C','#FFFFFF','#0A0A0A','#FFC24B','#FF6B6B','#4ADE80') },
+
+    { fam: 'minimal', name: '靛蓝极简', en: 'Indigo Minimal', mood: '极简但不冷。发丝线 + 单一靛蓝跳色，是"少即是多"最稳的落点。',
+      day:   M('#FBFBFD','#FFFFFF','#F1F1F7','#E0E0EA','#101018','#6E6E80','#4638D6','#FFFFFF','#9A7000','#B81C1C','#0F7A55'),
+      night: M('#0B0B10','#131319','#1B1B23','#282833','#EDEDF2','#8A8A9C','#818CF8','#0A0A14','#FBBF24','#F87171','#4ADE80') }
+  ];
+
+  /* ---------- toast / 复制 ---------- */
+  var toastEl = document.getElementById('toast'), toastTimer;
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('on'); }, 1900);
+  }
+  function copyText(text, okMsg) {
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed'; ta.style.top = '-1000px';
+      document.body.appendChild(ta); ta.select();
+      var done = false;
+      try { done = document.execCommand('copy'); } catch (e) { done = false; }
+      ta.remove();
+      showToast(done ? okMsg : '复制失败，请手动选择文本');
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { showToast(okMsg); }).catch(fallback);
+    } else { fallback(); }
+  }
+
+  /* ---------- 双模 CSS 导出 ---------- */
+  function vn(k) { return k === 'surface2' ? 'surface-2' : (k === 'accentInk' ? 'accent-ink' : k); }
+  function decls(t, pad) {
+    return TOKENS.map(function (tk) { return pad + '--' + vn(tk[0]) + ': ' + t[tk[0]] + ';'; }).join('\n');
+  }
+  function cssBlock(s) {
+    return [
+      '/* ' + s.name + ' · ' + s.en + ' — 日间 / 夜间双模 */',
+      '',
+      ':root {',
+      '  color-scheme: light;',
+      decls(s.day, '  '),
+      '}',
+      '',
+      ':root[data-theme="dark"] {',
+      '  color-scheme: dark;',
+      decls(s.night, '  '),
+      '}',
+      '',
+      '@media (prefers-color-scheme: dark) {',
+      '  :root:not([data-theme="light"]) {',
+      '    color-scheme: dark;',
+      decls(s.night, '    '),
+      '  }',
+      '}'
+    ].join('\n');
+  }
+
+  /* ---------- 渲染 ---------- */
+  function vars(t) { return TOKENS.map(function (tk) { return '--p-' + tk[0] + ':' + t[tk[0]]; }).join(';'); }
+  function hmi() {
+    return [
+      '<div class="hmi">',
+        '<div class="hmi-top"><span>Voron 2.4 · 打印中</span><span>02:14</span></div>',
+        '<div class="hmi-m">',
+          '<div class="m"><span class="k">喷嘴</span><b class="c-warn">215°</b></div>',
+          '<div class="m"><span class="k">热床</span><b>60°</b></div>',
+        '</div>',
+        '<div class="hmi-bar"><i style="width:68%"></i></div>',
+        '<div class="hmi-sub"><span>层 214 / 320</span><span class="c-ok">预计 1h12m</span><span class="c-acc">68%</span></div>',
+        '<div class="hmi-alert">耗材余量偏低</div>',
+        '<div class="hmi-btns"><span class="b-acc">暂停打印</span><span class="b-ghost">停止</span></div>',
+      '</div>'
+    ].join('');
+  }
+  function band(t) {
+    return '<div class="sw">' + TOKENS.map(function (tk) {
+      return '<button type="button" class="sw-item" data-hex="' + t[tk[0]] + '" title="' + tk[1] + ' · ' + t[tk[0]] + '" ' +
+             'style="color:' + t[tk[0]] + '"><i></i></button>';
+    }).join('') + '</div>';
+  }
+  function half(label, tag, t) {
+    return '<div class="half" style="' + vars(t) + '">' +
+             '<div class="half-tag"><span>' + label + '</span><em>' + tag + '</em></div>' +
+             hmi() + band(t) +
+           '</div>';
+  }
+
+  var filterEl = document.getElementById('filter');
+  var gridEl = document.getElementById('grid');
+
+  var counts = {};
+  S.forEach(function (s) { counts[s.fam] = (counts[s.fam] || 0) + 1; });
+
+  filterEl.innerHTML = FAMILIES.map(function (f) {
+    return '<button type="button" class="fchip" data-fam="' + f.key + '" aria-pressed="' + (f.key === 'all') + '">' +
+             '<span class="fdot" style="background:' + f.dot + '"></span>' + f.name +
+             '<span class="cnt">' + (f.key === 'all' ? S.length : counts[f.key]) + '</span>' +
+           '</button>';
+  }).join('');
+
+  gridEl.innerHTML = S.map(function (s, i) {
+    var famName = (FAMILIES.filter(function (f) { return f.key === s.fam; })[0] || {}).name || '';
+    return '<article class="sc" data-fam="' + s.fam + '">' +
+      '<div class="sc-head"><h3>' + s.name + '<small>' + s.en + '</small></h3><span class="fam">' + famName + '</span></div>' +
+      '<p class="mood">' + s.mood + '</p>' +
+      '<div class="duo">' + half('日间', 'light', s.day) + half('夜间', 'dark', s.night) + '</div>' +
+      '<div class="sc-foot">' +
+        '<span class="hexes">' + s.day.bg + ' · ' + s.day.accent + ' ／ ' + s.night.bg + ' · ' + s.night.accent + '</span>' +
+        '<button type="button" class="copy" data-idx="' + i + '">复制双模 CSS</button>' +
+      '</div>' +
+    '</article>';
+  }).join('');
+
+  /* ---------- 筛选 ---------- */
+  var cards = Array.prototype.slice.call(gridEl.querySelectorAll('.sc'));
+  filterEl.addEventListener('click', function (e) {
+    var btn = e.target.closest('.fchip');
+    if (!btn) return;
+    var fam = btn.dataset.fam;
+    Array.prototype.forEach.call(filterEl.querySelectorAll('.fchip'), function (b) {
+      b.setAttribute('aria-pressed', String(b === btn));
+    });
+    cards.forEach(function (c) { c.hidden = (fam !== 'all' && c.dataset.fam !== fam); });
+  });
+
+  /* ---------- 交互 ---------- */
+  gridEl.addEventListener('click', function (e) {
+    var sw = e.target.closest('.sw-item');
+    if (sw) { copyText(sw.dataset.hex, '已复制 ' + sw.dataset.hex); return; }
+    var cp = e.target.closest('.copy');
+    if (cp) { var s = S[Number(cp.dataset.idx)]; copyText(cssBlock(s), s.name + ' 双模变量已复制'); }
+  });
+
+  /* ---------- 页面主题 ---------- */
+  var seg = document.getElementById('seg');
+  var root = document.documentElement;
+  var KEY = 'hmi-palette-page-theme';
+  function applyTheme(val) {
+    if (val === 'auto') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', val);
+    Array.prototype.forEach.call(seg.querySelectorAll('button'), function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.themeVal === val));
+    });
+  }
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (err) { saved = null; }
+  var q = new URLSearchParams(location.search).get('theme');
+  applyTheme((q === 'dark' || q === 'light') ? q : (saved || 'auto'));
+  seg.addEventListener('click', function (e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    applyTheme(btn.dataset.themeVal);
+    try { localStorage.setItem(KEY, btn.dataset.themeVal); } catch (err) {}
+  });
+
+})();
+</script>
+</body>
+</html>
