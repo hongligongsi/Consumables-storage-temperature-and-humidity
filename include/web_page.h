@@ -83,6 +83,12 @@ input,select{width:100%;padding:9px 11px;border:1px solid var(--line);border-rad
 input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.15)}
 input::placeholder{color:#9AA9BA}
 input[readonly]{background:var(--surface-2);color:var(--muted)}
+input[type=range]{padding:0;border:none;box-shadow:none;background:transparent;height:24px;accent-color:var(--accent);cursor:pointer}
+input[type=range]:focus{box-shadow:none}
+label b{color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums}
+/* 设备与显示:三列本机参数 */
+.dev3{display:grid;grid-template-columns:repeat(3,1fr);gap:2px 26px}
+.dev3>div>:first-child{margin-top:0}
 .check{display:flex;gap:9px;align-items:center;color:var(--text);font-size:14px;margin:11px 0}
 .check input{width:17px;height:17px;accent-color:var(--accent);cursor:pointer}
 .row{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
@@ -98,7 +104,7 @@ progress::-webkit-progress-bar{background:var(--surface-2);border-radius:6px}
 progress::-webkit-progress-value{background:linear-gradient(90deg,#60A5FA,var(--accent));border-radius:6px;transition:width .25s}
 .maint{border-color:var(--danger-line)}
 .sub{color:var(--muted);font-size:13px;margin:0 0 12px}
-@media(max-width:860px){.grid,.groups{grid-template-columns:1fr}.controls{grid-template-columns:1fr 1fr}}
+@media(max-width:860px){.grid,.groups,.dev3{grid-template-columns:1fr}.controls{grid-template-columns:1fr 1fr}}
 @media(max-width:520px){.wrap{padding:18px 12px 32px}.controls{grid-template-columns:1fr 1fr}.clockbox{display:none}}
 </style></head><body>
 <main class="wrap">
@@ -150,6 +156,29 @@ progress::-webkit-progress-value{background:linear-gradient(90deg,#60A5FA,var(--
     </div>
   </article>
 
+  <article class="card wide"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>设备与显示</h2>
+    <p class="sub">屏幕与加热保护参数，保存后立即生效（与设备端「系统设置」页共用同一份配置）。</p>
+    <div class="dev3">
+      <div>
+        <label for="language">显示语言</label>
+        <select id="language"><option value="zh">中文</option><option value="en">English</option></select>
+        <label for="brightness">屏幕亮度 <b id="brightnessVal">--</b></label>
+        <input id="brightness" type="range" min="1" max="100" step="5" oninput="briVal()">
+      </div>
+      <div>
+        <label for="heaterBoardLimitC">热板限温（℃）</label>
+        <input id="heaterBoardLimitC" type="number" min="40" max="180" step="1">
+        <label for="heaterMaxCurrentA">加热限流（A）</label>
+        <input id="heaterMaxCurrentA" type="number" min="1" max="12" step="1">
+      </div>
+      <div>
+        <label for="heaterFanPercent">热风转速 <b id="heaterFanVal">--</b></label>
+        <input id="heaterFanPercent" type="range" min="20" max="100" step="5" oninput="fanVal()">
+        <p class="sub" style="margin:14px 0 0">热板限温与限流直接作用于加热保护，请勿设置为超出硬件能力的值。</p>
+      </div>
+    </div>
+    <div class="row"><button class="btn-primary" onclick="saveDevice()">保存设备设置</button></div></article>
+
   <article class="card net"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 9a13 13 0 0 1 18 0"/><path d="M6.5 12.5a8 8 0 0 1 11 0"/><path d="M10 16a3.5 3.5 0 0 1 4 0"/><circle cx="12" cy="19" r="1.2" fill="currentColor" stroke="none"/></svg>网络</h2>
     <div class="stats">
       <div class="stat"><span>SSID</span><b id="ssid">--</b></div>
@@ -158,6 +187,7 @@ progress::-webkit-progress-value{background:linear-gradient(90deg,#60A5FA,var(--
       <div class="stat"><span>设备时间</span><b id="clock2" style="font-size:14px">--</b></div>
       <div class="stat"><span>断线次数</span><b id="drops">--</b></div>
       <div class="stat"><span>最近断线</span><b id="reason" style="font-size:13px">--</b></div>
+      <div class="stat"><span>WiFi 模块</span><b id="wifiEnabled" style="font-size:14px">--</b></div>
     </div></article>
 
   <article class="card"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2.5" stroke-linecap="round"/></svg>时间与 NTP</h2>
@@ -200,7 +230,18 @@ progress::-webkit-progress-value{background:linear-gradient(90deg,#60A5FA,var(--
 const $=id=>document.getElementById(id), msg=(s,bad=false)=>{const e=$('msg');e.textContent=s;e.style.color=bad?'var(--danger)':'var(--ok)'};
 async function api(url,opt){const r=await fetch(url,opt);const t=await r.text();if(!r.ok)throw Error(t||('HTTP '+r.status));return t?JSON.parse(t):{}}
 function body(o){return new URLSearchParams(Object.entries(o).map(([k,v])=>[k,String(v)]))}
-async function loadSettings(){const s=await api('/api/settings');for(const k of ['ntpEnabled','staticIpEnabled','mqttEnabled','otaEnabled'])$(k).checked=!!s[k];for(const k of ['timezone','ntpServer1','ntpServer2','staticIp','staticGateway','staticSubnet','staticDns1','staticDns2','mqttBroker','mqttPort','mqttTopicPrefix','otaPassword'])$(k).value=s[k]??''}
+async function loadSettings(){const s=await api('/api/settings');for(const k of ['ntpEnabled','staticIpEnabled','mqttEnabled','otaEnabled'])$(k).checked=!!s[k];for(const k of ['timezone','ntpServer1','ntpServer2','staticIp','staticGateway','staticSubnet','staticDns1','staticDns2','mqttBroker','mqttPort','mqttTopicPrefix','otaPassword'])$(k).value=s[k]??'';
+/* 设备与显示:亮度/热风为滑条,限温/限流为数字框;WiFi 模块只读展示 */
+$('language').value=s.language==='en'?'en':'zh';
+$('brightness').value=s.brightness??80;
+$('heaterFanPercent').value=s.heaterFanPercent??100;
+$('heaterBoardLimitC').value=s.heaterBoardLimitC??80;
+$('heaterMaxCurrentA').value=s.heaterMaxCurrentA??6;
+briVal();fanVal();
+$('wifiEnabled').textContent=s.wifiEnabled?'已启用':'已关闭'}
+function briVal(){$('brightnessVal').textContent=$('brightness').value+' %'}
+function fanVal(){$('heaterFanVal').textContent=$('heaterFanPercent').value+' %'}
+function saveDevice(){post({language:$('language').value,brightness:$('brightness').value,heaterBoardLimitC:$('heaterBoardLimitC').value,heaterMaxCurrentA:$('heaterMaxCurrentA').value,heaterFanPercent:$('heaterFanPercent').value})}
 async function uploadFw(){const f=$('otaFile').files[0];if(!f){msg('请先选择 .bin 固件文件',true);return}if(!confirm('确定将 '+f.name+' 升级到设备？'))return;const xhr=new XMLHttpRequest();xhr.open('POST','/api/update',true);const stat=$('otaStat'),bar=$('otaBar');bar.value=0;stat.textContent='正在上传并写入 Flash…';xhr.upload.onprogress=e=>{if(e.lengthComputable){bar.value=Math.round(e.loaded/e.total*100);stat.textContent='上传 '+Math.round(e.loaded/e.total*100)+'% / 写入中…'}};xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===200&&d.ok){stat.textContent='升级成功，设备正在重启…';bar.value=100;setTimeout(()=>location.reload(),4000)}else{stat.textContent='升级失败：'+(d.err||('HTTP '+xhr.status));bar.value=0;msg('OTA 失败',true)}}catch(e){stat.textContent='升级完成，设备可能正在重启…'}};xhr.onerror=()=>{stat.textContent='网络错误，请重试';msg('OTA 请求失败',true)};xhr.send();}
 /* 六态状态机英文键 -> 中文文案 + 胶囊配色(g 绿/y 黄/b 蓝/r 红/灰) */
 const STATE_MAP={idle:['待机',''],detecting:['检测中','y'],preheat:['预热中','y'],printing:['打印中','g'],cooling:['冷却中','b'],fault:['故障','r']};

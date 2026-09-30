@@ -412,6 +412,14 @@ void NetworkManager::onSettingsChanged(const SystemSettings &settings) {
   // the controller so all local/remote setting paths converge here.
   if (controller_)
     controller_->setLanguage(settings_.language);
+  // 加热保护参数(限流/限温/热风转速)与设备端设置页共用同一个下发出口,
+  // 网页远程改完也要立即作用到控制器,否则要等重启才生效。
+  // 亮度不在此处理:主循环每帧比对 settings.brightness 后写背光 PWM。
+  if (controller_) {
+    controller_->setHeaterLimits(settings_.heaterMaxCurrentA,
+                                 settings_.heaterBoardLimitC);
+    controller_->setHeaterFanPercent(settings_.heaterFanPercent);
+  }
 
   if (!settings_.wifiEnabled) {
     if (old.wifiEnabled) {
@@ -692,6 +700,38 @@ void NetworkManager::startWebServer() {
         candidate.language = Language::English;
       else
         error = "language must be zh or en";
+    }
+
+    // 本机显示/加热保护参数:与设备端「系统设置」页共用同一份 SystemSettings,
+    // 网页端也允许写入。范围严格对齐 ui_model.cpp 的步进上下界,避免网页能设出
+    // 设备端设不出的值;用 strtol 严格解析,拒绝 "80abc" 这类脏输入。
+    auto readInt = [&](const char *name, long lo, long hi, long &target) {
+      if (!g_server.hasArg(name) || error.length())
+        return;
+      const String value = g_server.arg(name);
+      char *end = nullptr;
+      const long parsed = strtol(value.c_str(), &end, 10);
+      if (!value.length() || !end || *end || parsed < lo || parsed > hi) {
+        char message[64];
+        snprintf(message, sizeof(message), "%s must be %ld..%ld", name, lo, hi);
+        error = message;
+        return;
+      }
+      target = parsed;
+    };
+    long brightness = settings_.brightness;
+    long heaterCurrent = settings_.heaterMaxCurrentA;
+    long heaterFan = settings_.heaterFanPercent;
+    long heaterLimit = settings_.heaterBoardLimitC;
+    readInt("brightness", 1, 100, brightness);
+    readInt("heaterMaxCurrentA", 1, 12, heaterCurrent);
+    readInt("heaterFanPercent", 20, 100, heaterFan);
+    readInt("heaterBoardLimitC", 40, 180, heaterLimit);
+    if (!error.length()) {
+      candidate.brightness = static_cast<uint8_t>(brightness);
+      candidate.heaterMaxCurrentA = static_cast<uint8_t>(heaterCurrent);
+      candidate.heaterFanPercent = static_cast<uint8_t>(heaterFan);
+      candidate.heaterBoardLimitC = static_cast<uint16_t>(heaterLimit);
     }
 
     if (!error.length() && candidate.mqttEnabled && !candidate.mqttBroker[0])
