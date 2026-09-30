@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D 打印机智控屏 · iOS 风格高保真原型</title>
+<style>
+/* ============ 设计令牌（与 DESIGN.md 第 2 章一致） ============ */
+:root{
+  --bg-grouped:#F2F2F7; --bg-card:#FFFFFF; --bg-elevated:#FFFFFF;
+  --material-bar:rgba(249,249,249,.94);
+  --sep:rgba(60,60,67,.29);
+  --fill-3:rgba(120,120,128,.12); --fill-4:rgba(120,120,128,.08);
+  --label:#000000; --label-2:rgba(60,60,67,.78); --label-3:rgba(60,60,67,.72);
+  --label-disabled:rgba(60,60,67,.35);
+  --tint:#007AFF; --tint-text:#0062CC;
+  --green:#34C759; --green-text:#1E7A34;
+  --orange:#FF9500; --orange-text:#9A5A00;
+  --red:#FF3B30; --red-text:#C73228;
+  --yellow:#FFCC00; --yellow-text:#8A6A00;
+  --teal:#30B0C7; --blue-fam:#007AFF; --indigo:#5856D6;
+  --seg-thumb:#FFFFFF; --scrim:rgba(0,0,0,.28);
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+  --r-ctl:10px; --r-card:12px; --r-sheet:20px;
+  --ease-ios:cubic-bezier(.32,.72,0,1);
+  --dur-press:120ms; --dur-ctl:280ms; --dur-sheet:380ms;
+}
+[data-appearance="dark"]{
+  --bg-grouped:#000000; --bg-card:#1C1C1E; --bg-elevated:#2C2C2E;
+  --material-bar:rgba(28,28,30,.94);
+  --sep:rgba(84,84,88,.65);
+  --fill-3:rgba(120,120,128,.24); --fill-4:rgba(120,120,128,.18);
+  --label:#FFFFFF; --label-2:rgba(235,235,245,.60); --label-3:rgba(235,235,245,.55);
+  --label-disabled:rgba(235,235,245,.30);
+  --tint:#0A84FF; --tint-text:#0A84FF;
+  --green:#30D158; --green-text:#30D158;
+  --orange:#FF9F0A; --orange-text:#FF9F0A;
+  --red:#FF453A; --red-text:#FF453A;
+  --yellow:#FFD60A; --yellow-text:#FFD60A;
+  --teal:#40C8E0; --blue-fam:#0A84FF; --indigo:#5E5CE6;
+  --seg-thumb:#636366;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{
+  background:#DFDFE6;
+  font-family:"Inter","Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  font-variant-numeric:tabular-nums;
+  display:flex;align-items:center;justify-content:center;
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+h2{font:inherit}
+.stage-tools{
+  position:fixed;left:14px;bottom:12px;z-index:20;
+  display:flex;gap:6px;flex-wrap:wrap;align-items:center;max-width:660px;
+}
+.stage-tools .stlbl{font-size:11px;font-weight:600;color:#8A8A8E;padding:0 2px;letter-spacing:0}
+.stage-tools button{
+  font-size:12px;font-weight:500;color:#666;cursor:pointer;
+  background:rgba(255,255,255,.75);border:1px solid rgba(0,0,0,.12);border-radius:8px;padding:5px 10px;
+}
+.stage-tools button.is-active{background:#C73228;border-color:#C73228;color:#fff}
+.screen{
+  width:1080px;height:720px;flex:none;
+  background:var(--bg-grouped);position:relative;overflow:hidden;
+  border-radius:18px;box-shadow:0 18px 60px rgba(0,0,0,.22);
+  display:flex;flex-direction:column;
+  transform-origin:center center;
+  transition:background var(--dur-ctl) var(--ease-ios);
+}
+
+/* ============ 导航栏（112：行A 40 + 行B 60 + 间距 12） ============ */
+.navbar{
+  height:112px;flex:none;padding:0 var(--sp-5);
+  background:var(--material-bar);
+  box-shadow:inset 0 -1px 0 var(--sep);
+  display:flex;flex-direction:column;justify-content:center;gap:12px;
+  transition:background var(--dur-ctl) var(--ease-ios),box-shadow var(--dur-ctl) var(--ease-ios);
+}
+.nav-row1{height:40px;display:flex;align-items:center;gap:var(--sp-3)}
+.capsule{
+  height:32px;padding:0 14px 0 11px;border-radius:999px;flex:none;
+  display:inline-flex;align-items:center;gap:7px;
+  font-size:15px;font-weight:600;line-height:1;
+  background:var(--fill-3);color:var(--label-2);
+  transition:background var(--dur-ctl) var(--ease-ios),color var(--dur-ctl) var(--ease-ios);
+}
+.capsule svg{width:14px;height:14px;fill:currentColor}
+.capsule.is-on{background:color-mix(in srgb,var(--tint) 13%,transparent);color:var(--tint-text)}
+.nav-date{font-size:15px;font-weight:500;color:var(--label-2);letter-spacing:0}
+.nav-spacer{flex:1}
+.nav-hint{font-size:13px;font-weight:500;color:var(--label-3)}
+/* WiFi 信号（新增能力：应需求添加，真机固件无此功能） */
+.wifi-wrap{display:inline-flex;align-items:center;gap:6px}
+.wifi{width:22px;height:22px;flex:none;color:var(--label-2);transition:color var(--dur-ctl) linear}
+.wifi svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:2.1;stroke-linecap:round}
+.wifi .w-arc1,.wifi .w-arc2,.wifi .w-arc3{transition:opacity var(--dur-ctl) linear}
+.wifi[data-level="2"] .w-arc3{opacity:.18}
+.wifi[data-level="1"] .w-arc2,.wifi[data-level="1"] .w-arc3{opacity:.18}
+.wifi .w-slash{display:none;stroke:currentColor}
+.wifi[data-level="0"]{color:var(--red-text)}
+.wifi[data-level="0"] .w-slash{display:initial}
+.wifi-badge{
+  display:none;font-size:11px;font-weight:600;line-height:1;padding:3px 6px;border-radius:6px;
+  background:color-mix(in srgb,var(--red) 10%,transparent);color:var(--red-text);
+}
+.wifi-wrap.is-off .wifi-badge{display:inline-flex}
+.nav-row2{height:60px;display:flex;align-items:center;justify-content:space-between}
+.clock{font-size:34px;font-weight:600;line-height:1;color:var(--label)}
+.matpick{
+  display:flex;align-items:center;gap:6px;padding:2px;border-radius:var(--r-ctl);background:var(--fill-3);
+  transition:background var(--dur-ctl) var(--ease-ios);
+}
+.matpick button{
+  width:44px;height:32px;border-radius:8px;display:grid;place-items:center;
+  color:var(--tint-text);font-size:20px;font-weight:500;line-height:1;
+  transition:background var(--dur-press) linear;
+}
+.matpick button:active{background:color-mix(in srgb,var(--tint) 14%,transparent)}
+.matpick .name{
+  min-width:96px;text-align:center;font-size:17px;font-weight:600;color:var(--tint-text);
+}
+
+/* ============ 内容区（520） ============ */
+.content{flex:1;display:flex;gap:var(--sp-4);padding:20px var(--sp-5);min-height:0}
+.col{display:flex;flex-direction:column;min-height:0}
+.col-auto{flex:none;width:576px}
+.col-mon{flex:1}
+.group-title{
+  height:20px;margin-bottom:6px;padding-left:2px;
+  font-size:13px;font-weight:600;line-height:20px;color:var(--label-2);
+  display:flex;align-items:center;gap:6px;
+}
+.group-title .count{font-weight:500;color:var(--label-3)}
+
+/* 自动化卡片 */
+.card{
+  background:var(--bg-card);border-radius:14px;flex:1;min-height:0;
+  display:flex;flex-direction:column;padding:0 var(--sp-5);
+  transition:background var(--dur-ctl) var(--ease-ios),box-shadow var(--dur-ctl) var(--ease-ios);
+}
+[data-appearance="dark"] .card{box-shadow:inset 0 0 0 1px var(--sep)}
+.auto-row{
+  flex:1;display:flex;align-items:center;gap:var(--sp-4);
+  box-shadow:inset 0 -1px 0 var(--sep);
+}
+.auto-row:last-child{box-shadow:none}
+.auto-title{width:186px;flex:none;font-size:17px;font-weight:600;line-height:1.3;color:var(--label)}
+.auto-params{flex:1;display:flex;flex-direction:column;gap:var(--sp-2);align-items:flex-end}
+.param{display:flex;align-items:center;gap:var(--sp-3)}
+.param-label{font-size:13px;font-weight:500;color:var(--label-2);width:34px;text-align:right}
+
+/* 开关 */
+.switch{
+  position:relative;width:56px;height:34px;flex:none;border-radius:999px;
+  background:var(--fill-3);transition:background var(--dur-ctl) var(--ease-ios);
+}
+.switch::after{
+  content:"";position:absolute;top:3px;left:3px;width:28px;height:28px;border-radius:50%;
+  background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15);
+  transition:transform var(--dur-ctl) var(--ease-ios);
+}
+.switch[aria-checked="true"]{background:var(--green)}
+.switch[aria-checked="true"]::after{transform:translateX(22px)}
+.switch:active::after{transform:scale(.94)}
+.switch[aria-checked="true"]:active::after{transform:translateX(22px) scale(.94)}
+
+/* 步进器 */
+.stepper{
+  display:inline-flex;align-items:center;height:32px;border-radius:var(--r-ctl);
+  background:var(--fill-3);overflow:hidden;
+  transition:background var(--dur-ctl) var(--ease-ios),opacity var(--dur-ctl) var(--ease-ios);
+}
+.stepper button{
+  width:38px;height:32px;display:grid;place-items:center;
+  color:var(--tint-text);font-size:17px;font-weight:500;line-height:1;
+  transition:background var(--dur-press) linear,transform var(--dur-press) linear;
+}
+.stepper button:active{background:color-mix(in srgb,var(--tint) 14%,transparent)}
+.stepper .val{
+  min-width:54px;height:32px;display:grid;place-items:center;
+  font-size:15px;font-weight:600;color:var(--label);
+  box-shadow:inset 1px 0 0 var(--sep),inset -1px 0 0 var(--sep);
+}
+.stepper.is-disabled{opacity:.35;pointer-events:none}
+
+/* 监控矩阵 2×4 */
+.grid{flex:1;display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(4,1fr);gap:var(--sp-3);min-height:0}
+.sensor{
+  background:var(--bg-card);border-radius:var(--r-card);padding:10px 14px;
+  display:flex;flex-direction:column;justify-content:space-between;min-height:0;
+  transition:background var(--dur-ctl) var(--ease-ios),box-shadow var(--dur-ctl) var(--ease-ios);
+}
+[data-appearance="dark"] .sensor{box-shadow:inset 0 0 0 1px var(--sep)}
+/* 传感卡：信息顺序与真机一致（图标+数值 → 标签 → 量程条） */
+.sensor-head{display:flex;align-items:center;gap:8px;height:30px}
+.sensor-head .icon{width:18px;height:18px;flex:none}
+.sensor-head .icon svg{width:100%;height:100%;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.sensor-val{font-size:28px;font-weight:600;line-height:1;color:var(--label)}
+.sensor-unit{font-size:13px;font-weight:500;color:var(--label-3)}
+.trend{font-size:12px;line-height:1;color:var(--label-3);margin-left:auto}
+.sensor-foot{display:flex;align-items:center;gap:6px;height:18px}
+.sensor-label{font-size:13px;font-weight:500;color:var(--label-2);flex:1}
+.badge{
+  height:18px;padding:0 7px;border-radius:6px;flex:none;
+  display:none;align-items:center;font-size:11px;font-weight:600;line-height:1;
+}
+.badge.show{display:inline-flex}
+.sensor-bar{height:4px;border-radius:2px;background:var(--fill-4);position:relative;flex:none}
+.sensor-bar i{position:absolute;top:0;bottom:0;left:0;border-radius:2px;background:var(--green);
+  transition:width var(--dur-ctl) var(--ease-ios),background var(--dur-ctl) var(--ease-ios)}
+.sensor-bar::after{
+  content:"";position:absolute;top:-3px;bottom:-3px;width:2px;left:calc(var(--tick,80)*1%);
+  background:var(--label-3);opacity:.7;border-radius:1px;
+}
+
+/* ============ 标签栏（88，5 项等宽） ============ */
+.tabbar{
+  height:88px;flex:none;display:flex;
+  background:var(--material-bar);box-shadow:inset 0 1px 0 var(--sep);
+  transition:background var(--dur-ctl) var(--ease-ios),box-shadow var(--dur-ctl) var(--ease-ios);
+}
+.tab{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;
+  color:var(--label-2);position:relative;
+  transition:color var(--dur-ctl) var(--ease-ios),transform var(--dur-press) linear;
+}
+.tab:active{transform:scale(.97)}
+.tab svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.tab span{font-size:12px;font-weight:500;line-height:1.2}
+.tab.is-on{color:var(--tint-text)}
+.tab.is-warn{color:var(--orange-text)}
+.tab.is-done{color:var(--green-text)}
+.tab.is-light{color:var(--yellow-text)}
+.tab.st-running svg{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tab[aria-disabled="true"]{color:var(--label-disabled);pointer-events:none}
+.tab .spinner,.tab .done{display:none}
+.tab.st-running .spinner{display:block}
+.tab.st-running .static{display:none}
+.tab.is-done .done{display:block}
+.tab.is-done .static{display:none}
+
+/* ============ 系统设置（全屏推入页） ============ */
+.setpage{
+  position:absolute;inset:0;z-index:10;background:var(--bg-grouped);
+  display:flex;flex-direction:column;
+  transform:translateX(102%);transition:transform var(--dur-sheet) var(--ease-ios);
+}
+.setpage.show{transform:translateX(0)}
+.setbar{
+  height:64px;flex:none;display:flex;align-items:center;padding:0 var(--sp-4);
+  background:var(--material-bar);box-shadow:inset 0 -1px 0 var(--sep);
+}
+.setbar h2{font-size:20px;font-weight:600;color:var(--label);margin:0 auto}
+.setback{
+  display:flex;align-items:center;gap:2px;min-width:88px;
+  font-size:17px;font-weight:500;color:var(--tint-text);
+}
+.setback svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.setbar-side{min-width:88px}
+.setscroll{flex:1;overflow-y:auto;padding:var(--sp-4) var(--sp-5) var(--sp-6);display:flex;flex-direction:column;gap:var(--sp-5)}
+.chev{font-size:19px;font-weight:500;color:var(--label-3);line-height:1}
+.lrow .lval{font-size:15px;font-weight:500;color:var(--label-3)}
+.lrow.act .lname{color:var(--tint-text);text-align:center;width:100%}
+.lrow.is-confirm{background:color-mix(in srgb,var(--red) 12%,transparent)}
+.lfoot{font-size:13px;font-weight:400;color:var(--label-3);line-height:1.45;padding:0 2px}
+
+/* 滑块（屏幕亮度 / RGB最大亮度） */
+.slider{width:190px;display:flex;align-items:center;flex:none;margin-left:auto;margin-right:10px}
+.slider input{
+  -webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:2px;outline:none;
+  background:linear-gradient(to right,var(--tint) calc(var(--p)*1%),var(--fill-3) calc(var(--p)*1%));
+}
+.slider input::-webkit-slider-thumb{
+  -webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer;border:0;
+}
+.lgroup{display:flex;flex-direction:column;gap:7px}
+.lgroup-title{font-size:13px;font-weight:600;color:var(--label-2);padding-left:2px}
+.list{background:var(--bg-card);border-radius:var(--r-card);overflow:hidden}
+[data-appearance="dark"] .list{box-shadow:inset 0 0 0 1px var(--sep)}
+.lrow{
+  height:52px;display:flex;align-items:center;gap:var(--sp-3);
+  padding:0 var(--sp-4);box-shadow:inset 0 -1px 0 var(--sep);
+  transition:background var(--dur-press) linear;
+}
+.lrow:last-child{box-shadow:none}
+.lrow:active{background:var(--fill-4)}
+.lrow .lname{font-size:17px;font-weight:500;color:var(--label);flex:1}
+.lrow .lval{font-size:15px;font-weight:500;color:var(--label-3)}
+.lrow .licon{width:22px;height:22px;flex:none;color:var(--label-2)}
+.lrow .licon svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.lrow.danger .lname{color:var(--red-text);font-weight:600;justify-content:center}
+.lrow.danger{justify-content:center}
+.lrow.is-confirm{background:color-mix(in srgb,var(--red) 12%,transparent)}
+.lrow .foot{font-size:13px;font-weight:400;color:var(--label-3)}
+
+/* ============================================================
+   传感器故障（错误页 + 常驻横幅）
+   真机依据：3d.physton.com/zh-cn/software_control.html「传感器与错误处理」
+   加热启动后启用检测；NTC / AHT / INA226 异常 → 进入错误页并停止加热。
+   V1.0.5 日志：单个传感器故障时，其它传感器读数仍要正常显示
+   → 本页不做全屏遮蔽，健康通道读数照常刷新。
+   ============================================================ */
+
+/* 填充按钮专用 tint：iOS 原生白字 / #007AFF 填充在 17px/600 下仅 4.02:1，
+   低于 AA 4.5:1，故加深为 --tint-fill（浅色 5.8:1 / 深色 5.6:1）。 */
+:root{--tint-fill:#0062CC}
+[data-appearance="dark"]{--tint-fill:#0066CC}
+
+/* 常驻故障横幅 */
+.alertbar{
+  display:none;flex:none;height:52px;align-items:center;gap:var(--sp-3);
+  padding:0 var(--sp-5) 0 20px;position:relative;
+  background:color-mix(in srgb,var(--red) 6%,var(--bg-grouped));
+  color:var(--red-text);box-shadow:inset 0 -1px 0 var(--sep);
+  transition:background var(--dur-ctl) var(--ease-ios),color var(--dur-ctl) var(--ease-ios);
+}
+.alertbar.show{display:flex}
+.alertbar::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:currentColor}
+.alertbar.is-prot{background:color-mix(in srgb,var(--orange) 6%,var(--bg-grouped));color:var(--orange-text)}
+.alertbar .aicon{width:20px;height:20px;flex:none}
+.alertbar .aicon svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.alertbar .atext{font-size:15px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.alertbar .afix{font-size:13px;font-weight:500;flex:none;color:var(--label-2)}
+.alertbar button{font-size:15px;font-weight:600;color:currentColor;flex:none;padding:8px 2px}
+.alertbar button:active{opacity:.6}
+
+/* 传感卡故障态：数值退位为“—”，徽标转为“无数据”，卡片加语义描边 */
+.sensor.is-fault{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--red) 40%,transparent)}
+[data-appearance="dark"] .sensor.is-fault{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--red) 55%,transparent)}
+.capsule.is-fault{background:color-mix(in srgb,var(--red) 10%,transparent);color:var(--red-text)}
+
+/* 错误页（全屏覆盖 · iOS modal cover：自下而上，与设置页的推入式区分层级语义） */
+.errpage{
+  position:absolute;inset:0;z-index:12;background:var(--bg-grouped);
+  display:flex;flex-direction:column;
+  transform:translateY(102%);transition:transform var(--dur-sheet) var(--ease-ios);
+}
+.errpage.show{transform:translateY(0)}
+.errbar{
+  height:64px;flex:none;display:flex;align-items:center;padding:0 var(--sp-4);
+  background:var(--material-bar);box-shadow:inset 0 -1px 0 var(--sep);
+}
+.errbar h2{font-size:20px;font-weight:600;color:var(--label);margin:0 auto}
+.errbody{flex:1;min-height:0;display:flex;gap:var(--sp-4);padding:var(--sp-4) var(--sp-5)}
+.errcol{display:flex;flex-direction:column;gap:6px;min-height:0}
+.errcol-a{flex:none;width:576px}
+.errcol-b{flex:1}
+
+/* 故障主卡 */
+.errhero{
+  background:var(--bg-card);border-radius:14px;padding:var(--sp-4);flex:none;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--red) 35%,transparent);
+  transition:box-shadow var(--dur-ctl) var(--ease-ios);
+}
+[data-appearance="dark"] .errhero{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--red) 50%,transparent)}
+.errhero.is-prot{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--orange) 42%,transparent)}
+.errhero-top{display:flex;align-items:center;gap:var(--sp-4)}
+.errhero-ic{
+  width:52px;height:52px;border-radius:14px;flex:none;display:grid;place-items:center;
+  background:color-mix(in srgb,var(--red) 10%,transparent);color:var(--red-text);
+  transition:background var(--dur-ctl) var(--ease-ios),color var(--dur-ctl) var(--ease-ios);
+}
+.errhero.is-prot .errhero-ic{background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange-text)}
+.errhero-ic svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.errhero-name{font-size:21px;font-weight:600;line-height:1.25;color:var(--label)}
+.errhero-code{font-size:13px;font-weight:500;color:var(--label-2);margin-top:3px}
+.errhero-basis{
+  font-size:13px;font-weight:400;line-height:1.5;color:var(--label-2);
+  margin-top:var(--sp-3);padding-top:var(--sp-3);box-shadow:inset 0 1px 0 var(--sep);
+}
+
+/* chips */
+.errchips{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+.errhero .errchips{margin-top:var(--sp-3)}
+.chip{
+  height:26px;padding:0 10px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;
+  font-size:13px;font-weight:500;background:var(--fill-4);color:var(--label-2);white-space:nowrap;
+  transition:background var(--dur-ctl) var(--ease-ios),color var(--dur-ctl) var(--ease-ios);
+}
+.chip b{font-weight:600;color:var(--label);font-variant-numeric:tabular-nums}
+.chip.is-dot::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green);flex:none}
+.chip.is-bad{background:color-mix(in srgb,var(--red) 10%,transparent);color:var(--red-text);font-weight:600}
+.chip.is-bad b{color:var(--red-text)}
+.chip.is-stop{background:color-mix(in srgb,var(--red) 10%,transparent);color:var(--red-text);font-weight:600}
+.chip.is-stop::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.chip.is-warn{background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange-text);font-weight:600}
+.chip.is-warn::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.chip.is-plain{background:transparent;padding:0 2px}
+.chip.is-plain::before{display:none}
+
+/* 排查步骤卡 */
+.stepcard{
+  background:var(--bg-card);border-radius:14px;flex:1;min-height:0;overflow-y:auto;
+  padding:0 var(--sp-4);
+}
+[data-appearance="dark"] .stepcard{box-shadow:inset 0 0 0 1px var(--sep)}
+.step{display:flex;gap:var(--sp-3);padding:var(--sp-3) 0;box-shadow:inset 0 -1px 0 var(--sep)}
+.step:last-child{box-shadow:none}
+.step-n{
+  width:24px;height:24px;flex:none;border-radius:50%;display:grid;place-items:center;
+  background:var(--fill-3);color:var(--label-2);font-size:13px;font-weight:600;
+}
+.step-t{font-size:14px;font-weight:400;line-height:1.5;color:var(--label-2);flex:1}
+.step-t em{font-style:normal;font-weight:600;color:var(--label)}
+
+/* 侧栏卡 */
+.sidecard{background:var(--bg-card);border-radius:var(--r-card);padding:var(--sp-4)}
+[data-appearance="dark"] .sidecard{box-shadow:inset 0 0 0 1px var(--sep)}
+.sublabel{font-size:12px;font-weight:600;color:var(--label-3);margin-bottom:var(--sp-2)}
+.statrow{display:flex;align-items:center;gap:var(--sp-3);height:42px;box-shadow:inset 0 -1px 0 var(--sep)}
+.statrow:last-child{box-shadow:none}
+.statrow .sk{font-size:15px;font-weight:500;color:var(--label);flex:1}
+.statrow .sv{font-size:15px;font-weight:600;color:var(--label-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.statrow .sv.bad{color:var(--red-text)}
+.statrow .sv.warn{color:var(--orange-text)}
+.statrow .sv.ok{color:var(--green-text)}
+
+/* 底部操作区 */
+.erraction{
+  height:88px;flex:none;display:flex;align-items:center;gap:var(--sp-3);padding:0 var(--sp-5);
+  background:var(--material-bar);box-shadow:inset 0 1px 0 var(--sep);
+}
+.btn{
+  flex:1;height:52px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  font-size:17px;font-weight:600;
+  transition:transform var(--dur-press) linear,opacity var(--dur-ctl) var(--ease-ios);
+}
+.btn:active{transform:scale(.985)}
+.btn-primary{background:var(--tint-fill);color:#fff}
+.btn-secondary{background:var(--bg-card);color:var(--label);box-shadow:inset 0 0 0 1px var(--sep)}
+[data-appearance="dark"] .btn-secondary{background:var(--bg-elevated)}
+.btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.btn .spin{display:none}
+.btn.is-loading .spin{display:block;animation:spin .9s linear infinite}
+.btn.is-loading .mini{display:none}
+.btn.is-plain .mini{display:none}
+.btn[disabled]{opacity:.45;pointer-events:none}
+
+/* 轻提示 */
+.toast{
+  position:absolute;left:50%;bottom:104px;z-index:14;
+  height:44px;padding:0 18px;border-radius:999px;
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:15px;font-weight:600;background:var(--bg-card);color:var(--label);
+  box-shadow:0 8px 24px rgba(0,0,0,.18);
+  opacity:0;pointer-events:none;transform:translate(-50%,12px);
+  transition:opacity var(--dur-ctl) var(--ease-ios),transform var(--dur-ctl) var(--ease-ios);
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.is-ok{color:var(--green-text)}
+</style>
+</head>
+<body>
+<div class="stage-tools">
+  <span class="stlbl">评审工具 · 传感器故障演示</span>
+  <button id="demoDark" type="button">深浅外观</button>
+  <button type="button" data-fault="aht">AHT20 故障</button>
+  <button type="button" data-fault="ntc">NTC 故障</button>
+  <button type="button" data-fault="ina">INA226 故障</button>
+  <button type="button" data-fault="multi">复合故障</button>
+  <button type="button" data-fault="prot">过温保护</button>
+  <button type="button" data-fault="">恢复正常</button>
+</div>
+<div class="screen" id="screen" data-appearance="light">
+
+  <!-- 导航栏 -->
+  <header class="navbar">
+    <div class="nav-row1">
+      <span class="capsule" id="statusCapsule"><svg id="capIcon" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z"/></svg><span id="statusText">打印中</span></span>
+      <span class="nav-date" id="dateText">2026-09-30</span>
+      <span class="nav-spacer"></span>
+      <span class="wifi-wrap" id="wifiWrap">
+        <span class="wifi" id="wifiIcon" data-level="3" role="img" aria-label="WiFi 信号：强">
+          <svg viewBox="0 0 24 24">
+            <circle class="w-dot" cx="12" cy="17.6" r="1.5" fill="currentColor" stroke="none"/>
+            <path class="w-arc1" d="M9.3 14.7a3.8 3.8 0 0 1 5.4 0"/>
+            <path class="w-arc2" d="M6.9 12.2a7.2 7.2 0 0 1 10.2 0"/>
+            <path class="w-arc3" d="M4.5 9.7a10.6 10.6 0 0 1 15 0"/>
+            <path class="w-slash" d="M4.5 19.5 19.5 4.5"/>
+          </svg>
+        </span>
+        <span class="wifi-badge" id="wifiBadge">未连接</span>
+      </span>
+      <span class="nav-hint">材料</span>
+    </div>
+    <div class="nav-row2">
+      <div class="clock" id="clockText">--:--:--</div>
+      <div class="matpick" id="material" role="group" aria-label="材料选择（与真机一致：左右箭头逐个切换）">
+        <button id="matPrev" aria-label="上一个材料">‹</button>
+        <span class="name" id="matName">PETG</span>
+        <button id="matNext" aria-label="下一个材料">›</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 故障常驻横幅：错误页关闭后故障不会消失，健康通道照常刷新（V1.0.5 行为） -->
+  <div class="alertbar" id="alertbar" role="status">
+    <span class="aicon"><svg viewBox="0 0 24 24"><path d="M12 3.6 21 20H3z"/><path d="M12 9.6v4.4M12 17.2v.1"/></svg></span>
+    <span class="atext" id="alertText">—</span>
+    <span class="afix" id="alertFix">—</span>
+    <button id="alertOpen" type="button">查看</button>
+  </div>
+
+  <!-- 内容区 -->
+  <main class="content">
+    <section class="col col-auto">
+      <h2 class="group-title">自动化</h2>
+      <div class="card" id="autoCard">
+        <div class="auto-row">
+          <div class="auto-title">排气风扇<br>自动控制</div>
+          <div class="auto-params">
+            <div class="param">
+              <span class="param-label">最低</span>
+              <div class="stepper" data-ctl="ex-min">
+                <button data-d="-1" aria-label="最低值减">−</button><span class="val">20%</span><button data-d="1" aria-label="最低值加">+</button>
+              </div>
+            </div>
+            <div class="param">
+              <span class="param-label">最高</span>
+              <div class="stepper" data-ctl="ex-max">
+                <button data-d="-1" aria-label="最高值减">−</button><span class="val">80%</span><button data-d="1" aria-label="最高值加">+</button>
+              </div>
+            </div>
+          </div>
+          <button class="switch" role="switch" aria-checked="true" aria-label="排气风扇自动控制" data-own="ex-min,ex-max"></button>
+        </div>
+        <div class="auto-row">
+          <div class="auto-title">打印仓温<br>自动控制</div>
+          <div class="auto-params">
+            <div class="param">
+              <span class="param-label">最低</span>
+              <div class="stepper" data-ctl="ch-min">
+                <button data-d="-1" aria-label="最低值减">−</button><span class="val">15°C</span><button data-d="1" aria-label="最低值加">+</button>
+              </div>
+            </div>
+            <div class="param">
+              <span class="param-label">最高</span>
+              <div class="stepper" data-ctl="ch-max">
+                <button data-d="-1" aria-label="最高值减">−</button><span class="val">30°C</span><button data-d="1" aria-label="最高值加">+</button>
+              </div>
+            </div>
+          </div>
+          <button class="switch" role="switch" aria-checked="true" aria-label="打印仓温自动控制" data-own="ch-min,ch-max"></button>
+        </div>
+        <div class="auto-row">
+          <div class="auto-title">打印结束<br>开启排气</div>
+          <div class="auto-params">
+            <div class="param">
+              <span class="param-label">风速</span>
+              <div class="stepper" data-ctl="end-fan">
+                <button data-d="-1" aria-label="风速减">−</button><span class="val">60%</span><button data-d="1" aria-label="风速加">+</button>
+              </div>
+            </div>
+            <div class="param">
+              <span class="param-label">时间</span>
+              <div class="stepper" data-ctl="end-time">
+                <button data-d="-1" aria-label="时间减">−</button><span class="val">300s</span><button data-d="1" aria-label="时间加">+</button>
+              </div>
+            </div>
+          </div>
+          <button class="switch" role="switch" aria-checked="true" aria-label="打印结束开启排气" data-own="end-fan,end-time"></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="col col-mon">
+      <h2 class="group-title">监控 <span class="count" id="monCount">8 路</span></h2>
+      <div class="grid" id="grid"></div>
+    </section>
+  </main>
+
+  <!-- 标签栏 -->
+  <nav class="tabbar">
+    <button class="tab" id="tabCheck">
+      <svg class="static" viewBox="0 0 24 24"><circle cx="12" cy="14.5" r="5.2"/><path d="M12 9.3V4"/></svg>
+      <svg class="spinner" viewBox="0 0 24 24"><path d="M12 4.5a7.5 7.5 0 1 1-5.3 2.2"/></svg>
+      <svg class="done" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.4 12.3l2.4 2.4 4.8-5"/></svg>
+      <span id="checkText">未检测</span>
+    </button>
+    <button class="tab is-on" id="tabWork">
+      <svg id="workIcon" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/></svg>
+      <span id="workText">工作中</span>
+    </button>
+    <button class="tab" id="tabPre" aria-pressed="false">
+      <svg viewBox="0 0 24 24"><path d="M12 3.8c3 3.6 5.2 6 5.2 8.7a5.2 5.2 0 0 1-10.4 0c0-2.7 2.2-5.1 5.2-8.7z"/></svg>
+      <span id="preText">提前预热</span>
+    </button>
+    <button class="tab is-light" id="tabLight" aria-pressed="true">
+      <svg viewBox="0 0 24 24"><path d="M9 17.5h6M10 20.5h4"/><path d="M12 3.5a5.6 5.6 0 0 1 3.4 10.1c-.5.4-.9 1-.9 1.6V17H9.5v-1.8c0-.6-.4-1.2-.9-1.6A5.6 5.6 0 0 1 12 3.5z"/></svg>
+      <span id="lightText">灯光开启</span>
+    </button>
+    <button class="tab" id="tabSet">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5.2"/><path d="M12 3.2v3.2M12 17.6v3.2M3.2 12h3.2M17.6 12h3.2"/></svg>
+      <span>系统设置</span>
+    </button>
+  </nav>
+
+  <!-- 系统设置（全屏推入页，条目与真机固件逐项对齐，见 3d.physton.com/zh-cn/software_desc.html） -->
+  <section class="setpage" id="setpage" role="dialog" aria-label="系统设置">
+    <header class="setbar">
+      <button class="setback" id="setBack"><svg viewBox="0 0 24 24"><path d="M14.5 5 8 12l6.5 7"/></svg>返回</button>
+      <h2>系统设置</h2>
+      <span class="setbar-side"></span>
+    </header>
+    <div class="setscroll">
+
+      <div class="lgroup">
+        <div class="lgroup-title">通用</div>
+        <div class="list">
+          <button class="lrow" id="rowLang"><span class="lname">系统语言</span><span class="lval" id="langVal">中文</span><span class="chev">›</span></button>
+          <div class="lrow"><span class="lname">按键声音</span><button class="switch" role="switch" aria-checked="true" data-sw aria-label="按键声音"></button></div>
+        </div>
+      </div>
+
+      <div class="lgroup">
+        <div class="lgroup-title">屏幕</div>
+        <div class="list">
+          <div class="lrow"><span class="lname">屏幕亮度</span>
+            <div class="slider"><input type="range" id="slBright" min="10" max="100" value="80" style="--p:80" aria-label="屏幕亮度"></div>
+            <span class="lval" id="slBrightVal">80%</span></div>
+          <div class="lrow"><span class="lname">屏幕休眠时间</span>
+            <div class="stepper" data-sctl="sleepT"><button data-d="-1" aria-label="休眠时间减">−</button><span class="val">60s</span><button data-d="1" aria-label="休眠时间加">+</button></div></div>
+          <div class="lrow"><span class="lname">打印时保持屏幕开启</span><button class="switch" role="switch" aria-checked="false" data-sw aria-label="打印时保持屏幕开启"></button></div>
+        </div>
+      </div>
+
+      <div class="lgroup">
+        <div class="lgroup-title">操作</div>
+        <div class="list">
+          <button class="lrow" id="rowEnc"><span class="lname">EC11编码器方向</span><span class="lval" id="encVal">正向</span><span class="chev">›</span></button>
+          <button class="lrow act" id="rowCal"><span class="lname" id="calText">触摸屏校准</span></button>
+        </div>
+      </div>
+
+      <div class="lgroup">
+        <div class="lgroup-title">打印自动联动</div>
+        <div class="list">
+          <div class="lrow"><span class="lname">PIR启动延时</span>
+            <div class="stepper" data-sctl="pirOn"><button data-d="-1" aria-label="启动延时减">−</button><span class="val">25s</span><button data-d="1" aria-label="启动延时加">+</button></div></div>
+          <div class="lrow"><span class="lname">PIR关闭延时</span>
+            <div class="stepper" data-sctl="pirOff"><button data-d="-1" aria-label="关闭延时减">−</button><span class="val">50s</span><button data-d="1" aria-label="关闭延时加">+</button></div></div>
+          <div class="lrow"><span class="lname">启动后自动开灯</span><button class="switch" role="switch" aria-checked="true" data-sw aria-label="启动后自动开灯"></button></div>
+          <div class="lrow"><span class="lname">关闭后自动关灯</span><button class="switch" role="switch" aria-checked="true" data-sw aria-label="关闭后自动关灯"></button></div>
+          <div class="lrow"><span class="lname">启动后蜂鸣提示</span><button class="switch" role="switch" aria-checked="true" data-sw aria-label="启动后蜂鸣提示"></button></div>
+          <div class="lrow"><span class="lname">关闭后蜂鸣提示</span><button class="switch" role="switch" aria-checked="false" data-sw aria-label="关闭后蜂鸣提示"></button></div>
+        </div>
+        <div class="lfoot">多色打印换色时间长，PIR关闭延时建议设为 90s。</div>
+      </div>
+
+      <div class="lgroup">
+        <div class="lgroup-title">灯光</div>
+        <div class="list">
+          <div class="lrow"><span class="lname">RGB最大亮度</span>
+            <div class="slider"><input type="range" id="slRgb" min="10" max="100" value="100" style="--p:100" aria-label="RGB最大亮度"></div>
+            <span class="lval" id="slRgbVal">100%</span></div>
+          <div class="lrow"><span class="lname">RGB跟随屏幕休眠</span><button class="switch" role="switch" aria-checked="true" data-sw aria-label="RGB跟随屏幕休眠"></button></div>
+        </div>
+      </div>
+
+      <div class="lgroup">
+        <div class="lgroup-title">加热保护</div>
+        <div class="list">
+          <div class="lrow"><span class="lname">发热板限流</span>
+            <div class="stepper" data-sctl="curLim"><button data-d="-1" aria-label="限流减">−</button><span class="val">8.0A</span><button data-d="1" aria-label="限流加">+</button></div></div>
+          <div class="lrow"><span class="lname">发热板风扇风速</span>
+            <div class="stepper" data-sctl="fanSpd"><button data-d="-1" aria-label="风扇风速减">−</button><span class="val">80%</span><button data-d="1" aria-label="风扇风速加">+</button></div></div>
+          <div class="lrow"><span class="lname">发热板温度保护</span>
+            <div class="stepper" data-sctl="tempProt"><button data-d="-1" aria-label="温度保护减">−</button><span class="val">80°C</span><button data-d="1" aria-label="温度保护加">+</button></div></div>
+        </div>
+        <div class="lfoot">建议设为外壳软化温度 +10~15°C（PETG 80°C / ABS 110°C）。</div>
+      </div>
+
+      <div class="lgroup">
+        <div class="lgroup-title">恢复</div>
+        <div class="list">
+          <button class="lrow danger" id="rowReset"><span class="lname" id="resetText">恢复出厂配置</span></button>
+        </div>
+        <div class="lfoot">清除所有自定义参数与数据，注册码不会清除。</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============================================================
+       传感器故障错误页
+       真机行为：加热启动后检测到 NTC / AHT / INA226 异常 → 进入错误页并停止加热。
+       设计约束：不遮蔽健康通道读数（V1.0.5 明确优化过这一点）。
+       没有“关闭并忽略”入口——故障未排除前不允许假装消失，只能返回主界面，
+       由顶部常驻横幅继续承载该状态。
+       ============================================================ -->
+  <section class="errpage" id="errpage" role="dialog" aria-modal="true" aria-label="传感器故障">
+    <header class="errbar">
+      <button class="setback" id="errBack"><svg viewBox="0 0 24 24"><path d="M14.5 5 8 12l6.5 7"/></svg>返回</button>
+      <h2 id="errBarTitle">传感器故障</h2>
+      <span class="setbar-side"></span>
+    </header>
+
+    <div class="errbody">
+      <div class="errcol errcol-a">
+        <h2 class="group-title" id="errGroupTitle">故障</h2>
+        <div class="errhero" id="errHero">
+          <div class="errhero-top">
+            <span class="errhero-ic"><svg viewBox="0 0 24 24"><path d="M12 3.8 21 20H3z"/><path d="M12 10v4.4M12 17.4v.1"/></svg></span>
+            <div>
+              <div class="errhero-name" id="errName">—</div>
+              <div class="errhero-code" id="errCode">—</div>
+            </div>
+          </div>
+          <div class="errhero-basis" id="errBasis">—</div>
+          <div class="errchips" id="errTags"></div>
+        </div>
+
+        <h2 class="group-title" id="errStepTitle">排查步骤（来自官方 FAQ）</h2>
+        <div class="stepcard" id="errSteps"></div>
+      </div>
+
+      <div class="errcol errcol-b">
+        <h2 class="group-title">影响范围</h2>
+        <div class="sidecard">
+          <div class="sublabel" id="scopeBadT">受影响</div>
+          <div class="errchips" id="scopeBad"></div>
+          <div class="sublabel" id="scopeOkT" style="margin-top:14px">读数正常</div>
+          <div class="errchips" id="scopeOk"></div>
+        </div>
+
+        <h2 class="group-title">设备状态</h2>
+        <div class="sidecard">
+          <div class="statrow"><span class="sk">加热输出</span><span class="sv bad" id="stHeat">已停止</span></div>
+          <div class="statrow"><span class="sk">故障检测</span><span class="sv" id="stWhen">加热启动后启用</span></div>
+          <div class="statrow"><span class="sk">本次重试</span><span class="sv" id="stRetry">0 次</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="erraction">
+      <button class="btn btn-primary" id="btnRetry">
+        <svg class="mini" viewBox="0 0 24 24"><path d="M20.2 12a8.2 8.2 0 1 1-2.7-6.1"/><path d="M20.2 4.4V10h-5.6"/></svg>
+        <svg class="spin" viewBox="0 0 24 24"><path d="M12 4.5a7.5 7.5 0 1 1-5.3 2.2"/></svg>
+        <span id="btnRetryText">重新检测</span>
+      </button>
+      <button class="btn btn-secondary" id="btnStop">保持停止加热</button>
+    </div>
+  </section>
+
+  <div class="toast" id="toast"><span id="toastText"></span></div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var $ = function(s,c){return (c||document).querySelector(s);};
+  var $$ = function(s,c){return Array.prototype.slice.call((c||document).querySelectorAll(s));};
+  var screen = $('#screen');
+
+  /* ---------- 等宽缩放：1080×720 固定画布 ---------- */
+  function fit(){
+    var s = Math.min(window.innerWidth/1120, window.innerHeight/790, 1);
+    screen.style.transform = 'scale(' + s + ')';
+  }
+  window.addEventListener('resize', fit); fit();
+
+  /* ---------- 时钟 ---------- */
+  function pad(n){return n<10?'0'+n:''+n;}
+  function tick(){
+    var d = new Date();
+    $('#clockText').textContent = pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+    $('#dateText').textContent = d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  }
+  tick(); setInterval(tick, 1000);
+
+  /* ---------- 传感图标（自绘，非 SF Symbols） ---------- */
+  var ICON = {
+    fan:'<circle cx="12" cy="12" r="8.5"/><path d="M12 12c0-3-2-3.5-3.5-2.4M12 12c1.5 2.6 3.4 1.9 3.7.3M12 12c-2.2 2.2-1 4 .6 4"/>',
+    chip:'<rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/><rect x="10" y="10" width="4" height="4" rx="1"/><path d="M10 3.6v2.9M14 3.6v2.9M10 17.5v2.9M14 17.5v2.9M3.6 10h2.9M3.6 14h2.9M17.5 10h2.9M17.5 14h2.9"/>',
+    drop:'<path d="M12 3.8c3 3.6 5.2 6 5.2 8.7a5.2 5.2 0 0 1-10.4 0c0-2.7 2.2-5.1 5.2-8.7z"/>',
+    house:'<path d="M4.5 10.6 12 4.5l7.5 6.1V19a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1z"/><path d="M9.8 12.6h4.4v4.2H9.8z"/>',
+    wind:'<path d="M3.8 9.2h8.4a2.4 2.4 0 1 0-2.4-2.4M3.8 13.4h11a2.4 2.4 0 1 1-2.4 2.4M3.8 17.4h5.6"/>',
+    plate:'<path d="M4.5 14.5h15"/><path d="M6.6 14.5V18a1 1 0 0 0 1 1h8.8a1 1 0 0 0 1-1v-3.5"/><path d="M12 12.8V6.4a2.4 2.4 0 1 0-2.4 0"/>',
+    bolt:'<path d="M13.2 4 6.6 13.4h4.2L10.8 20l6.6-9.4h-4.2z"/>',
+    gauge:'<circle cx="12" cy="12" r="8.5"/><path d="M12 12 15 9.6"/><path d="M12 12v.1"/>'
+  };
+  var FAMVAR = {teal:'--teal', orange:'--orange', blue:'--blue-fam', indigo:'--indigo'};
+
+  /* ---------- 8 路传感数据（单位与精度对齐真机：温度°C，电压/电流两位小数） ---------- */
+  var sensors = [
+    {id:'ex', label:'外排', icon:'fan',   fam:'teal',   unit:'%',  v:65,   min:0,  max:100, tick:80,   dec:0},
+    {id:'mc', label:'主控', icon:'chip',  fam:'orange', unit:'°C', v:52,   min:0,  max:90,  tick:75,   dec:1},
+    {id:'hu', label:'湿度', icon:'drop',  fam:'blue',   unit:'%',  v:38,   min:0,  max:100, tick:70,   dec:0},
+    {id:'ch', label:'仓温', icon:'house', fam:'orange', unit:'°C', v:26,   min:0,  max:50,  tick:30,   dec:1},
+    {id:'hf', label:'热风', icon:'wind',  fam:'teal',   unit:'%',  v:45,   min:0,  max:100, tick:80,   dec:0},
+    {id:'rb', label:'热板', icon:'plate', fam:'orange', unit:'°C', v:63,   min:0,  max:120, tick:100,  dec:1},
+    {id:'vt', label:'电压', icon:'bolt',  fam:'indigo', unit:'V',  v:23.9, min:18, max:30,  tick:26.5, dec:2},
+    {id:'ct', label:'电流', icon:'gauge', fam:'indigo', unit:'A',  v:6.8,  min:0,  max:12,  tick:10,   dec:2}
+  ];
+
+  sensors.forEach(function(s){
+    s.el = document.createElement('div');
+    s.el.className = 'sensor';
+    s.el.innerHTML =
+      '<div class="sensor-head">' +
+        '<span class="icon"><svg viewBox="0 0 24 24" stroke="var(' + FAMVAR[s.fam] + ')">' + ICON[s.icon] + '</svg></span>' +
+        '<span class="sensor-val">0</span>' +
+        '<span class="sensor-unit">' + s.unit + '</span>' +
+        '<span class="trend">—</span>' +
+      '</div>' +
+      '<div class="sensor-foot">' +
+        '<span class="sensor-label">' + s.label + '</span>' +
+        '<span class="badge"></span>' +
+      '</div>' +
+      '<div class="sensor-bar"><i></i></div>';
+    s.el.style.setProperty('--tick', ((s.tick - s.min)/(s.max - s.min)*100).toFixed(1));
+    s.badge = $('.badge', s.el);
+    s.valEl = $('.sensor-val', s.el);
+    s.trendEl = $('.trend', s.el);
+    s.barEl = $('i', s.el);
+    $('#grid').appendChild(s.el);
+  });
+
+  function render(s){
+    /* 故障通道：读数退位为“—”（不伪造数值），徽标转“无数据”，量程条置为底轨 */
+    if(s.fault){
+      s.el.classList.add('is-fault');
+      s.valEl.textContent = '—';
+      s.valEl.style.color = 'var(--label-3)';
+      s.trendEl.textContent = '';
+      s.barEl.style.width = '100%';
+      s.barEl.style.background = 'var(--fill-3)';
+      s.badge.textContent = '无数据'; s.badge.className = 'badge show';
+      s.badge.style.background = 'color-mix(in srgb,var(--red) 10%,transparent)';
+      s.badge.style.color = 'var(--red-text)';
+      return;
+    }
+    s.el.classList.remove('is-fault');
+    s.valEl.style.color = 'var(--label)';
+    var ratio = (s.v - s.min)/(s.max - s.min);
+    var over = s.v >= s.tick;
+    var near = !over && s.v >= s.tick - (s.max - s.min)*0.08;
+    s.valEl.textContent = s.v.toFixed(s.dec);
+    s.barEl.style.width = Math.max(2, Math.min(100, ratio*100)).toFixed(1) + '%';
+    s.barEl.style.background = over ? 'var(--red)' : (near ? 'var(--orange)' : 'var(--green)');
+    if(over){
+      s.badge.textContent = '超限'; s.badge.className = 'badge show';
+      /* 10%（而非 15%）：保证 --red-text 在该底色上 ≥4.5:1 */
+      s.badge.style.background = 'color-mix(in srgb,var(--red) 10%,transparent)';
+      s.badge.style.color = 'var(--red-text)';
+    } else if(near){
+      s.badge.textContent = '偏高'; s.badge.className = 'badge show';
+      s.badge.style.background = 'color-mix(in srgb,var(--orange) 16%,transparent)';
+      s.badge.style.color = 'var(--orange-text)';
+    } else {
+      s.badge.className = 'badge'; s.badge.textContent = '';
+    }
+    s.trendEl.style.color = 'var(--label-3)'; /* 趋势不占用语义色，方向由形状承载 */
+  }
+
+  function step(s, force){
+    if(s.fault && typeof force !== 'number') return; /* 故障通道不再漂移，避免伪造读数 */
+    if(typeof force === 'number'){ s.v = force; s.dir = 0; }
+    else {
+      var amp = (s.max - s.min) * 0.035;
+      var d = (Math.random() - 0.5) * amp * 2 * (s.drift || 1);
+      var nv = s.v + d;
+      nv = Math.max(s.min, Math.min(s.max, nv));
+      s.dir = nv > s.v + 0.0001 ? 1 : (nv < s.v - 0.0001 ? -1 : 0);
+      s.v = nv;
+    }
+    s.trendEl.textContent = s.dir > 0 ? '▲' : (s.dir < 0 ? '▼' : '—');
+    render(s);
+  }
+  sensors.forEach(function(s){ step(s); });
+  var simTimer = setInterval(function(){
+    sensors.forEach(function(s){ step(s); });
+    /* 错误页打开时健康通道照常刷新——这是真机 V1.0.5 明确要求的行为 */
+    if(curFault) paintScopeOk();
+  }, 2000);
+
+  /* ---------- 自动化开关 + 步进器 ---------- */
+  $$('.auto-row .switch').forEach(function(sw){
+    sw.addEventListener('click', function(){
+      var on = sw.getAttribute('aria-checked') === 'true';
+      sw.setAttribute('aria-checked', on ? 'false' : 'true');
+      sw.getAttribute('data-own').split(',').forEach(function(key){
+        var st = $('.stepper[data-ctl="' + key + '"]');
+        if(st) st.classList.toggle('is-disabled', on);
+      });
+    });
+  });
+
+  var STEP = {
+    'ex-min':{v:20,step:5,min:0,max:80,fmt:function(v){return v+'%';}},
+    'ex-max':{v:80,step:5,min:20,max:100,fmt:function(v){return v+'%';}},
+    'ch-min':{v:15,step:1,min:0,max:28,fmt:function(v){return v+'°C';}},
+    'ch-max':{v:30,step:1,min:16,max:45,fmt:function(v){return v+'°C';}},
+    'end-fan':{v:60,step:5,min:0,max:100,fmt:function(v){return v+'%';}},
+    'end-time':{v:300,step:30,min:0,max:900,fmt:function(v){return v+'s';}}
+  };
+  /* 设置页步进器（默认值来自官方文档 software_desc.html / software_control.html） */
+  var SSTEP = {
+    'sleepT':{v:60,step:10,min:10,max:600,fmt:function(v){return v+'s';}},
+    'pirOn':{v:25,step:5,min:5,max:120,fmt:function(v){return v+'s';}},
+    'pirOff':{v:50,step:10,min:10,max:300,fmt:function(v){return v+'s';}},
+    'curLim':{v:8,step:0.5,min:1,max:12,fmt:function(v){return v.toFixed(1)+'A';}},
+    'fanSpd':{v:80,step:5,min:0,max:100,fmt:function(v){return v+'%';}},
+    'tempProt':{v:80,step:5,min:40,max:150,fmt:function(v){return v+'°C';}}
+  };
+  $$('.stepper').forEach(function(st){
+    var key = st.getAttribute('data-ctl') || st.getAttribute('data-sctl');
+    var cfg = STEP[key] || SSTEP[key], valEl = $('.val', st), hold, rep;
+    function apply(d){
+      cfg.v = Math.max(cfg.min, Math.min(cfg.max, cfg.v + d*cfg.step));
+      valEl.textContent = cfg.fmt(cfg.v);
+    }
+    $$('button', st).forEach(function(btn){
+      var d = parseInt(btn.getAttribute('data-d'), 10);
+      btn.addEventListener('pointerdown', function(e){
+        e.preventDefault(); apply(d);
+        hold = setTimeout(function(){ rep = setInterval(function(){ apply(d); }, 90); }, 400);
+      });
+      ['pointerup','pointercancel','pointerleave'].forEach(function(ev){
+        btn.addEventListener(ev, function(){ clearTimeout(hold); clearInterval(rep); });
+      });
+    });
+  });
+
+  /* ---------- 材料切换（真机为箭头循环切换；固件支持 8 种耗材配置，界面显示相邻项） ---------- */
+  var MATS = ['PLA','PETG','TPU','ABS','ASA','PC/PPA','CUSTOM'], mi = 1;
+  function setMat(i){
+    mi = (i + MATS.length) % MATS.length;
+    $('#matName').textContent = MATS[mi];
+  }
+  $('#matPrev').addEventListener('click', function(){ setMat(mi - 1); });
+  $('#matNext').addEventListener('click', function(){ setMat(mi + 1); });
+
+  /* ---------- 工作就绪 + PIR 状态机（对齐真机：未检测 → 检测中 → 工作中） ----------
+     真机逻辑：点"工作"按钮就绪 → PIR 检测打印机运动 → 持续运动达启动延时进入工作中；
+     此处用 3 秒延时模拟"检测到打印开始"。 */
+  var ready = false, pir = 0, pirTimer = null;
+  /* 故障状态（赋值见文末「传感器故障」模块） */
+  var curFault = null, retryLeft = 0, retrying = false;
+  function renderState(){
+    var cap = $('#statusCapsule'), check = $('#tabCheck'), tab = $('#tabWork');
+    var d = curFault ? FAULTS[curFault] : null, stopped = !!d;
+    var prot = stopped && d.sev === 'protect';
+    cap.classList.toggle('is-on', !stopped && pir === 2);
+    cap.classList.toggle('is-fault', stopped);
+    $('#capIcon').innerHTML = stopped
+      ? '<path d="M12 4.6 20 19H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 10.4v3.6M12 16.8v.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'
+      : (pir === 2 ? '<path d="M8 5.5v13l11-6.5z"/>'
+                   : '<circle cx="12" cy="12" r="4.5" fill="currentColor" stroke="none"/>');
+    $('#statusText').textContent = stopped ? (prot ? '保护暂停' : '已停止加热')
+                                           : (pir === 2 ? '打印中' : '未打印');
+    $('#checkText').textContent = pir === 2 ? '工作中' : (pir === 1 ? '检测中' : '未检测');
+    check.classList.toggle('st-running', pir === 1);
+    check.classList.toggle('is-done', pir === 2);
+    check.classList.toggle('is-on', pir === 2);
+    check.setAttribute('aria-disabled', 'true'); /* PIR 为自动状态指示，不可点击 */
+    $('#workIcon').innerHTML = '<path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/>';
+    tab.classList.toggle('is-on', ready && !stopped);
+    $('#workText').textContent = stopped ? '已停止' : (ready ? (pir === 2 ? '工作中' : '已就绪') : '未工作');
+    /* 错误页侧栏的设备状态随全局状态同步 */
+    var h = $('#stHeat');
+    if(h){
+      h.textContent = stopped ? (prot ? '已暂停' : '已停止') : '待命';
+      h.className = 'sv ' + (stopped ? (prot ? 'warn' : 'bad') : 'ok');
+    }
+  }
+  function setReady(r){
+    ready = r;
+    clearTimeout(pirTimer);
+    if(r){
+      pir = 1;
+      pirTimer = setTimeout(function(){ pir = 2; renderState(); }, 3000);
+    } else {
+      pir = 0;
+    }
+    renderState();
+  }
+  $('#tabWork').addEventListener('click', function(){ setReady(!ready); });
+  renderState();
+
+  /* ---------- 预热 / 灯光（保留原屏肌肉记忆，见 DESIGN.md 第 7 章未决项） ---------- */
+  var preOn = false;
+  $('#tabPre').addEventListener('click', function(){
+    preOn = !preOn;
+    this.setAttribute('aria-pressed', preOn ? 'true' : 'false');
+    this.classList.toggle('is-warn', preOn);
+    $('#preText').textContent = preOn ? '预热中' : '提前预热';
+  });
+  var lightOn = true;
+  $('#tabLight').addEventListener('click', function(){
+    lightOn = !lightOn;
+    this.setAttribute('aria-pressed', lightOn ? 'true' : 'false');
+    this.classList.toggle('is-light', lightOn);
+    $('#lightText').textContent = lightOn ? '灯光开启' : '灯光关闭';
+  });
+
+  /* ---------- 系统设置页（全屏推入） ---------- */
+  function openSet(){ $('#setpage').classList.add('show'); }
+  function closeSet(){ $('#setpage').classList.remove('show'); }
+  $('#tabSet').addEventListener('click', openSet);
+  $('#setBack').addEventListener('click', closeSet);
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeSet(); });
+
+  /* 设置页开关（通用绑定） */
+  $$('.setpage [data-sw]').forEach(function(sw){
+    sw.addEventListener('click', function(){
+      this.setAttribute('aria-checked', this.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+    });
+  });
+
+  /* 循环值行：系统语言（真机双语）、EC11编码器方向 */
+  var LANGS = ['中文','English'], langI = 0;
+  $('#rowLang').addEventListener('click', function(){
+    langI = (langI + 1) % LANGS.length;
+    $('#langVal').textContent = LANGS[langI];
+  });
+  var ENCS = ['正向','反向'], encI = 0;
+  $('#rowEnc').addEventListener('click', function(){
+    encI = (encI + 1) % ENCS.length;
+    $('#encVal').textContent = ENCS[encI];
+  });
+
+  /* 滑块：屏幕亮度 / RGB最大亮度 */
+  [['slBright','slBrightVal'],['slRgb','slRgbVal']].forEach(function(pair){
+    var inp = document.getElementById(pair[0]), out = document.getElementById(pair[1]);
+    inp.addEventListener('input', function(){
+      inp.style.setProperty('--p', inp.value);
+      out.textContent = inp.value + '%';
+    });
+  });
+
+  /* 触摸屏校准（动作行演示） */
+  var calBusy = false;
+  $('#rowCal').addEventListener('click', function(){
+    if(calBusy) return;
+    calBusy = true;
+    var txt = $('#calText');
+    txt.textContent = '校准中…';
+    setTimeout(function(){
+      txt.textContent = '校准完成';
+      setTimeout(function(){ txt.textContent = '触摸屏校准'; calBusy = false; }, 1500);
+    }, 1500);
+  });
+
+  /* ---------- 外观（评审工具，真机设置页无此项，故移出设备 UI） ---------- */
+  function setDark(on){
+    screen.setAttribute('data-appearance', on ? 'dark' : 'light');
+    document.body.style.background = on ? '#101013' : '#DFDFE6';
+  }
+  $('#demoDark').addEventListener('click', function(){
+    setDark(screen.getAttribute('data-appearance') !== 'dark');
+  });
+
+  /* ---------- 恢复出厂配置：二次确认 ---------- */
+  var confirmUntil = 0;
+  $('#rowReset').addEventListener('click', function(){
+    var row = this, txt = $('#resetText'), now = Date.now();
+    if(now < confirmUntil){
+      confirmUntil = 0;
+      row.classList.remove('is-confirm');
+      txt.textContent = '恢复出厂配置';
+      setReady(false);
+      return;
+    }
+    confirmUntil = now + 3000;
+    row.classList.add('is-confirm');
+    txt.textContent = '再次点按以确认';
+    setTimeout(function(){
+      if(Date.now() >= confirmUntil){
+        row.classList.remove('is-confirm');
+        txt.textContent = '恢复出厂配置';
+      }
+    }, 3100);
+  });
+
+  /* ============================================================
+     传感器故障 / 加热保护（错误页）
+     ————————————————————————————————————————————————————————————
+     真机依据（3d.physton.com/zh-cn/software_control.html「传感器与错误处理」）：
+       · 加热功能启动后才启用传感器异常检测（V1.0.1 日志）
+       · NTC 异常：ADC 值超限或不合理
+       · AHT 异常：I2C 无响应或返回错误
+       · INA226 异常：I2C 地址异常或读数错误
+       · 发生错误时进入错误页面并停止加热
+     V1.0.5 日志：单个传感器故障时，其它传感器读数仍要正常显示
+       → 本页保留健康通道读数并持续刷新，不做全屏遮蔽。
+     通道 → 传感器绑定（湿度/仓温=AHT20、主控/热板/热风=NTC、电压/电流=INA226、
+       外排=排气扇执行器反馈）为按 8 路清单反推的推断值，待真机确认（DESIGN.md 第 7 章）。
+     ============================================================ */
+  var FAULTS = {
+    aht: {
+      sev:'fault',
+      name:'温湿度传感器无响应',
+      code:'AHT20 · I2C 通信失败',
+      banner:'AHT20 温湿度传感器无响应 · 加热已停止',
+      basis:'系统向 AHT20 读取温湿度后未收到响应，或返回值错误。加热启动后大电流产生的电磁干扰是常见诱因。',
+      affects:['hu','ch'],
+      stepsTitle:'排查步骤（来自官方 FAQ）',
+      steps:[
+        '将 AHT20 模块的导线与加热板导线<em>分开走线</em>，保持一定距离。',
+        '将主控板上的 R2、R3 两颗 <em>5.1KΩ 电阻换成 2KΩ</em> 左右。',
+        '给连接加热板的两条导线<em>套一个磁环</em>。',
+        '把 AHT20 导线中的 <em>GND 拆成 2 条</em>，分别与 SDA、SCL 导线绞绕。'
+      ]
+    },
+    ntc: {
+      sev:'fault',
+      name:'温度传感器读数异常',
+      code:'NTC · ADC 值超出合理量程',
+      banner:'NTC 温度读数异常 · 加热已停止',
+      basis:'NTC 热敏电阻的 ADC 采样值超出合理范围（开路或短路），温度读数不可信，已停止加热。',
+      affects:['rb','hf','mc'],
+      stepsTitle:'排查步骤（来自官方 FAQ）',
+      steps:[
+        '检查 NTC 接线是否牢固、端子有无松动。',
+        '确认传感器是否<em>固定在预定测温位置</em>（发热板中心发热点）。',
+        '环境温度大幅变化会影响初始读数，待稳定后重试。',
+        '读数持续偏高或偏低时，更换 NTC 探头后重试。'
+      ]
+    },
+    ina: {
+      sev:'fault',
+      name:'电压电流监测异常',
+      code:'INA226 · I2C 地址异常 / 读数错误',
+      banner:'INA226 读数异常 · 加热已停止',
+      basis:'INA226 未在预期 I2C 地址上响应，或返回的电压电流读数不合理，加热功率无法被安全监控。',
+      affects:['vt','ct'],
+      stepsTitle:'排查步骤（本方案补充 · 待官方确认）',
+      steps:[
+        '检查 INA226 模块的 I2C 接线（SDA / SCL）与供电是否牢固。',
+        '确认总线上没有其它设备占用同一地址。',
+        '调整接线后点“重新检测”复测。'
+      ]
+    },
+    multi: {
+      sev:'fault',
+      name:'2 个传感器同时无响应',
+      code:'AHT20 + INA226 · I2C 总线异常',
+      banner:'AHT20 与 INA226 同时异常 · 加热已停止',
+      basis:'同一条 I2C 总线上的两个模块同时失联，优先怀疑总线本身（接线、上拉电阻）或加热干扰，而非单个模块损坏。',
+      affects:['hu','ch','vt','ct'],
+      stepsTitle:'排查步骤（本方案补充 · 待官方确认）',
+      steps:[
+        '先核对 I2C 总线接线与两个模块的供电是否同时受影响。',
+        '按 AHT20 的 4 条抗干扰措施处理加热板走线。',
+        '逐一断开模块复测，定位是总线问题还是单个模块问题。'
+      ]
+    },
+    prot: {
+      sev:'protect',
+      name:'发热板温度保护已触发',
+      code:'过温硬保护 · 阈值 80°C',
+      banner:'发热板温度保护已触发 · 加热已暂停',
+      basis:'发热板温度达到设定保护阈值，系统立即停止加热。这是正常的自我保护动作，不是传感器故障。',
+      affects:[],
+      stepsTitle:'恢复条件',
+      steps:[
+        '发热板自然降温至保护阈值以下后，加热<em>可自动恢复</em>，无需人工处理。',
+        '如频繁触发，检查发热板风扇风速与散热片是否正常。',
+        '保护阈值可在「系统设置 → 加热保护」中调整。'
+      ]
+    }
+  };
+
+  function sById(id){ return sensors.filter(function(x){ return x.id === id; })[0]; }
+  function hhmm(){ var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+
+  var toastTimer;
+  function showToast(t, ok){
+    var el = $('#toast');
+    $('#toastText').textContent = t;
+    el.classList.toggle('is-ok', !!ok);
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 2600);
+  }
+
+  function paintScopeOk(){
+    var d = FAULTS[curFault]; if(!d) return;
+    var ok = sensors.filter(function(s){ return d.affects.indexOf(s.id) < 0; });
+    $('#scopeOk').innerHTML = ok.map(function(s){
+      return '<span class="chip is-dot"><b>' + s.label + '</b> ' + s.v.toFixed(s.dec) + s.unit + '</span>';
+    }).join('');
+  }
+
+  function paintFault(){
+    var d = FAULTS[curFault]; if(!d) return;
+    var prot = d.sev === 'protect';
+    var bad = d.affects.map(sById);
+    $('#errBarTitle').textContent = prot ? '加热保护' : '传感器故障';
+    $('#errGroupTitle').textContent = prot ? '保护触发' : '故障';
+    $('#errHero').classList.toggle('is-prot', prot);
+    $('#errName').textContent = d.name;
+    $('#errCode').textContent = d.code + ' · ' + hhmm() + ' 触发';
+    $('#errBasis').textContent = d.basis;
+    $('#errTags').innerHTML = prot
+      ? '<span class="chip is-warn">保护动作 · 非故障</span><span class="chip">无需排查接线</span>'
+      : '<span class="chip is-stop">已自动停止加热</span><span class="chip">读取失败 · 非暂态波动</span>';
+    $('#errStepTitle').textContent = d.stepsTitle;
+    $('#errSteps').innerHTML = d.steps.map(function(t, i){
+      return '<div class="step"><span class="step-n">' + (i + 1) + '</span><span class="step-t">' + t + '</span></div>';
+    }).join('');
+    $('#scopeBadT').style.display = bad.length ? 'block' : 'none';
+    $('#scopeBadT').textContent = '受影响 · 无数据（' + bad.length + ' 路）';
+    $('#scopeBad').style.display = bad.length ? 'flex' : 'none';
+    $('#scopeBad').innerHTML = bad.map(function(s){
+      return '<span class="chip is-bad">' + s.label + ' · 无数据</span>';
+    }).join('');
+    $('#scopeOkT').textContent = prot ? '当前读数（8 路全部正常）'
+                                      : '其余读数正常（' + (8 - bad.length) + ' 路）';
+    paintScopeOk();
+    var btn = $('#btnRetry');
+    btn.classList.toggle('is-plain', prot);
+    $('#btnRetryText').textContent = prot ? '我已了解' : '重新检测';
+    $('#stWhen').textContent = '加热启动后启用';
+    $('#stRetry').textContent = (1 - retryLeft) + ' 次';
+  }
+
+  function updateBanner(){
+    var bar = $('#alertbar');
+    if(!curFault){ bar.classList.remove('show'); return; }
+    var d = FAULTS[curFault], prot = d.sev === 'protect';
+    bar.classList.toggle('is-prot', prot);
+    bar.classList.add('show');
+    $('#alertText').textContent = d.banner;
+    $('#alertFix').textContent = prot ? '降温后自动恢复' : ('其余 ' + (8 - d.affects.length) + ' 路读数正常');
+  }
+
+  function applyFault(key){
+    if(!FAULTS[key]) return;
+    curFault = key; retryLeft = 1; retrying = false;
+    var d = FAULTS[key];
+    sensors.forEach(function(s){ s.fault = d.affects.indexOf(s.id) >= 0; });
+    sensors.forEach(function(s){ render(s); });
+    setReady(false);            /* 停止加热 → 系统退出工作状态（真机行为） */
+    paintFault(); updateBanner();
+    $('#errpage').classList.add('show');
+  }
+  function clearFault(ok){
+    curFault = null; retrying = false;
+    sensors.forEach(function(s){ s.fault = false; });
+    sensors.forEach(function(s){ render(s); });
+    $('#errpage').classList.remove('show');
+    updateBanner();
+    renderState();
+    $('#stRetry').className = 'sv';
+    if(ok) showToast('传感器已恢复 · 加热控制可用', true);
+  }
+  function openErr(){ if(curFault) $('#errpage').classList.add('show'); }
+  function closeErr(){ $('#errpage').classList.remove('show'); }
+
+  /* 重新检测：真机的错误清除方式官方未说明，本流程为方案推断（见 DESIGN.md 第 7 章）。
+     为便于评审，两次重试中第一次模拟“仍无响应”，第二次恢复。 */
+  function doRetry(){
+    if(retrying || !curFault) return;
+    if(FAULTS[curFault].sev === 'protect'){
+      clearFault(false);
+      showToast('已停止加热 · 降温后按「工作」重新开始');
+      return;
+    }
+    retrying = true;
+    var btn = $('#btnRetry');
+    btn.classList.add('is-loading');
+    $('#btnRetryText').textContent = '重新检测中…';
+    setTimeout(function(){
+      retrying = false;
+      btn.classList.remove('is-loading');
+      if(retryLeft > 0){
+        retryLeft--;
+        $('#btnRetryText').textContent = '重新检测';
+        $('#stRetry').textContent = '1 次 · 仍无响应';
+        $('#stRetry').className = 'sv bad';
+        $('#errTags').innerHTML = '<span class="chip is-stop">仍无响应</span><span class="chip">已重试 1 次</span>';
+        $('#errBasis').textContent = '重新读取仍未收到响应。若刚刚调整过接线，请断电重启后再试。';
+      } else {
+        clearFault(true);
+      }
+    }, 1600);
+  }
+
+  $('#errBack').addEventListener('click', closeErr);
+  $('#alertOpen').addEventListener('click', openErr);
+  $('#btnRetry').addEventListener('click', doRetry);
+  $('#btnStop').addEventListener('click', function(){
+    setReady(false);
+    closeErr();
+    showToast('已保持停止加热 · 排查完成后按「工作」重新开始');
+  });
+  $$('.stage-tools [data-fault]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var k = b.getAttribute('data-fault');
+      $$('.stage-tools [data-fault]').forEach(function(x){ x.classList.remove('is-active'); });
+      if(k){ b.classList.add('is-active'); applyFault(k); } else { clearFault(false); }
+    });
+  });
+
+  /* ---------- 调试钩子（供自动化验证使用，不影响正常交互） ---------- */
+  /* ---------- WiFi 信号（新增能力：应需求添加，真机固件无此功能） ---------- */
+  var WIFI_NAMES = ['未连接', '信号弱', '信号中', '信号强'];
+  function setWiFi(level){
+    level = Math.max(0, Math.min(3, level|0));
+    var icon = $('#wifiIcon');
+    icon.setAttribute('data-level', String(level));
+    icon.setAttribute('aria-label', 'WiFi 信号：' + WIFI_NAMES[level]);
+    $('#wifiWrap').classList.toggle('is-off', level === 0);
+  }
+  setWiFi(3); /* 默认满格 */
+
+  window.__ui = {
+    setSensor: function(id, v){ var s = sensors.filter(function(x){return x.id===id;})[0]; if(s) step(s, v); },
+    setDark: setDark,
+    openSet: openSet,
+    closeSet: closeSet,
+    setReady: setReady,
+    setPreheat: function(){ $('#tabPre').click(); },
+    sensor: function(id){ return sensors.filter(function(x){return x.id===id;})[0]; },
+    fault: applyFault,
+    clearFault: clearFault,
+    openErr: openErr,
+    closeErr: closeErr,
+    retry: doRetry,
+    setWiFi: setWiFi,
+    /* 强制一次成功复测，用于截取“已恢复”态 */
+    retryOk: function(){ retryLeft = 0; doRetry(); }
+  };
+})();
+</script>
+</body>
+</html>

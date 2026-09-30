@@ -75,11 +75,15 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 │  ├─ tft_ui.cpp             TFT_eSPI 渲染：主界面 / 设置页 / 故障页 / 触摸校准
 │  ├─ network.cpp            WiFiManager 配网、Web 管理页/REST :80、MQTT、NTP、OTA
 │  └─ ina226_sensor.cpp      INA226 I²C 采样实现
-├─ chamber-web-preview.html  内置 Web 管理页的浏览器预览稿
-├─ wifi-setup-preview.html   WiFi 配网门户的浏览器预览稿
+├─ wifi-setup-preview.html   WiFi 配网门户的浏览器预览稿（实验室蓝浅色）
+├─ printer-hmi-ios-prototype.html  iOS 风格主屏高保真原型（当前主屏设计语言来源）
+├─ printer-hmi-redesign.html 主屏深色 HMI 改版设计稿（未采用，留档）
+├─ hmi-color-schemes.html    HMI 配色方案探索稿（候选配色板）
+├─ hmi-palette-board.html    HMI 调色板对照板
 └─ tools/
    ├─ genvlw.py               从系统 TTF/TTC 抽取汉字生成 VLW 字库
    ├─ ui_preview.html         可操作的真机界面模拟器
+   ├─ web_management_preview.html  内置 Web 管理页的浏览器预览稿（实验室蓝浅色）
    └─ preview_cn.png          字库生成预览图
 ```
 
