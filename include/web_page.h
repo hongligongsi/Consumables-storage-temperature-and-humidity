@@ -2,97 +2,246 @@
 #include <Arduino.h>
 
 // 独立于文件系统的轻量管理页，直接随固件存入 Flash。
+// 配色:实验室蓝 Lab Blue(浅色 · 日光可读)。基础面/文字/强调取自设计
+// token,家族色(温度#D97706/电气#7C3AED/气流#0891B2/湿度#2563EB)取同色系
+// 深版以保持浅底对比度。离线预览稿见 tools/web_management_preview.html。
+// 字段与 /api/state、/api/settings 严格对应;state 为英文首字母大写,
+// 前端统一转小写后查表。
 static const char WEB_MANAGEMENT_PAGE[] PROGMEM = R"HTML(
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chamber 管理</title><style>
-:root{color-scheme:dark;--bg:#0d1117;--bg2:#161c24;--card:#161b22;--card2:#161b22;--line:#2d333d;--field-line:#3d4651;--a:#2f81f7;--a2:#2f81f7;--ok:#3fb950;--warn:#d29922;--danger:#f85149;--text:#e6edf3;--muted:#8b949e;--radius:8px}
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--text);font:15px/1.55 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);-webkit-font-smoothing:antialiased}
-.wrap{max-width:960px;margin:0 auto;padding:30px 18px 44px}
-header{position:relative;display:flex;align-items:center;justify-content:flex-end;min-height:32px;margin-bottom:4px;padding-bottom:16px;border-bottom:1px solid var(--line)}h1{position:absolute;left:50%;transform:translateX(-50%);font-size:20px;margin:0;font-weight:600}
-.badge{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--bg2);border-radius:999px;padding:6px 14px;font-size:13px;color:var(--muted)}.badge i{width:8px;height:8px;border-radius:50%;background:var(--ok)}
-#msg{min-height:22px;margin:12px 0 2px;font-size:14px;color:var(--ok);transition:opacity .25s}
-.sub{color:var(--muted);font-size:13px;margin:0 0 12px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin-top:14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px}.card:hover{border-color:#3d4651}
-.card h2{font-size:15px;margin:0 0 14px;color:var(--text);font-weight:600}
-.stats{display:grid;grid-template-columns:1fr 1fr;gap:9px}.stat{display:flex;flex-direction:column;gap:2px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px}.stat:last-child{grid-column:1/-1}.stat span{color:var(--muted);font-size:12px}.stat b{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;word-break:break-all;display:flex;align-items:center;gap:7px}.stat b small{font-size:11px;font-weight:400;color:var(--muted)}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}.dot.g{background:var(--ok)}.dot.y{background:var(--warn)}.dot.r{background:var(--danger)}.dot.b{background:var(--a)}
-.bars{display:inline-flex;gap:2px;align-items:flex-end;height:13px;flex:none}.bars i{width:3px;border-radius:1px;background:#3d4651}.bars i:nth-child(1){height:4px}.bars i:nth-child(2){height:7px}.bars i:nth-child(3){height:10px}.bars i:nth-child(4){height:13px}.bars i.on{background:var(--ok)}.bars i.on.weak{background:var(--warn)}.bars i.on.bad{background:var(--danger)}
-label{display:block;color:var(--muted);font-size:13px;margin:11px 0 4px}input,select{width:100%;padding:9px 11px;border:1px solid var(--field-line);border-radius:6px;background:var(--bg2);color:var(--text);font-size:14px;outline:none;transition:border-color .15s,box-shadow .15s}input:focus,select:focus{border-color:var(--a);box-shadow:0 0 0 3px rgba(47,129,247,.18)}input::placeholder{color:#6b7682}input[type=file]{padding:8px}
-.check{display:flex;gap:9px;align-items:center;color:var(--text);font-size:14px;margin:11px 0}.check input{width:auto;width:17px;height:17px;accent-color:var(--a);cursor:pointer}
+<title>耗材仓网络管理</title><style>
+/* 实验室蓝 · Lab Blue [浅色 · 日光可读]
+   基础面/文字/强调全部取自给定 token;家族色(温度/电气/气流/湿度)
+   取同色系深版以在浅底上保持足够对比度 */
+:root{color-scheme:light;
+--bg:#F2F5F9;--surface:#FFFFFF;--surface-2:#E9EFF6;--line:#D3DEEA;
+--text:#16202C;--muted:#6B7C8F;
+--accent:#2563EB;--accent-ink:#FFFFFF;
+--warn:#D97706;--danger:#DC2626;--ok:#16A34A;
+--f-temp:#D97706;--f-elec:#7C3AED;--f-air:#0891B2;--f-hum:#2563EB;
+--ok-bg:#E8F7EE;--ok-line:#B7E4C7;--warn-bg:#FEF4E6;--warn-line:#F2D9AE;
+--danger-bg:#FDECEC;--danger-line:#F5C9C9;--accent-bg:#EAF1FE;--accent-line:#C3D8FA;
+--shadow:0 1px 2px rgba(22,32,44,.04),0 4px 16px rgba(22,32,44,.06)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;color:var(--text);font:15px/1.55 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background-color:var(--bg);background-image:linear-gradient(180deg,#E7EEF8,transparent 340px);background-repeat:no-repeat;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1060px;margin:0 auto;padding:26px 18px 48px}
+/* -- 顶部:品牌 + 状态胶囊 + 时钟 -- */
+header{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:40px;height:40px;border-radius:11px;background:var(--accent-bg);border:1px solid var(--accent-line);display:grid;place-items:center;color:var(--accent)}
+h1{font-size:20px;margin:0;font-weight:650;letter-spacing:.3px}
+.sub2{margin:1px 0 0;font-size:12.5px;color:var(--muted)}
+.head-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 15px;font-size:13.5px;color:var(--muted)}
+.pill i{width:8px;height:8px;border-radius:50%;background:#9AA9BA}
+.pill.g{border-color:var(--ok-line);background:var(--ok-bg);color:#15803D}.pill.g i{background:var(--ok)}
+.pill.y{border-color:var(--warn-line);background:var(--warn-bg);color:#B45309}.pill.y i{background:var(--warn)}
+.pill.r{border-color:var(--danger-line);background:var(--danger-bg);color:var(--danger)}.pill.r i{background:var(--danger)}
+.pill.b{border-color:var(--accent-line);background:var(--accent-bg);color:var(--accent)}.pill.b i{background:var(--accent)}
+.clockbox{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:6px 14px;text-align:right}
+.clockbox b{font-size:17px;font-variant-numeric:tabular-nums;letter-spacing:.5px;color:var(--text)}
+.clockbox span{display:block;font-size:11px;color:var(--muted)}
+/* -- 控制条:四个语义色大按钮 -- */
+.controls{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+button{border:1px solid var(--line);border-radius:10px;padding:11px 14px;background:var(--surface);color:var(--text);font-size:14px;cursor:pointer;transition:background-color .15s,border-color .15s,color .15s;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+button:hover{background:var(--surface-2);border-color:#BFCFE0}
+button:active{background:#DFE8F3}
+button svg{width:17px;height:17px;flex:none}
+.ctl{padding:13px 10px;font-size:14.5px;font-weight:550}
+.ctl.on.c-green{border-color:var(--ok);background:var(--ok-bg);color:#15803D}
+.ctl.on.c-orange{border-color:var(--warn);background:var(--warn-bg);color:#B45309}
+.ctl.on.c-yellow{border-color:#CA8A04;background:#FEF9E0;color:#A16207}
+.ctl.on.c-cyan{border-color:var(--f-air);background:#E4F5F9;color:#0E7490}
+/* -- 卡片栅格 -- */
+#msg{min-height:20px;margin:0 0 10px;font-size:13.5px;color:var(--ok)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)}
+.card h2{display:flex;align-items:center;gap:8px;font-size:14.5px;margin:0 0 13px;color:var(--text);font-weight:600}
+.card h2 svg{width:16px;height:16px;color:var(--muted)}
+.wide{grid-column:1/-1}
+/* 监控卡:家族色分组 */
+.groups{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grp{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#FAFCFE}
+.grp h3{display:flex;align-items:center;gap:7px;margin:0;font-size:13px;font-weight:600;color:var(--f)}
+.grp h3 svg{width:16px;height:16px;color:var(--f)}
+.grp .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px;margin-top:10px}
+.stat{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:8px 11px}
+.stat span{display:block;color:var(--muted);font-size:11.5px;margin-bottom:2px}
+.stat b{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:6px;color:var(--text)}
+.stat b small{font-size:11px;font-weight:400;color:var(--muted)}
+.stat.hero b{font-size:24px;color:var(--f)}
+/* 网络卡 */
+.net .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.bars{display:inline-flex;gap:2px;align-items:flex-end;height:14px;flex:none}
+.bars i{width:3.5px;border-radius:1px;background:#CFDBE8}
+.bars i:nth-child(1){height:4px}.bars i:nth-child(2){height:7px}.bars i:nth-child(3){height:10px}.bars i:nth-child(4){height:14px}
+.bars i.on{background:var(--ok)}.bars i.on.weak{background:var(--warn)}.bars i.on.bad{background:var(--danger)}
+/* 表单 */
+label{display:block;color:var(--muted);font-size:12.5px;margin:11px 0 4px}
+input,select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;outline:none;transition:border-color .15s,box-shadow .15s}
+input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+input::placeholder{color:#9AA9BA}
+input[readonly]{background:var(--surface-2);color:var(--muted)}
+.check{display:flex;gap:9px;align-items:center;color:var(--text);font-size:14px;margin:11px 0}
+.check input{width:17px;height:17px;accent-color:var(--accent);cursor:pointer}
 .row{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
-button{border:1px solid #3d4651;border-radius:6px;padding:9px 15px;background:#21262d;color:var(--text);font-size:14px;cursor:pointer;transition:background-color .15s,border-color .15s}button:hover{background:#2d333d;border-color:#4d5663}button:active{background:#1c2128}button.active{border-color:var(--a);background:#13314f;color:#7db8ff}button.warn{border-color:#6e541d;background:#3a2e15;color:#f0c674}button.warn:hover{background:#4a3b1b;border-color:#8a6a26}button.danger{border-color:#7a2e2c;background:#3a1f1e;color:#ff9490}button.danger:hover{background:#4d2826;border-color:#9a3b38}
-progress{width:100%;height:10px;border-radius:6px;accent-color:var(--a)}progress::-webkit-progress-bar{background:var(--bg2);border-radius:6px}progress::-webkit-progress-value{background:linear-gradient(90deg,var(--a2),var(--a));border-radius:6px;transition:width .25s}
-.wide{grid-column:1/-1}@media(max-width:520px){.wrap{padding:18px 12px 32px}.grid{grid-template-columns:1fr}.stat b{font-size:14px}.card{padding:15px}header{flex-direction:column;justify-content:center;gap:10px;min-height:0}h1{position:static;transform:none}}
-</style></head><body><main class="wrap"><header><h1>耗材仓网络管理</h1>
-<div class="badge"><i></i>设备在线</div></header><div id="msg"></div>
-<section class="grid"><article class="card"><h2>实时状态</h2><div class="stats">
-<div class="stat"><span>运行状态</span><b><i class="dot" id="stateDot"></i><span id="state">--</span></b></div>
-<div class="stat"><span>当前耗材</span><b id="material">--</b></div>
-<div class="stat"><span>仓温</span><b><span id="temp">--</span><small id="tempTgt"></small></b></div>
-<div class="stat"><span>湿度</span><b id="hum">--</b></div>
-<div class="stat"><span>热板温度</span><b id="boardTemp">--</b></div>
-<div class="stat"><span>加热电流</span><b id="current">--</b></div>
-<div class="stat"><span>供电电压</span><b id="voltage">--</b></div>
-<div class="stat"><span>MCU 温度</span><b id="mcuTemp">--</b></div>
-<div class="stat"><span>排气输出</span><b id="exhaust">--</b></div>
-<div class="stat"><span>加热输出</span><b id="heat">--</b></div>
-<div class="stat"><span>热风</span><b id="heaterFan">--</b></div>
-<div class="stat"><span>灯光</span><b id="lightState">--</b></div>
-<div class="stat"><span>IP</span><b id="ip">--</b></div>
-<div class="stat"><span>SSID</span><b id="ssid">--</b></div>
-<div class="stat"><span>信号</span><b><span class="bars" id="rssiBars"><i></i><i></i><i></i><i></i></span><span id="rssi">--</span></b></div>
-<div class="stat"><span>设备时间</span><b id="clock">--</b></div>
-<div class="stat"><span>运行时间</span><b id="uptime">--</b></div>
-<div class="stat"><span>断线次数</span><b id="drops">--</b></div>
-<div class="stat"><span>最近断线</span><b id="reason">--</b></div></div>
-<div class="row"><button id="btnSystem" onclick="action('toggleSystem')">启停系统</button><button id="btnPreheat" onclick="action('togglePreheat')">预热</button><button id="btnLight" onclick="action('toggleLight')">灯光</button><button id="btnExhaust" onclick="action('toggleManualExhaust')">强排气</button></div></article>
-<article class="card"><h2>NTP 与时区</h2><label class="check"><input id="ntpEnabled" type="checkbox">启用 NTP</label><label>POSIX 时区</label><input id="timezone" placeholder="CST-8"><label>NTP 服务器 1</label><input id="ntpServer1"><label>NTP 服务器 2</label><input id="ntpServer2"><div class="row"><button onclick="saveTime()">保存时间设置</button></div></article>
-<article class="card"><h2>静态 IPv4</h2><label class="check"><input id="staticIpEnabled" type="checkbox">使用静态 IP（保存后重连）</label><label>IP 地址</label><input id="staticIp"><label>网关</label><input id="staticGateway"><label>子网掩码</label><input id="staticSubnet"><label>DNS 1</label><input id="staticDns1"><label>DNS 2</label><input id="staticDns2"><div class="row"><button onclick="saveNetwork()">保存网络设置</button></div></article>
-<article class="card"><h2>MQTT 与 OTA</h2><label class="check"><input id="mqttEnabled" type="checkbox">启用 MQTT</label><label>Broker</label><input id="mqttBroker"><label>端口</label><input id="mqttPort" type="number" min="1" max="65535"><label>主题前缀</label><input id="mqttTopicPrefix"><label class="check"><input id="otaEnabled" type="checkbox">启用 OTA</label><label>本机 OTA 密码</label><input id="otaPassword" readonly><div class="row"><button onclick="saveServices()">保存服务设置</button></div></article>
-<article class="card wide"><h2>固件升级 (OTA)</h2><p class="sub" id="otaStat">选择 .bin 固件后点击升级，约 1-2 分钟，期间请勿断电。</p><input id="otaFile" type="file" accept=".bin"><div class="row"><button class="warn" onclick="uploadFw()">上传并升级</button></div><div class="row"><progress id="otaBar" max="100" value="0" style="width:100%"></progress></div></article>
-<article class="card wide"><h2>维护</h2><p class="sub">重新配网会清除已保存的 Wi‑Fi 并重启设备。</p><button class="danger" onclick="resetWifi()">清除 Wi‑Fi 并重新配网</button></article></section></main>
+.btn-primary{border-color:var(--accent-line);background:var(--accent-bg);color:var(--accent)}
+.btn-primary:hover{background:#DDE9FD;border-color:#A9C7F6}
+.btn-warn{border-color:var(--warn-line);background:var(--warn-bg);color:#B45309}
+.btn-warn:hover{background:#FCE9CE;border-color:#E9C48C}
+.btn-danger{border-color:var(--danger-line);background:var(--danger-bg);color:var(--danger)}
+.btn-danger:hover{background:#FBDCDC;border-color:#EEAFAF}
+/* OTA 与维护 */
+progress{width:100%;height:10px;border-radius:6px;accent-color:var(--accent)}
+progress::-webkit-progress-bar{background:var(--surface-2);border-radius:6px}
+progress::-webkit-progress-value{background:linear-gradient(90deg,#60A5FA,var(--accent));border-radius:6px;transition:width .25s}
+.maint{border-color:var(--danger-line)}
+.sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+@media(max-width:860px){.grid,.groups{grid-template-columns:1fr}.controls{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.wrap{padding:18px 12px 32px}.controls{grid-template-columns:1fr 1fr}.clockbox{display:none}}
+</style></head><body>
+<main class="wrap">
+<header>
+  <div class="brand">
+    <span class="logo"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9a3 3 0 1 0-3-3"/><path d="M3 12h13a3 3 0 1 1-3 3"/><path d="M3 16h6"/></svg></span>
+    <div><h1>耗材仓网络管理</h1><p class="sub2">Filament Chamber · 固件 <span id="fw">--</span></p></div>
+  </div>
+  <div class="head-right">
+    <div class="pill" id="statePill"><i></i><span id="state">--</span></div>
+    <div class="clockbox"><b id="clock">--:--:--</b><span id="uptime">运行 --</span></div>
+  </div>
+</header>
+<div id="msg"></div>
+
+<section class="controls">
+  <button class="ctl" id="btnSystem" onclick="action('toggleSystem')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3v8"/><path d="M6 7a8 8 0 1 0 12 0"/></svg>启停系统</button>
+  <button class="ctl" id="btnPreheat" onclick="action('togglePreheat')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c2.5 3 5 5.5 5 9a5 5 0 0 1-10 0c0-3.5 2.5-6 5-9Z"/></svg>预热</button>
+  <button class="ctl" id="btnLight" onclick="action('toggleLight')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 1 4 10.5c-.8.7-1 1.5-1 2.5h-6c0-1-.2-1.8-1-2.5A6 6 0 0 1 12 3Z"/></svg>灯光</button>
+  <button class="ctl" id="btnExhaust" onclick="action('toggleManualExhaust')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 8h9a3 3 0 1 0-3-3"/><path d="M3 12h13a3 3 0 1 1-3 3"/><path d="M3 16h6"/></svg>强排气</button>
+</section>
+
+<section class="grid">
+  <article class="card wide"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>实时监控</h2>
+    <div class="groups">
+      <div class="grp" style="--f:var(--f-temp)"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0Z"/></svg>温度</h3>
+        <div class="stats">
+          <div class="stat hero"><span>仓温</span><b id="temp">--</b><small id="tempTgt"></small></div>
+          <div class="stat"><span>热板</span><b id="boardTemp">--</b></div>
+          <div class="stat"><span>主控</span><b id="mcuTemp">--</b></div>
+        </div></div>
+      <div class="grp" style="--f:var(--f-elec)"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M13 3 5 13h5l-1 8 8-10h-5l1-8Z"/></svg>电气</h3>
+        <div class="stats">
+          <div class="stat"><span>供电电压</span><b id="voltage">--</b></div>
+          <div class="stat"><span>加热电流</span><b id="current">--</b></div>
+        </div></div>
+      <div class="grp" style="--f:var(--f-air)"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 8h9a3 3 0 1 0-3-3"/><path d="M3 12h13a3 3 0 1 1-3 3"/><path d="M3 16h6"/></svg>气流</h3>
+        <div class="stats">
+          <div class="stat"><span>排气输出</span><b id="exhaust">--</b></div>
+          <div class="stat"><span>热风</span><b id="heaterFan">--</b></div>
+          <div class="stat"><span>加热输出</span><b id="heat">--</b></div>
+        </div></div>
+      <div class="grp" style="--f:var(--f-hum)"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3s6 6.3 6 10.5a6 6 0 0 1-12 0C6 9.3 12 3 12 3Z"/></svg>环境</h3>
+        <div class="stats">
+          <div class="stat"><span>湿度</span><b id="hum">--</b></div>
+          <div class="stat"><span>当前耗材</span><b id="material">--</b></div>
+          <div class="stat"><span>灯光</span><b id="lightState">--</b></div>
+        </div></div>
+    </div>
+  </article>
+
+  <article class="card net"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 9a13 13 0 0 1 18 0"/><path d="M6.5 12.5a8 8 0 0 1 11 0"/><path d="M10 16a3.5 3.5 0 0 1 4 0"/><circle cx="12" cy="19" r="1.2" fill="currentColor" stroke="none"/></svg>网络</h2>
+    <div class="stats">
+      <div class="stat"><span>SSID</span><b id="ssid">--</b></div>
+      <div class="stat"><span>IP 地址</span><b id="ip">--</b></div>
+      <div class="stat"><span>信号强度</span><b><span class="bars" id="rssiBars"><i></i><i></i><i></i><i></i></span><span id="rssi" style="font-size:13px">--</span></b></div>
+      <div class="stat"><span>设备时间</span><b id="clock2" style="font-size:14px">--</b></div>
+      <div class="stat"><span>断线次数</span><b id="drops">--</b></div>
+      <div class="stat"><span>最近断线</span><b id="reason" style="font-size:13px">--</b></div>
+    </div></article>
+
+  <article class="card"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2.5" stroke-linecap="round"/></svg>时间与 NTP</h2>
+    <label class="check"><input id="ntpEnabled" type="checkbox">启用 NTP 自动对时</label>
+    <label>POSIX 时区</label><input id="timezone" placeholder="CST-8">
+    <label>NTP 服务器 1</label><input id="ntpServer1">
+    <label>NTP 服务器 2</label><input id="ntpServer2">
+    <div class="row"><button class="btn-primary" onclick="saveTime()">保存时间设置</button></div></article>
+
+  <article class="card"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M7 15h.01M11 15h2"/></svg>静态 IPv4</h2>
+    <label class="check"><input id="staticIpEnabled" type="checkbox">使用静态 IP（保存后重连）</label>
+    <label>IP 地址</label><input id="staticIp">
+    <label>网关</label><input id="staticGateway">
+    <label>子网掩码</label><input id="staticSubnet">
+    <label>DNS 1</label><input id="staticDns1">
+    <label>DNS 2</label><input id="staticDns2">
+    <div class="row"><button class="btn-primary" onclick="saveNetwork()">保存网络设置</button></div></article>
+
+  <article class="card"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="5" width="16" height="6" rx="2"/><rect x="4" y="13" width="16" height="6" rx="2"/><circle cx="8" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="8" cy="16" r=".9" fill="currentColor" stroke="none"/></svg>MQTT 与 OTA 服务</h2>
+    <label class="check"><input id="mqttEnabled" type="checkbox">启用 MQTT</label>
+    <label>Broker</label><input id="mqttBroker">
+    <label>端口</label><input id="mqttPort" type="number" min="1" max="65535">
+    <label>主题前缀</label><input id="mqttTopicPrefix">
+    <label class="check"><input id="otaEnabled" type="checkbox">启用 OTA</label>
+    <label>本机 OTA 密码（只读）</label><input id="otaPassword" readonly>
+    <div class="row"><button class="btn-primary" onclick="saveServices()">保存服务设置</button></div></article>
+
+  <article class="card wide"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V5m0 0-4 4m4-4 4 4"/><path d="M5 19h14"/></svg>固件升级（OTA）</h2>
+    <p class="sub" id="otaStat">选择 .bin 固件后点击升级，约 1-2 分钟，期间请勿断电。</p>
+    <input id="otaFile" type="file" accept=".bin">
+    <div class="row"><button class="btn-warn" onclick="uploadFw()">上传并升级</button></div>
+    <div class="row"><progress id="otaBar" max="100" value="0"></progress></div></article>
+
+  <article class="card wide maint"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4L14 13l-3-3 3.7-3.7Z"/></svg>维护</h2>
+    <p class="sub">重新配网会清除已保存的 Wi-Fi 并重启设备。</p>
+    <button class="btn-danger" onclick="resetWifi()">清除 Wi-Fi 并重新配网</button></article>
+</section>
+</main>
 <script>
-const $=id=>document.getElementById(id), msg=(s,bad=false)=>{const e=$('msg');e.textContent=s;e.style.color=bad?'#f85149':'#3fb950'};
+const $=id=>document.getElementById(id), msg=(s,bad=false)=>{const e=$('msg');e.textContent=s;e.style.color=bad?'var(--danger)':'var(--ok)'};
 async function api(url,opt){const r=await fetch(url,opt);const t=await r.text();if(!r.ok)throw Error(t||('HTTP '+r.status));return t?JSON.parse(t):{}}
 function body(o){return new URLSearchParams(Object.entries(o).map(([k,v])=>[k,String(v)]))}
 async function loadSettings(){const s=await api('/api/settings');for(const k of ['ntpEnabled','staticIpEnabled','mqttEnabled','otaEnabled'])$(k).checked=!!s[k];for(const k of ['timezone','ntpServer1','ntpServer2','staticIp','staticGateway','staticSubnet','staticDns1','staticDns2','mqttBroker','mqttPort','mqttTopicPrefix','otaPassword'])$(k).value=s[k]??''}
 async function uploadFw(){const f=$('otaFile').files[0];if(!f){msg('请先选择 .bin 固件文件',true);return}if(!confirm('确定将 '+f.name+' 升级到设备？'))return;const xhr=new XMLHttpRequest();xhr.open('POST','/api/update',true);const stat=$('otaStat'),bar=$('otaBar');bar.value=0;stat.textContent='正在上传并写入 Flash…';xhr.upload.onprogress=e=>{if(e.lengthComputable){bar.value=Math.round(e.loaded/e.total*100);stat.textContent='上传 '+Math.round(e.loaded/e.total*100)+'% / 写入中…'}};xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===200&&d.ok){stat.textContent='升级成功，设备正在重启…';bar.value=100;setTimeout(()=>location.reload(),4000)}else{stat.textContent='升级失败：'+(d.err||('HTTP '+xhr.status));bar.value=0;msg('OTA 失败',true)}}catch(e){stat.textContent='升级完成，设备可能正在重启…'}};xhr.onerror=()=>{stat.textContent='网络错误，请重试';msg('OTA 请求失败',true)};xhr.send();}
-// 六态状态机英文键 -> 中文文案 + 状态点颜色(g 绿/y 黄/b 蓝/r 红/灰)。
+/* 六态状态机英文键 -> 中文文案 + 胶囊配色(g 绿/y 黄/b 蓝/r 红/灰) */
 const STATE_MAP={idle:['待机',''],detecting:['检测中','y'],preheat:['预热中','y'],printing:['打印中','g'],cooling:['冷却中','b'],fault:['故障','r']};
+const PILL_CLS={g:'pill g',y:'pill y',b:'pill b',r:'pill r','':'pill'};
 const n2=v=>v==null?'--':v.toFixed(1), onoff=v=>v?'开':'关';
 function setBars(rssi){const bs=$('rssiBars').children,n=rssi==null?0:(rssi>=-55?4:rssi>=-65?3:rssi>=-75?2:1);for(let i=0;i<4;i++){const on=i<n;bs[i].className=on?'on'+(n<=1?' bad':n===2?' weak':''):''}}
 async function poll(){try{const s=await api('/api/state');
-const st=STATE_MAP[s.state]||[s.state||'--',''];
-$('state').textContent=st[0];$('stateDot').className='dot'+(st[1]?' '+st[1]:'');
+/* 真机 state 为英文首字母大写(Idle/Detecting/Preheat/Printing/Cooling/Fault),
+   统一转小写再查表,避免大小写不一致导致状态与胶囊配色失效 */
+const stKey=String(s.state||'').toLowerCase();
+const st=STATE_MAP[stKey]||[s.state||'--',''];
+$('state').textContent=st[0];$('statePill').className=PILL_CLS[st[1]]||'pill';
+$('fw').textContent=s.firmware?('v'+s.firmware):'--';
 $('material').textContent=s.material||'--';
-$('temp').textContent=n2(s.chamberC)+' ℃';
+$('temp').innerHTML=n2(s.chamberC)+' <small>℃</small>';
 $('tempTgt').textContent=(s.targetCMin==null)?'':('目标 '+s.targetCMin+'~'+s.targetCMax+' ℃');
-$('hum').textContent=n2(s.humidity)+' %';
-$('boardTemp').textContent=n2(s.heaterBoardC)+' ℃';
-$('current').textContent=s.currentA==null?'--':s.currentA.toFixed(2)+' A';
-$('voltage').textContent=s.voltageV==null?'--':s.voltageV.toFixed(1)+' V';
-$('mcuTemp').textContent=n2(s.mcuC)+' ℃';
-$('exhaust').textContent=(s.exhaustPercent??0)+' %';
-$('heat').textContent=(s.heatPercent??0)+' %';
+$('hum').innerHTML=n2(s.humidity)+' <small>%</small>';
+$('boardTemp').innerHTML=n2(s.heaterBoardC)+' <small>℃</small>';
+$('current').innerHTML=(s.currentA==null?'--':s.currentA.toFixed(2))+' <small>A</small>';
+$('voltage').innerHTML=(s.voltageV==null?'--':s.voltageV.toFixed(1))+' <small>V</small>';
+$('mcuTemp').innerHTML=n2(s.mcuC)+' <small>℃</small>';
+$('exhaust').innerHTML=(s.exhaustPercent??0)+' <small>%</small>';
+$('heat').innerHTML=(s.heatPercent??0)+' <small>%</small>';
 $('heaterFan').textContent=s.heaterFan?s.heaterFan+' %':'关';
 $('lightState').textContent=onoff(s.light);
 $('ip').textContent=s.ip||'--';$('ssid').textContent=s.ssid||'--';
 $('rssi').textContent=s.rssi==null?'--':s.rssi+' dBm';setBars(s.rssi);
-$('clock').textContent=s.time||'--';
-$('uptime').textContent=Math.floor(s.uptimeSeconds/3600)+'h '+Math.floor(s.uptimeSeconds%3600/60)+'m';$('drops').textContent=s.disconnectCount;$('reason').textContent=s.lastDisconnectReason||'--';
-// 开关类按钮回显当前态(蓝色高亮=已启用);预热按状态机是否处于 preheat 判定。
-$('btnSystem').classList.toggle('active',!!s.systemEnabled);
-$('btnPreheat').classList.toggle('active',s.state==='preheat');
-$('btnLight').classList.toggle('active',!!s.light);
-$('btnExhaust').classList.toggle('active',!!s.manualExhaust);
+$('clock').textContent=s.time||'--';$('clock2').textContent=s.time||'--';
+$('uptime').textContent='运行 '+Math.floor(s.uptimeSeconds/3600)+'h '+Math.floor(s.uptimeSeconds%3600/60)+'m';
+$('drops').textContent=s.disconnectCount;$('reason').textContent=s.lastDisconnectReason||'--';
+/* 控制按钮语义色回显:激活时按钮转对应语义色 */
+$('btnSystem').classList.toggle('on',!!s.systemEnabled);$('btnSystem').classList.toggle('c-green',!!s.systemEnabled);
+$('btnPreheat').classList.toggle('on',stKey==='preheat');$('btnPreheat').classList.toggle('c-orange',stKey==='preheat');
+$('btnLight').classList.toggle('on',!!s.light);$('btnLight').classList.toggle('c-yellow',!!s.light);
+$('btnExhaust').classList.toggle('on',!!s.manualExhaust);$('btnExhaust').classList.toggle('c-cyan',!!s.manualExhaust);
 if(s.otaActivity==='upgrading'){$('otaBar').value=s.otaProgress||0;$('otaStat').textContent='升级进行中 '+s.otaProgress+'%'}else if(s.otaFailed){$('otaStat').textContent='上次升级失败，可重试'}}catch(e){msg('状态读取失败：'+e.message,true)}}
 async function post(data){try{await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body(data)})}catch(e){msg('保存失败：'+e.message,true);return}msg('已保存并生效');setTimeout(()=>loadSettings().catch(()=>{}),800)}
 function saveTime(){post({ntpEnabled:$('ntpEnabled').checked,timezone:$('timezone').value,ntpServer1:$('ntpServer1').value,ntpServer2:$('ntpServer2').value})}
 function saveNetwork(){post({staticIpEnabled:$('staticIpEnabled').checked,staticIp:$('staticIp').value,staticGateway:$('staticGateway').value,staticSubnet:$('staticSubnet').value,staticDns1:$('staticDns1').value,staticDns2:$('staticDns2').value})}
 function saveServices(){post({mqttEnabled:$('mqttEnabled').checked,mqttBroker:$('mqttBroker').value,mqttPort:$('mqttPort').value,mqttTopicPrefix:$('mqttTopicPrefix').value,otaEnabled:$('otaEnabled').checked})}
 async function action(name){try{await api('/api/action',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body({name})});msg('操作成功');poll()}catch(e){msg('操作失败：'+e.message,true)}}
-async function resetWifi(){if(!confirm('确定清除 Wi‑Fi 并重启？'))return;try{await fetch('/api/wifi/reset',{method:'POST'});msg('设备正在重启，请连接 FilamentChamber-Setup')}catch(e){msg('设备正在重启')}}
+async function resetWifi(){if(!confirm('确定清除 Wi-Fi 并重启？'))return;try{await fetch('/api/wifi/reset',{method:'POST'});msg('设备正在重启，请连接 FilamentChamber-Setup')}catch(e){msg('设备正在重启')}}
 loadSettings().then(()=>setTimeout(poll,150)).catch(e=>msg('读取设置失败：'+e.message,true));setInterval(poll,3000);
 </script></body></html>)HTML";
