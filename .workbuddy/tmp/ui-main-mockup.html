@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>主屏 mockup · 480x320 · printer-hmi 1:1 还原</title>
+<style>
+/* 与固件 tft_ui.cpp 主屏分支同坐标、同色板的浏览器预览。
+   CN16 VLW ≈ 12px sans;CN26 ≈ 19px/700 Saira。 */
+:root{
+  --bg:#0E1216; --panel:#1A222B; --panelAlt:#222C37; --border:#2A3542;
+  --line2:#394654; --muted:#A9B7C6; --ink3:#7E8C9C; --text:#EAF0F6;
+  --cyan:#3FD4E4; --orange:#FF8A3D; --sky:#5CA8FF; --violet:#B48CFF;
+  --good:#43D97E; --warn:#FFB547; --red:#FF5D5D; --lamp:#FFD147;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;font-family:'Noto Sans SC','Microsoft YaHei',sans-serif}
+#scr{position:relative;width:480px;height:320px;background:var(--bg);overflow:hidden}
+.card{position:absolute;background:var(--panel);border:1px solid var(--border)}
+.lab{position:absolute;font-size:12px;line-height:14px;color:var(--muted);white-space:nowrap}
+.tit{position:absolute;font-size:12px;line-height:14px;color:var(--text);white-space:nowrap}
+.val{position:absolute;font:700 19px/21px 'Saira','Segoe UI',sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}
+.unit{position:absolute;font-size:12px;line-height:14px;color:var(--ink3);white-space:nowrap}
+.pill{position:absolute;height:20px;border-radius:10px;display:flex;align-items:center;gap:5px;padding:0 8px 0 9px}
+.pill .dot{width:4px;height:4px;border-radius:50%}
+.pill span{font-size:12px;line-height:1}
+.chip{position:absolute;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:12px}
+.marr{position:absolute;width:20px;height:20px;border-radius:50%;border:1px solid var(--line2);display:flex;align-items:center;justify-content:center}
+.marr i{width:7px;height:7px;border-left:1.6px solid var(--muted);border-bottom:1.6px solid var(--muted)}
+.marr.r i{transform:rotate(-135deg);margin-left:-2px}
+.marr.l i{transform:rotate(45deg);margin-right:-2px}
+.tog{position:absolute;width:48px;height:22px;border-radius:11px;background:var(--panelAlt);border:1px solid var(--line2)}
+.tog.on{background:var(--good);border-color:var(--good)}
+.tog::after{content:'';position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:var(--ink3)}
+.tog.on::after{left:27px;background:#F2FBF5}
+.ibar{position:absolute;width:2px;border-radius:1px}
+.hbar{position:absolute;height:3px;border-radius:1px;background:#2B333C}
+.key{position:absolute;width:88px;height:66px;border-radius:7px;background:var(--panel);border:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding-top:12px;gap:5px}
+.key svg{width:15px;height:15px;stroke:var(--ink3);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.key em{font-style:normal;font-size:12px;color:var(--muted)}
+.key .kb{width:11px;height:3px;border-radius:1px;background:transparent}
+.key.on{background:rgba(67,217,126,.10);border-color:rgba(67,217,126,.38)}
+.key.on svg{stroke:var(--good)} .key.on em{color:var(--good)} .key.on .kb{background:var(--good)}
+.key.lamp{background:rgba(255,209,71,.10);border-color:rgba(255,209,71,.42)}
+.key.lamp svg{stroke:var(--lamp)} .key.lamp em{color:var(--lamp)} .key.lamp .kb{background:var(--lamp)}
+</style>
+</head>
+<body>
+<div id="scr">
+  <!-- 顶栏信息带 (6,6,468x44) -->
+  <div class="card" style="left:6px;top:6px;width:468px;height:44px;border-radius:8px">
+    <!-- 材料轮播 -->
+    <div class="lab" style="left:22px;top:10px;color:var(--muted)">PLA</div>
+    <div class="marr l" style="left:72px;top:7px"></div>
+    <div class="chip" style="left:116px;top:1px;width:58px;background:rgba(63,212,228,.10);border:1px solid rgba(63,212,228,.38);color:var(--cyan)">PETG</div>
+    <div class="marr r" style="left:197px;top:7px"></div>
+    <div class="lab" style="left:247px;top:10px">TPU</div>
+    <!-- 状态胶囊 -->
+    <div class="pill" style="left:6px;top:21px;background:rgba(67,217,126,.10);border:1px solid rgba(67,217,126,.35)">
+      <i class="dot" style="background:var(--good)"></i><span style="color:var(--good)">打印中</span>
+      <svg width="15" height="15" viewBox="0 0 15 15" style="stroke:var(--good);fill:none;stroke-width:1.5">
+        <path d="M2 6.2a8 8 0 0 1 11 0"/><path d="M4.4 8.8a4.6 4.6 0 0 1 6.2 0"/><circle cx="7.5" cy="11.6" r="1.3" fill="var(--good)" stroke="none"/>
+      </svg>
+    </div>
+    <!-- 时钟 -->
+    <div class="val" style="right:13px;top:2px;color:var(--text)">14:32:07</div>
+    <div class="lab" style="right:13px;top:26px;color:var(--ink3)">2026-09-29</div>
+  </div>
+
+  <!-- 左列控制卡 (6,56,247x186) -->
+  <div class="card" style="left:6px;top:56px;width:247px;height:186px;border-radius:8px"></div>
+  <div style="position:absolute;left:18px;top:118px;width:222px;height:1px;background:var(--border)"></div>
+  <div style="position:absolute;left:18px;top:180px;width:222px;height:1px;background:var(--border)"></div>
+
+  <!-- 行0 排气风扇 青 -->
+  <div class="ibar" style="left:6px;top:60px;height:54px;background:var(--cyan)"></div>
+  <div style="position:absolute;left:15px;top:77px;width:20px;height:20px;border-radius:5px;background:rgba(63,212,228,.12)"></div>
+  <svg style="position:absolute;left:19px;top:81px" width="12" height="12" viewBox="0 0 12 12" stroke="#3FD4E4" fill="none" stroke-width="1.3" stroke-linecap="round"><circle cx="6" cy="6" r="4.5"/><circle cx="6" cy="6" r="1.4" fill="#3FD4E4" stroke="none"/></svg>
+  <div class="tit" style="left:41px;top:67px">排气风扇</div>
+  <div class="lab" style="left:41px;top:86px">20%~80%</div>
+  <div class="tog on" style="left:145px;top:76px"></div>
+
+  <!-- 行1 打印仓温 琥珀 -->
+  <div class="ibar" style="left:6px;top:122px;height:54px;background:var(--warn)"></div>
+  <div style="position:absolute;left:15px;top:139px;width:20px;height:20px;border-radius:5px;background:rgba(255,181,71,.12)"></div>
+  <svg style="position:absolute;left:19px;top:143px" width="12" height="12" viewBox="0 0 12 12" stroke="#FFB547" fill="none" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 5.5 6 1.5l4.5 4"/><rect x="2" y="5.5" width="8" height="5.5"/></svg>
+  <div class="tit" style="left:41px;top:129px">打印仓温</div>
+  <div class="lab" style="left:41px;top:148px">15~30℃</div>
+  <div class="tog on" style="left:145px;top:138px"></div>
+
+  <!-- 行2 打印结束排气 青 -->
+  <div class="ibar" style="left:6px;top:184px;height:54px;background:var(--cyan)"></div>
+  <div style="position:absolute;left:15px;top:201px;width:20px;height:20px;border-radius:5px;background:rgba(63,212,228,.12)"></div>
+  <svg style="position:absolute;left:19px;top:205px" width="12" height="12" viewBox="0 0 12 12" stroke="#3FD4E4" fill="none" stroke-width="1.3" stroke-linecap="round"><path d="M1 3h6M9 1.5v3M1 6h9M10.5 4.5v3M1 9h3.5M6 7.5v3"/></svg>
+  <div class="tit" style="left:41px;top:191px">打印结束</div>
+  <div class="lab" style="left:41px;top:210px">60%·300s</div>
+  <div class="tog on" style="left:145px;top:200px"></div>
+
+  <!-- 右侧 2x4 监控矩阵 -->
+  <!-- 外排 65 青 fill65 -->
+  <div class="card" style="left:259px;top:56px;width:105px;height:42px;border-radius:7px"></div>
+  <svg style="position:absolute;left:264px;top:59px" width="13" height="13" viewBox="0 0 13 13" stroke="#3FD4E4" fill="none" stroke-width="1.3" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4.5"/><circle cx="6.5" cy="6.5" r="1.2" fill="#3FD4E4" stroke="none"/><path d="M6.5 6.5 9.8 3.2M6.5 6.5 3.2 9.2"/></svg>
+  <div class="lab" style="left:276px;top:59px">外排</div>
+  <i style="position:absolute;left:352px;top:61px;width:4px;height:4px;border-radius:50%;background:var(--good)"></i>
+  <div class="val" style="left:267px;top:74px;color:var(--cyan)">65</div><div class="unit" style="left:294px;top:77px">%</div>
+  <div class="hbar" style="left:266px;top:93px;width:91px"></div><div class="hbar" style="left:266px;top:93px;width:59px;background:var(--cyan)"></div>
+
+  <!-- 主控 52.0 橙 fill52 -->
+  <div class="card" style="left:369px;top:56px;width:105px;height:42px;border-radius:7px"></div>
+  <svg style="position:absolute;left:374px;top:59px" width="13" height="13" viewBox="0 0 13 13" stroke="#FF8A3D" fill="none" stroke-width="1.2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="5.5" y="5.5" width="2" height="2"/><path d="M4.5 3V1.5M8.5 3V1.5M4.5 11.5V10M8.5 11.5V10M3 4.5H1.5M3 8.5H1.5M11.5 4.5H10M11.5 8.5H10"/></svg>
+  <div class="lab" style="left:386px;top:59px">主控</div>
+  <i style="position:absolute;left:462px;top:61px;width:4px;height:4px;border-radius:50%;background:var(--good)"></i>
+  <div class="val" style="left:377px;top:74px;color:var(--orange)">52.0</div><div class="unit" style="left:425px;top:77px">℃</div>
+  <div class="hbar" style="left:376px;top:93px;width:91px"></div><div class="hbar" style="left:376px;top:93px;width:47px;background:var(--orange)"></div>
+
+  <!-- 湿度 38 蓝 fill38 -->
+  <div class="card" style="left:259px;top:104px;width:105px;height:42px;border-radius:7px"></div>
+  <svg style="position:absolute;left:264px;top:107px" width="13" height="13" viewBox="0 0 13 13" stroke="#5CA8FF" fill="none" stroke-width="1.3" stroke-linejoin="round"><path d="M6.5 1.5s4.2 4.6 4.2 7a4.2 4.2 0 0 1-8.4 0c0-2.4 4.2-7 4.2-7z"/></svg>
+  <div class="lab" style="left:276px;top:107px">湿度</div>
+  <i style="position:absolute;left:352px;top:109px;width:4px;height:4px;border-radius:50%;background:var(--good)"></i>
+  <div class="val" style="left:267px;top:122px;color:var(--sky)">38</div><div class="unit" style="left:294px;top:125px">%</div>
+  <div class="hbar" style="left:266px;top:141px;width:91px"></div><div class="hbar" style="left:266px;top:141px;width:35px;background:var(--sky)"></div>
+
+  <!-- 仓温 26.0 橙 fill52 -->
+  <div class="card" style="left:369px;top:104px;width:105px;height:42px;border-radius:7px"></div>
+  <svg style="position:absolute;left:374px;top:107px" width="13" height="13" viewBox="0 0 13 13" stroke="#FF8A3D" fill="none" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 6.5 6.5 2l5 4.5"/><rect x="3" y="6" width="7" height="5.5"/></svg>
+  <div class="lab" style="left:386px;top:107px">仓温</div>
+  <i style="position:absolute;left:462px;top:109px;width:4px;height:4px;border-radius:50%;background:var(--good)"></i>
+  <div class="val" style="left:377px;top:122px;color:var(--orange)">26.0</div><div class="unit" style="left:425px;top:125px">℃</div>
+  <div class="hbar" style="left:376px;top:141px;width:91px"></div><div class="hbar" style="left:376px;top:141px;width:47px;background:var(--orange)"></div>
+
+  <!-- 热风 45 青 fill45 -->
+  <div class="card" style="left:259px;top:152px;width:105px;height:42px;border-radius:7px"></div>
+  <svg style="position:absolute;left:264px;top:155px" width="13" height="13" viewBox="0 0 13 13" stroke="#3FD4E4" fill="none" stroke-width="1.3" stroke-linecap="round"><path d="M1.5 4h6M9.5 2v2M1.5 6.5h9M11.5 4.5v2M1.5 9h3.5M6 7v2"/></svg>
+  <div class="lab" style="left:276px;top:155px">热风</div>
+  <i style="position:absolute;left:352px;top:157px;width:4px;height:4px;border-radius:50%;background:var(--good)"></i>
+  <div class="val" style="left:267px;top:170px;color:var(--cyan)">45</div><div class="unit" style="left:294px;top:173px">%</div>
+  <div class="hbar" style="left:266px;top:189px;width:91px"></div><div class="hbar" style="left:266px;top:189px;width:41px;background:var(--cyan)"></div>
+
+  <!-- 热板 104 橙→红 fill87 告警 -->
+  <div class="card" style="left:369px;top:152px;width:105px;height:42px;border-radius:7px"></div>
+  <svg style="position:absolute;left:374px;top:155px" width="13" height="13" viewBox="0 0 13 13" stroke="#FF8A3D" fill="none" stroke-width="1.3" stroke-linecap="round"><rect x="1.5" y="7" width="10" height="3.5" rx="1.2"/><path d="M4 5.5V3.5M6.5 5.5V3.5M9 5.5V3.5"/></svg>
+  <div class="lab" style="left:386px;top:155px">热板</div>
+  <i style="position:absolute;left:462px;top:157px;width:4px;height:4px;border-radius:50%;background:var(--red)"></i>
+  <div class="val" style="left:377px;top:170px;color:var(--red)">104</div><div class="unit" style="left:416px;top:173px">℃</div>
+  <div class="hbar" style="left:376px;top:189px;width:91px"></div><div class="hbar" style="left:376px;top:189px;width:79px;background:var(--red)"></div>
+
+  <!-- 电压 24.1 紫 fill51 -->
+  <div class="card" style="left:259px;top:200px;width:105px;height:42px;border-radius:7px"></div>
+  <svg style="position:absolute;left:264px;top:203px" width="13" height="13" viewBox="0 0 13 13" stroke="#B48CFF" fill="none" stroke-width="1.2" stroke-linejoin="round"><path d="M7.5 1.5 3 8h3l-1 4.5L10.5 6h-3l1-4.5z"/></svg>
+  <div class="lab" style="left:276px;top:203px">电压</div>
+  <i style="position:absolute;left:352px;top:205px;width:4px;height:4px;border-radius:50%;background:var(--good)"></i>
+  <div class="val" style="left:267px;top:218px;color:var(--violet)">24.1</div><div class="unit" style="left:315px;top:221px">V</div>
+  <div class="hbar" style="left:266px;top:237px;width:91px"></div><div class="hbar" style="left:266px;top:237px;width:46px;background:var(--violet)"></div>
+
+  <!-- 电流 6.8 紫 fill45 -->
+  <div class="card" style="left:369px;top:200px;width:105px;height:42px;border-radius:7px"></div>
+  <svg style="position:absolute;left:374px;top:203px" width="13" height="13" viewBox="0 0 13 13" stroke="#B48CFF" fill="none" stroke-width="1.3" stroke-linecap="round"><path d="M1.5 8.5a5 5 0 1 1 10 0"/><path d="M6.5 8.5 9 5"/><circle cx="6.5" cy="8.5" r="1" fill="#B48CFF" stroke="none"/></svg>
+  <div class="lab" style="left:386px;top:203px">电流</div>
+  <i style="position:absolute;left:462px;top:205px;width:4px;height:4px;border-radius:50%;background:var(--good)"></i>
+  <div class="val" style="left:377px;top:218px;color:var(--violet)">6.8</div><div class="unit" style="left:413px;top:221px">A</div>
+  <div class="hbar" style="left:376px;top:237px;width:91px"></div><div class="hbar" style="left:376px;top:237px;width:41px;background:var(--violet)"></div>
+
+  <!-- 底栏 5 键 (6+i*95, 248, 88x66) -->
+  <div class="key" style="left:6px;top:248px">
+    <svg viewBox="0 0 15 15"><circle cx="7.5" cy="7.5" r="4.5"/><path d="M7.5 .5v2M7.5 12.5v2M.5 7.5h2M12.5 7.5h2"/><circle cx="7.5" cy="7.5" r=".8" fill="currentColor"/></svg>
+    <em>未检测</em><div class="kb"></div>
+  </div>
+  <div class="key on" style="left:101px;top:248px">
+    <svg viewBox="0 0 15 15"><path d="M4.5 2.5v10l8-5z" fill="currentColor" stroke="none"/></svg>
+    <em>工作中</em><div class="kb"></div>
+  </div>
+  <div class="key" style="left:196px;top:248px">
+    <svg viewBox="0 0 15 15"><path d="M7.5 2.2c.2 1.7-.5 2.6-1.4 3.5-.9 1-1.9 2-1.9 3.5a3.3 3.3 0 0 0 6.6 0c0-1.2-.5-2.1-1.1-2.8-.2.6-.6 1.1-1.1 1.4.2-2-.9-4.3-2.9-5.6z"/></svg>
+    <em>提前预热</em><div class="kb"></div>
+  </div>
+  <div class="key lamp" style="left:291px;top:248px">
+    <svg viewBox="0 0 15 15"><path d="M7.5 2a4 4 0 0 1 2.3 7.2c-.5.4-.8 1-.8 1.5h-3c0-.5-.3-1.1-.8-1.5A4 4 0 0 1 7.5 2z"/><path d="M6 12.5h3M6.6 14h1.8"/></svg>
+    <em>灯光开启</em><div class="kb"></div>
+  </div>
+  <div class="key" style="left:386px;top:248px">
+    <svg viewBox="0 0 15 15"><circle cx="7.5" cy="7.5" r="3.2"/><circle cx="7.5" cy="7.5" r="1.2"/><path d="M7.5 1.5v1.8M7.5 11.7v1.8M1.5 7.5h1.8M11.7 7.5h1.8M3.3 3.3l1.3 1.3M10.4 10.4l1.3 1.3M11.7 3.3l-1.3 1.3M4.6 10.4l-1.3 1.3"/></svg>
+    <em>系统设置</em><div class="kb"></div>
+  </div>
+</div>
+</body>
+</html>

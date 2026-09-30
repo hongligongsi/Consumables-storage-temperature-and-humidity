@@ -4,8 +4,19 @@
 .vscode/launch.json
 .vscode/ipch
 
-# 本地工具/会话缓存(抓串口脚本、裁剪图片、记忆日志等),不属于固件源码
-.workbuddy/
+# 本地工作区缓存:默认整体排除,再逐项放行有长期价值的内容
+.workbuddy/*
+# 放行:记忆日志 / 原理图切片 / 抓串口与裁剪脚本 / 设计 mockup 源
+!.workbuddy/memory/
+!.workbuddy/sch3x3/
+!.workbuddy/crop_pins.py
+!.workbuddy/serial_dump.py
+!.workbuddy/tmp/
+# tmp 下只保留脚本与 mockup 源;渲染产物与浏览器 profile
+# (含 Cookies/Login Data/History 等凭据,公开仓库严禁入库)一律排除
+.workbuddy/tmp/*
+!.workbuddy/tmp/palette_calc.py
+!.workbuddy/tmp/ui-main-mockup.html
 # 编辑器/终端误存的临时文件
 *.tmp
 h
