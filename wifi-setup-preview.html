@@ -3,23 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#08100d">
+  <meta name="theme-color" content="#F2F5F9">
   <title>耗材仓 WiFi 配置</title>
   <style>
+    /* 实验室蓝 · Lab Blue [浅色 · 日光可读] */
     :root {
-      color-scheme: dark;
-      --bg: #08100d;
-      --panel: #13201b;
-      --input: #09130f;
-      --line: #294137;
-      --line-focus: #00d9ef;
-      --text: #eef8f3;
-      --muted: #91a59b;
-      --button: #245b65;
-      --button-hover: #2f7280;
-      --good: #4ace4a;
-      --warning: #ffa600;
-      --bad: #ff6464;
+      color-scheme: light;
+      --bg: #F2F5F9;
+      --panel: #FFFFFF;
+      --input: #FFFFFF;
+      --line: #D3DEEA;
+      --line-focus: #2563EB;
+      --text: #16202C;
+      --muted: #6B7C8F;
+      --button: #2563EB;
+      --button-hover: #1D4ED8;
+      --good: #16A34A;
+      --warning: #D97706;
+      --bad: #DC2626;
     }
 
     * { box-sizing: border-box; }
@@ -41,6 +42,7 @@
       border: 1px solid var(--line);
       border-radius: 14px;
       background: var(--panel);
+      box-shadow: 0 1px 2px rgba(16, 24, 32, .05);
     }
 
     h1 { margin: 0 0 5px; font-size: 1.45rem; font-weight: 650; }
@@ -98,25 +100,34 @@
     }
 
     .network:hover, .network[aria-pressed="true"] { border-color: var(--line-focus); }
-    .network[aria-pressed="true"] { background: #102724; }
+    .network[aria-pressed="true"] { background: #E9EFF6; }
     .network-name { overflow: hidden; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-    .network-meta { margin-top: 3px; color: var(--muted); font-size: .88rem; }
+    .network-meta {
+      display: inline-block;
+      margin-left: 7px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #E9EFF6;
+      color: var(--muted);
+      font-size: .78rem;
+      vertical-align: middle;
+    }
     .signal { align-self: center; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-    label { display: block; margin: 12px 0 5px; color: #c9d7d0; font-weight: 650; }
+    label { display: block; margin: 12px 0 5px; color: #16202C; font-weight: 650; }
 
     input {
       width: 100%;
       min-height: 44px;
       padding: 10px 11px;
-      border: 1px solid #36574a;
+      border: 1px solid #D3DEEA;
       border-radius: 8px;
       background: var(--input);
       color: var(--text);
       font: inherit;
     }
 
-    input:focus { border-color: var(--line-focus); outline: 2px solid rgb(0 217 239 / 25%); }
+    input:focus { border-color: var(--line-focus); outline: 2px solid rgb(37 99 235 / 22%); }
 
     .password-wrap { position: relative; }
     .password-wrap input { padding-right: 72px; }
@@ -130,7 +141,7 @@
       padding: 6px 10px;
       border: 0;
       border-radius: 6px;
-      background: #1c3028;
+      background: #E9EFF6;
       color: var(--text);
       font: inherit;
     }

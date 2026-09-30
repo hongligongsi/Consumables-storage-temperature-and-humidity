@@ -4,29 +4,33 @@
 // portal page.  Keep it self contained: the setup AP has no Internet access.
 static const char WIFI_PORTAL_CUSTOM_HEAD[] PROGMEM = R"CHWIFI(
 <style>
-body.chamber{background:#08100d;color:#eef8f3;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;padding:18px}
+/* 实验室蓝 · Lab Blue [浅色 · 日光可读] —— token 见下,与 Web 管理页同源 */
+body.chamber{color-scheme:light;background:#F2F5F9;color:#16202C;font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;margin:0;padding:18px}
 body.chamber .wrap{display:block;min-width:0;max-width:560px;margin:0 auto;text-align:left}
-body.chamber .ch-brand{background:#13201b;border:1px solid #294137;border-radius:14px;padding:16px;margin:0 0 14px}
-body.chamber .ch-brand strong{display:block;color:#eef8f3;font-size:1.35rem;font-weight:600;margin-bottom:5px}
-body.chamber .ch-brand span{color:#91a59b}
-body.chamber h1,body.chamber h3{color:#eef8f3}
-body.chamber a{color:#eef8f3}
-body.chamber .network-row{background:#13201b;border:1px solid #294137;border-radius:9px;padding:10px 12px;margin:7px 0;min-height:24px}
+body.chamber .ch-brand{background:#FFFFFF;border:1px solid #D3DEEA;border-radius:14px;padding:16px;margin:0 0 14px;box-shadow:0 1px 2px rgba(16,24,32,.05)}
+body.chamber .ch-brand strong{display:block;color:#16202C;font-size:1.35rem;font-weight:600;margin-bottom:5px}
+body.chamber .ch-brand span{color:#6B7C8F}
+body.chamber h1,body.chamber h3{color:#16202C}
+body.chamber a{color:#16202C;font-weight:600}
+body.chamber a:hover{color:#2563EB}
+body.chamber .network-row{background:#FFFFFF;border:1px solid #D3DEEA;border-radius:9px;padding:10px 12px;margin:7px 0;min-height:24px}
 body.chamber a[data-ssid]{display:inline-block;max-width:58%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
-body.chamber .net-security{display:inline-block;color:#91a59b;background:#1c3028;border-radius:999px;padding:2px 7px;margin-left:7px;font-size:.78rem;vertical-align:middle}
-body.chamber label{color:#c9d7d0;font-weight:600}
-body.chamber input{background:#09130f;color:#eef8f3;border:1px solid #36574a;border-radius:8px;padding:11px;margin:6px 0 12px}
-body.chamber input:focus{border-color:#00d9ef;outline:2px solid rgba(0,217,239,.25)}
-body.chamber button{background:#245b65;border-radius:8px;font-weight:600}
-body.chamber button:hover{background:#2f7280}
-body.chamber .msg{background:#13201b;color:#eef8f3;border-color:#294137;border-left-color:#00d9ef;border-radius:8px}
-body.chamber .msg.D{border-left-color:#ff6464}
-body.chamber .msg.S{border-left-color:#4ace4a}
-body.chamber .q{color:#91a59b}
-body.chamber .q[role=img]{filter:invert(1)}
-body.chamber .ch-help{color:#91a59b;margin:-6px 0 10px;font-size:.9rem}
-body.chamber .ch-section{color:#00d9ef;font-size:1rem;font-weight:600;margin:18px 0 8px}
-body.chamber #ch-connect-progress{background:#13201b;border-left:5px solid #ffa600;border-radius:8px;padding:13px;margin:12px 0;color:#eef8f3}
+body.chamber .net-security{display:inline-block;color:#6B7C8F;background:#E9EFF6;border-radius:999px;padding:2px 7px;margin-left:7px;font-size:.78rem;vertical-align:middle}
+body.chamber label{color:#16202C;font-weight:600}
+body.chamber input{background:#FFFFFF;color:#16202C;border:1px solid #D3DEEA;border-radius:8px;padding:11px;margin:6px 0 12px}
+body.chamber input:focus{border-color:#2563EB;outline:2px solid rgba(37,99,235,.22)}
+body.chamber button{background:#2563EB;color:#FFFFFF;border-radius:8px;font-weight:600}
+body.chamber button:hover{background:#1D4ED8}
+body.chamber button.D{background:#DC2626}
+body.chamber .msg{background:#FFFFFF;color:#16202C;border:1px solid #D3DEEA;border-left:5px solid #2563EB;border-radius:8px;box-shadow:0 1px 2px rgba(16,24,32,.05)}
+body.chamber .msg.D{border-left-color:#DC2626}
+body.chamber .msg.S{border-left-color:#16A34A}
+body.chamber .msg h4{color:#16202C}
+body.chamber .q{color:#6B7C8F}
+body.chamber .q[role=img]{-webkit-filter:none;filter:none}
+body.chamber .ch-help{color:#6B7C8F;margin:-6px 0 10px;font-size:.9rem}
+body.chamber .ch-section{color:#2563EB;font-size:1rem;font-weight:600;margin:18px 0 8px}
+body.chamber #ch-connect-progress{background:#FFFFFF;border:1px solid #D3DEEA;border-left:5px solid #D97706;border-radius:8px;padding:13px;margin:12px 0;color:#16202C}
 @media(max-width:420px){body.chamber{padding:10px}body.chamber a[data-ssid]{max-width:50%}}
 </style>
 <script>
