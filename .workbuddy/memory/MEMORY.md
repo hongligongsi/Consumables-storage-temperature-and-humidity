@@ -25,6 +25,7 @@ FTDI→COM4(UART0) **只剩 ESP-ROM 与 ESP-IDF 日志**(`entry 0x`、`[E][Prefe
 
 ## UI 工作流
 - 设备主屏:`src/tft_ui.cpp`(调色板/图标/布局);快照 `UiSnapshot` 由 ui_model 产出,clock/humidity/chipId 由 main.cpp 补填
+- **三档主题(2620f35)**:`settings.theme` 0=默认(iOS 浅色原型)/1=IOS(深色 HMI)/2=蓝白(出厂默认,日/夜按时钟自动);resolveTheme 解析为生效值 0/1/2/3,applyPalette 四选一。**新增主题只改 tft_ui.cpp 的 Palette 表**,浅底主题黄/橙必须取加深版保证可读;开关颜色=G_CYAN
 - 触摸热区在 `src/main.cpp`(notifyTouch 分区),**改视觉必须同步热区或避开锚点**
 - 屏上 mockup:`.workbuddy/tmp/ui-main-mockup.html` → 无头 Chrome
   `chrome --headless --disable-gpu --force-device-scale-factor=2 --window-size=W,H --user-data-dir=.workbuddy/tmp/chrome-profile --screenshot=OUT.png file:///...`
