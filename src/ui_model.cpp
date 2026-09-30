@@ -78,9 +78,9 @@ void UiModel::adjustSystemSetting(int direction,
   case SystemSettingField::HeaterProtection:
     s.heaterBoardLimitC = constrain((int)s.heaterBoardLimitC + d, 40, 180);
     break;
-  // ---- 日夜配色与时间 ----
+  // ---- 主题与时间 ----
   case SystemSettingField::Theme:
-    // 0=日间 1=夜间 2=自动,旋转在三种取值间循环。
+    // 0=默认 1=IOS 2=蓝白,旋转在三种取值间循环。
     s.theme = static_cast<uint8_t>(((int)s.theme + 3 + d) % 3);
     break;
   case SystemSettingField::DayStart:
@@ -404,7 +404,9 @@ UiSnapshot UiModel::snapshot(const ChamberController &controller,
   strncpy(s.clock, "--:--:--", sizeof(s.clock) - 1);
   s.chipId[0] = '\0';
   s.networkConnected = false;
-  s.theme = systemSettings_ ? systemSettings_->theme : 1;
+  // theme 填存储原始值,随后由 main.cpp 覆写为按时刻解析的生效值
+  // (0=默认 1=IOS 2=蓝白·日 3=蓝白·夜);设置页行值直接读 SystemSettings。
+  s.theme = systemSettings_ ? systemSettings_->theme : 2;
   s.ahtValid = r.ahtValid;
   s.ntcValid = r.ntcValid;
   s.inaValid = r.inaValid;

@@ -45,8 +45,9 @@ struct SystemSettings {
   char staticSubnet[16] = "255.255.255.0";
   char staticDns1[16] = "223.5.5.5";
   char staticDns2[16] = "1.1.1.1";
-  // ---- 日夜配色与时间 ----
-  uint8_t theme = 1;                 // 0=日间,1=夜间,2=自动(按时刻切换)
+  // ---- 主题与时间 ----
+  uint8_t theme = 2;                 // 0=默认(iOS 浅色),1=IOS(深色 HMI),
+                                     // 2=蓝白(日/夜自动,出厂默认)
   uint16_t dayStartMinutes = 360;    // 日间开始时刻(分钟,0-1439),默认 6:00
   uint16_t nightStartMinutes = 1080; // 夜间开始时刻(分钟,0-1439),默认 18:00
   uint32_t manualClockEpoch =

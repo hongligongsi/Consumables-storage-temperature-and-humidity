@@ -8,17 +8,11 @@
   <style>
     /* ============================================================
    * 主题令牌
-   * 两套均为固件当前实际配色,由 tft_ui.cpp 的 kNightPalette /
-   * kDayPalette 的 RGB565 常量精确换算(亮蓝 iOS 风格改版后):
-   *   夜 bg 0x1B7A / panel 0x12B7 / panelAlt 0x0A33 / border 0x3C3C
-   *      muted 0xAE5E / text 0xFFFF / accent 0x4E1E / warn 0xFEA7
-   *      good 0x4EE9 / gRed 0xFA8A / gYellow 0xFEA7 / gMagenta 0xFB56
-   *      gCyan 0x5E5F
-   *   日 bg 0xEF9F / panel 0xFFFF / panelAlt 0xD73F / border 0xB67D
-   *      muted 0x5B91 / text 0x0908 / accent 0x03DF / warn 0xDC80
-   *      good 0x2D89 / gRed 0xD9A6 / gYellow 0xC440 / gMagenta 0xC233
-   *      gCyan 0x0C3F
-   * preheat = stateAccent() 里预热态的硬编码紫 0x78B6,日夜共用。
+   * 四组均为固件实际配色,由 tft_ui.cpp 的调色板 RGB565 常量精确换算:
+   *   默认(ios) kIosLightPalette — iOS 浅色原型(printer-hmi-ios-prototype.html)
+   *   IOS(hmi)  kIosDarkPalette  — 深色 HMI 设计稿(printer-hmi-redesign.html)
+   *   蓝白·夜(night) kNightPalette / 蓝白·日(day) kDayPalette
+   * preheat = stateAccent() 里预热态的硬编码紫(蓝白 0x78B6 / iOS 0xAF52DE)。
    * ============================================================ */
     :root {
       --page-bg: #f4f6f9;
@@ -68,6 +62,47 @@
       --g-magenta: #C6459C;
       --g-cyan: #0886FF;
       --preheat: #7B14B5;
+    }
+
+    /* 主题「默认」:iOS 浅色(printer-hmi-ios-prototype.html 浅色外观)。
+       黄/橙为白底加深版;--g-cyan 给 iOS 绿 = 原型签名性绿色开关 */
+    [data-theme="ios"] {
+      --bg: #F2F2F7;
+      --panel: #ffffff;
+      --panel-alt: #F9F9F9;
+      --border: #C7C7CB;
+      --muted: #6C6C70;
+      --text: #000000;
+      --active: #D9EBFF;
+      --accent: #007AFF;
+      --warn: #E08500;
+      --good: #34C759;
+      --maroon: #C73228;
+      --g-red: #FF3B30;
+      --g-yellow: #C68A00;
+      --g-magenta: #FF2D55;
+      --g-cyan: #34C759;
+      --preheat: #AF52DE;
+    }
+
+    /* 主题「IOS」:深色 HMI(printer-hmi-redesign.html,固件 kIosDarkPalette) */
+    [data-theme="hmi"] {
+      --bg: #081010;
+      --panel: #192029;
+      --panel-alt: #212D31;
+      --border: #293542;
+      --muted: #ADB6C5;
+      --text: #EFF3F7;
+      --active: #193D4A;
+      --accent: #3AD7E6;
+      --warn: #FFB642;
+      --good: #42DB7B;
+      --maroon: #521821;
+      --g-red: #FF5D5A;
+      --g-yellow: #FFB642;
+      --g-magenta: #B58EFF;
+      --g-cyan: #3AD7E6;
+      --preheat: #AF52DE;
     }
 
     * {
@@ -426,9 +461,9 @@
       </div>
       <div class="seg" role="group" aria-label="主题">
         <span>主题(快捷)</span>
-        <button type="button" data-quick="theme" data-val="night" aria-pressed="true">夜间</button>
-        <button type="button" data-quick="theme" data-val="day" aria-pressed="false">日间</button>
-        <button type="button" data-quick="theme" data-val="auto" aria-pressed="false">自动</button>
+        <button type="button" data-quick="theme" data-val="ios" aria-pressed="false">默认</button>
+        <button type="button" data-quick="theme" data-val="hmi" aria-pressed="false">IOS</button>
+        <button type="button" data-quick="theme" data-val="blue" aria-pressed="true">蓝白</button>
       </div>
       <div class="seg" role="group" aria-label="PIR">
         <span>PIR 传感器</span>
@@ -480,7 +515,7 @@
     </section>
 
     <p class="note">
-      说明:日间与夜间均为固件实际配色(系统设置 → 屏幕配色,或选“自动”按日间/夜间开始时刻切换)。
+      说明:四组配色(默认/IOS/蓝白·日间/蓝白·夜间)均为固件实际配色(系统设置 → 界面主题,“蓝白”按日间/夜间开始时刻自动切换)。
       仪表数值为演示数据,PIR/故障由上方开关模拟硬件输入;
       系统设置与耗材参数在“长按保存返回”后写入浏览器本地存储,与真机写入 NVS 对应,刷新页面仍保留。
     </p>
@@ -522,8 +557,8 @@
           lightOnPrinting: true, lightOffAfterPrinting: true,
           beepOnStart: true, beepOnStop: true,
           heaterCurrent: 6, heaterFan: 100, heaterProtection: 80,
-          // 0=日间 1=夜间 2=自动;时刻为当日 0 点起的分钟数
-          theme: 1, dayStart: 360, nightStart: 1080,
+          // 0=默认(iOS 浅色) 1=IOS(深色 HMI) 2=蓝白;时刻为当日 0 点起的分钟数
+          theme: 2, dayStart: 360, nightStart: 1080,
           // 手动校时结果(epoch 秒),真机写入 RTC + NVS,这里仅存数值
           clockEpoch: 0,
           touchCalibrated: false
@@ -545,11 +580,12 @@
         S.st.clockEpoch = Math.floor(ms / 1000);
         clockSetAtMs = Date.now();
       }
-      // 生效配色:theme 0/1 直接采用,2=自动按时刻落在日间区间与否判定。
-      // 真机在无有效时间时才回退夜间;预览里时钟始终可用(见 simNow),故直接按屏上
-      // 显示的时刻判定,这样“自动”按钮与两个时刻项都能立即看到效果。
+      // 生效配色:theme 0/1(默认/IOS)为固定单套配色直接采用,2=蓝白按
+      // 时刻落在日间区间与否判定。真机在无有效时间时才回退蓝白·夜间;
+      // 预览里时钟始终可用(见 simNow),故直接按屏上显示的时刻判定,这样
+      // “蓝白”按钮与两个时刻项都能立即看到效果。
       function resolveTheme() {
-        if (S.st.theme !== 2) return S.st.theme === 0 ? 'day' : 'night';
+        if (S.st.theme !== 2) return S.st.theme === 0 ? 'ios' : 'hmi';
         var d = new Date(simNow());
         var minutes = d.getHours() * 60 + d.getMinutes();
         var day = S.st.dayStart, night = S.st.nightStart;
@@ -706,18 +742,18 @@
           range: '40 ~ 180 C,步长 1'
         },
         {
-          zh: '屏幕配色', en: 'THEME', type: 'theme',
-          desc: '切换屏幕配色。选“自动”时按下方日间/夜间开始时刻自动切换。',
-          range: '日间 / 夜间 / 自动'
+          zh: '界面主题', en: 'THEME', type: 'theme',
+          desc: '切换界面主题:默认(iOS 浅色)/ IOS(深色 HMI)/ 蓝白(日间浅蓝白 + 夜间亮蓝)。选“蓝白”时按下方日间/夜间开始时刻自动切换。',
+          range: '默认 / IOS / 蓝白'
         },
         {
           zh: '日间开始时刻', en: 'DAY START', type: 'time', key: 'dayStart', step: 15, min: 0, max: 1425,
-          desc: '“自动”配色下,到达该时刻切换到日间配色。',
+          desc: '“蓝白”主题下,到达该时刻切换到日间配色。',
           range: '00:00 ~ 23:45,步长 15 min'
         },
         {
           zh: '夜间开始时刻', en: 'NIGHT START', type: 'time', key: 'nightStart', step: 15, min: 0, max: 1425,
-          desc: '“自动”配色下,到达该时刻切换到夜间配色。',
+          desc: '“蓝白”主题下,到达该时刻切换到夜间配色。',
           range: '00:00 ~ 23:45,步长 15 min'
         },
         {
@@ -860,7 +896,7 @@
             S.st[f.key] = clamp(S.st[f.key] + d * f.step, f.min, f.max);
             break;
           case 'theme':
-            // 0=日间 1=夜间 2=自动,循环切换
+            // 0=默认 1=IOS 2=蓝白,循环切换
             S.st.theme = (S.st.theme + 3 + d) % 3;
             break;
           case 'time':
@@ -1160,7 +1196,7 @@
         return p(Math.floor(minutes / 60)) + ':' + p(minutes % 60);
       }
       function themeName(v, zh) {
-        return v === 0 ? (zh ? '日间' : 'DAY') : (v === 1 ? (zh ? '夜间' : 'NIGHT') : (zh ? '自动' : 'AUTO'));
+        return v === 0 ? (zh ? '默认' : 'DEFAULT') : (v === 1 ? 'IOS' : (zh ? '蓝白' : 'BLUE-WHITE'));
       }
       // 编辑态用方括号标出当前子段,与固件 formatClockField 的标记方式一致
       function clockField(f) {
@@ -1325,8 +1361,12 @@
             (S.sysEditing && editable ? (zh ? ' ·编辑中' : ' EDITING') : '');
         }
         document.getElementById('cap-state').textContent = (zh ? names[idx] : namesEn[idx]) + extra;
-        document.getElementById('cap-mode').textContent =
-          (zh ? '中文' : 'English') + ' · ' + (document.querySelector('.doc').getAttribute('data-theme') === 'day' ? (zh ? '日间' : 'DAY') : (zh ? '夜间' : 'NIGHT'));
+        var th = document.querySelector('.doc').getAttribute('data-theme');
+        var thName = th === 'ios' ? (zh ? '默认' : 'DEFAULT')
+          : th === 'hmi' ? 'IOS'
+          : th === 'day' ? (zh ? '蓝白·日间' : 'BLUE·DAY')
+          : (zh ? '蓝白·夜间' : 'BLUE·NIGHT');
+        document.getElementById('cap-mode').textContent = (zh ? '中文' : 'English') + ' · ' + thName;
       }
 
       /* ---------------- 绑定控件 ---------------- */
@@ -1352,8 +1392,8 @@
           if (kind === 'lang') {
             S.st.language = val; S.sysDirty = S.screen === 'system' ? true : S.sysDirty;
           } else if (kind === 'theme') {
-            // 与真机一致:快捷按钮等价于把“屏幕配色”设为 日间/夜间/自动
-            S.st.theme = val === 'day' ? 0 : (val === 'night' ? 1 : 2);
+            // 与真机一致:快捷按钮等价于把“界面主题”设为 默认/IOS/蓝白
+            S.st.theme = val === 'ios' ? 0 : (val === 'hmi' ? 1 : 2);
             S.sysDirty = S.screen === 'system' ? true : S.sysDirty;
           } else if (kind === 'pir') {
             S.pirMotion = val === '1';
@@ -1388,8 +1428,8 @@
           });
         };
         q('lang', S.st.language);
-        // 快捷按钮 data-val 是 day/night/auto,而 S.st.theme 是 0/1/2,按映射比较
-        q('theme', S.st.theme === 0 ? 'day' : (S.st.theme === 1 ? 'night' : 'auto'));
+        // 快捷按钮 data-val 是 ios/hmi/blue,而 S.st.theme 是 0/1/2,按映射比较
+        q('theme', S.st.theme === 0 ? 'ios' : (S.st.theme === 1 ? 'hmi' : 'blue'));
         q('pir', S.pirMotion ? 1 : 0);
         q('touch', S.hasTouch ? 1 : 0);
         q('net', S.netConnected ? 1 : 0);

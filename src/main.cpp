@@ -111,13 +111,14 @@ void formatClock(char *out, size_t size) {
            tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 }
 
-// 生效配色:theme 0/1 直接采用,theme==2(自动)按时刻落在日间区间与否判定。
+// 生效配色:theme 0/1(默认/IOS)为固定单套配色直接采用;
+// theme==2(蓝白)按时刻落在日间区间与否,解析为 2=蓝白·日间 / 3=蓝白·夜间。
 uint8_t resolveTheme() {
   if (settings.theme != 2)
     return settings.theme;
   const time_t now = currentEpoch();
   if (!clockValid(now))
-    return 1; // 无有效时间时按夜间渲染,避免白天误亮/夜间误暗
+    return 3; // 无有效时间时按夜间渲染,避免白天误亮/夜间误暗
   struct tm tm{};
   localtime_r(&now, &tm);
   const uint16_t minutes = static_cast<uint16_t>(tm.tm_hour * 60 + tm.tm_min);
@@ -126,7 +127,7 @@ uint8_t resolveTheme() {
   // 日间区间 [dayStart, nightStart);跨零点时取补集。
   const bool isDay = day <= night ? (minutes >= day && minutes < night)
                                   : (minutes >= day || minutes < night);
-  return isDay ? 0 : 1;
+  return isDay ? 2 : 3;
 }
 
 // 把系统设置里"影响热控行为"的项同步给控制器(语言/PIR 延时/加热限制/

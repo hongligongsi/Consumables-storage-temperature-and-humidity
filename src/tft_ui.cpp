@@ -20,10 +20,12 @@ namespace {
 constexpr int16_t SCREEN_W = 480; // 横屏宽(像素)
 constexpr int16_t SCREEN_H = 320; // 横屏高(像素)
 
-// 运行期调色板:日/夜两套配色,由 drawFrame 按快照的 theme 选择。
-// 参考图风格改版:夜间 = 亮蓝 iOS 风(蓝底白字、iOS 蓝色开关、黄色激活态、
-// 大数值配小单位);日间 = 同一设计语言的浅蓝白配色。色值均为 RGB888
-// 设计稿换算的 RGB565。
+// 运行期调色板:三套主题共四组配色,由 drawFrame 按快照的生效主题选择。
+//   0=默认  iOS 浅色(printer-hmi-ios-prototype.html 浅色外观:白灰底、白卡、
+//          iOS 蓝 #007AFF、绿色开关、iOS 家族彩仪表)
+//   1=IOS   深色 HMI(printer-hmi-redesign.html:近黑底、青色强调、语义家族色)
+//   2/3=蓝白 日间浅蓝白 / 夜间亮蓝(原双模配色,蓝白主题下按时钟自动切换)
+// 色值均为设计稿 RGB888 换算的 RGB565。
 struct Palette {
   uint16_t bg;       // 页面底色
   uint16_t panel;    // 面板/未选中行底色
@@ -42,10 +44,24 @@ struct Palette {
   uint16_t gCyan;
 };
 
+// 默认:iOS 浅色(白灰底/白卡/黑字/iOS 蓝强调/绿开关/家族彩状态色)。
+// 黄/橙取加深版保证白底可读(同蓝白·日间的处理);G_CYAN 给 iOS 绿,
+// 开关(drawToggle 用 G_CYAN)即原型签名性的绿色开关。
+constexpr Palette kIosLightPalette = {0xF79E, 0xFFFF, 0xFFDF, 0xC639, 0x6B6E,
+                                      0x0000, 0xDF5F, 0x03DF, 0xDC20, 0x362B,
+                                      0xC185, 0xF9C6, 0xC440, 0xF96A, 0x362B};
+
+// IOS:深色 HMI(取自 04e973b 一比一还原 printer-hmi-redesign.html 的调色板)
+constexpr Palette kIosDarkPalette = {0x0882, 0x1905, 0x2166, 0x29A8, 0xADB8,
+                                     0xEF9E, 0x19E9, 0x3EBC, 0xFDA8, 0x46CF,
+                                     0x50C4, 0xFAEB, 0xFDA8, 0xB47F, 0x3EBC};
+
+// 蓝白·夜间:亮蓝 iOS 风(蓝底白字、iOS 蓝色开关、黄色激活态)
 constexpr Palette kNightPalette = {0x1B7A, 0x12B7, 0x0A33, 0x3C3C, 0xAE5E,
                                    0xFFFF, 0x2BDD, 0x4E1E, 0xFEA7, 0x4EE9,
                                    0xB145, 0xFA8A, 0xFEA7, 0xFB56, 0x5E5F};
 
+// 蓝白·日间:同一设计语言的浅蓝白配色
 constexpr Palette kDayPalette = {0xEF9F, 0xFFFF, 0xD73F, 0xB67D, 0x5B91,
                                  0x0908, 0xCF3F, 0x03DF, 0xDC80, 0x2D89,
                                  0x88E3, 0xD9A6, 0xC440, 0xC233, 0x0C3F};
@@ -67,10 +83,13 @@ uint16_t G_YELLOW = kNightPalette.gYellow;
 uint16_t G_MAGENTA = kNightPalette.gMagenta;
 uint16_t G_CYAN = kNightPalette.gCyan;
 
-// 按主题号(0=日 1=夜)把整套调色板复制到上面的全局颜色变量;
-// drawFrame 每帧开头调用,所以切换主题下一帧即生效。
+// 按生效主题号(0=默认 1=IOS 2=蓝白·日 3=蓝白·夜)把整套调色板复制到
+// 上面的全局颜色变量;drawFrame 每帧开头调用,所以切换主题下一帧即生效。
 void applyPalette(uint8_t theme) {
-  const Palette &p = theme == 0 ? kDayPalette : kNightPalette;
+  const Palette &p = theme == 0   ? kIosLightPalette
+                     : theme == 1 ? kIosDarkPalette
+                     : theme == 2 ? kDayPalette
+                                  : kNightPalette;
   BG = p.bg;
   PANEL = p.panel;
   PANEL_ALT = p.panelAlt;
@@ -432,7 +451,7 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
       "编码器方向",     "PIR启动延时",    "PIR关闭延时",
       "启动后自动开灯", "关闭后自动关灯", "启动后蜂鸣提示",
       "关闭后蜂鸣提示", "发热板限流",     "发热板风扇风速",
-      "发热板温度保护", "屏幕配色",       "日间开始时刻",
+      "发热板温度保护", "界面主题",       "日间开始时刻",
       "夜间开始时刻",   "日期",           "时间",
       "触摸屏校准",     "恢复出厂配置",   "固件版本",
       "芯片ID"};
@@ -565,11 +584,12 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
       snprintf(value, sizeof(value), "%u℃", v.heaterBoardLimitC);
       break;
     case SystemSettingField::Theme:
-      // 0=日间 1=夜间 2=自动(按日/夜开始时刻切换)
+      // 存储原始值:0=默认 1=IOS 2=蓝白(蓝白按日/夜开始时刻自动切换,
+      // 渲染生效值在快照 theme 里由 main.cpp 解析,这里只显示选项名)
       strlcpy(value,
-              v.theme == 0 ? (chinese ? "日间" : "DAY")
-                           : (v.theme == 1 ? (chinese ? "夜间" : "NIGHT")
-                                           : (chinese ? "自动" : "AUTO")),
+              v.theme == 0 ? (chinese ? "默认" : "DEFAULT")
+                           : (v.theme == 1 ? "IOS"
+                                           : (chinese ? "蓝白" : "BLUE-WHITE")),
               sizeof(value));
       break;
     case SystemSettingField::DayStart:

@@ -65,9 +65,9 @@ enum class SystemSettingField : uint8_t {
   HeaterCurrent,
   HeaterFan,
   HeaterProtection,
-  // ---- 日夜配色与时间(手动校时) ----
-  Theme,      // 屏幕配色: 0=日间, 1=夜间, 2=自动
-  DayStart,   // 日间开始时刻(分钟)
+  // ---- 主题与时间(手动校时) ----
+  Theme,      // 界面主题: 0=默认(iOS 浅色), 1=IOS(深色 HMI), 2=蓝白(日/夜自动)
+  DayStart,   // 日间开始时刻(分钟,蓝白主题按时钟切换的起点)
   NightStart, // 夜间开始时刻(分钟)
   Date,       // 日期: 年/月/日 三段编辑
   Time,       // 时间: 时/分 两段编辑
@@ -100,7 +100,9 @@ struct UiSnapshot {
   char clock[24]; // "YYYY-MM-DD HH:MM:SS";无有效时间时为 "----/--/-- --:--:--"
   char chipId[20]; // 本机唯一芯片 ID,如 "CH-1A2B3C4D5E6F"(main.cpp 从 network 补入)
   bool networkConnected; // STA 是否已联网(顶栏日期着色用)
-  uint8_t theme;         // 当前生效配色: 0=日间, 1=夜间
+  uint8_t theme; // 当前生效配色: 0=默认(iOS 浅色), 1=IOS(深色 HMI),
+                 // 2=蓝白·日间, 3=蓝白·夜间;ui_model 填存储原始值,
+                 // main.cpp 每帧覆写为按时刻解析的生效值
   bool ahtValid;         // AHT20 温湿度读数是否有效
   bool ntcValid;         // NTC 温度读数是否有效
   bool inaValid;         // INA226 电压/电流读数是否有效
