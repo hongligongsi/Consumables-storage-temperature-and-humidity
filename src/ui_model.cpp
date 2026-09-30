@@ -102,7 +102,8 @@ void UiModel::adjustSystemSetting(int direction,
   // 是哨兵。
   case SystemSettingField::TouchCalibration:
   case SystemSettingField::FactoryReset:
-  case SystemSettingField::Version: // 只读展示,不参与修改,也不置脏。
+  case SystemSettingField::Version:  // 只读展示,不参与修改,也不置脏。
+  case SystemSettingField::ChipId:   // 只读展示,不参与修改,也不置脏。
   case SystemSettingField::Count:
     return;
   }
@@ -385,8 +386,8 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
 }
 
 // 生成一帧只读快照供显示层渲染。原则:开关类状态一律回读控制器(执行端的
-// 真相),本类的 settings_ 只保留 UI 临时态;clock/humidity/networkConnected
-// 因依赖网络/AHT 层,由 main.cpp 在快照返回后补填,避免头文件循环依赖。
+// 真相),本类的 settings_ 只保留 UI 临时态;clock/humidity/networkConnected/
+// chipId 因依赖网络/AHT 层,由 main.cpp 在快照返回后补填,避免头文件循环依赖。
 UiSnapshot UiModel::snapshot(const ChamberController &controller,
                              const Readings &r, const Outputs &o) const {
   const MaterialProfile &profile = controller.profile();
@@ -398,9 +399,10 @@ UiSnapshot UiModel::snapshot(const ChamberController &controller,
   s.nextMaterial = MATERIALS[(materialIndex_ + 1) % MATERIAL_COUNT].name;
   s.state = o.state;
   s.language = controller.language();
-  // clock/networkConnected 由 main.cpp 填充:ui_model
+  // clock/networkConnected/chipId 由 main.cpp 填充:ui_model
   // 不依赖网络层,避免循环包含。
   strncpy(s.clock, "--:--:--", sizeof(s.clock) - 1);
+  s.chipId[0] = '\0';
   s.networkConnected = false;
   s.theme = systemSettings_ ? systemSettings_->theme : 1;
   s.ahtValid = r.ahtValid;

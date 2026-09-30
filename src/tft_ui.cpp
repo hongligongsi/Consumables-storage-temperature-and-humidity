@@ -434,7 +434,8 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
       "关闭后蜂鸣提示", "发热板限流",     "发热板风扇风速",
       "发热板温度保护", "屏幕配色",       "日间开始时刻",
       "夜间开始时刻",   "日期",           "时间",
-      "触摸屏校准",     "恢复出厂配置",   "固件版本"};
+      "触摸屏校准",     "恢复出厂配置",   "固件版本",
+      "芯片ID"};
   static const char *const en[] = {"LANGUAGE",
                                    "WIFI",
                                    "MQTT",
@@ -461,7 +462,8 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
                                    "TIME",
                                    "TOUCH CALIBRATION",
                                    "FACTORY RESET",
-                                   "FIRMWARE VERSION"};
+                                   "FIRMWARE VERSION",
+                                   "CHIP ID"};
   const bool chinese = s.language == Language::Chinese;
   // 条目总数与光标位置都从枚举推导,新增设置项后无需再改这里的硬编码数字。
   const uint8_t count = static_cast<uint8_t>(SystemSettingField::Count);
@@ -604,6 +606,11 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
     case SystemSettingField::Version:
       // 只读显示编译期写入的版本号,源码见 include/version.h。
       strlcpy(value, FW_VERSION, sizeof(value));
+      break;
+    case SystemSettingField::ChipId:
+      // 只读显示本机唯一芯片 ID(由 eFuse MAC 生成,逐机不重复),
+      // 供批量部署时在屏上直接核对型号。
+      strlcpy(value, s.chipId, sizeof(value));
       break;
     case SystemSettingField::Count:
       break;

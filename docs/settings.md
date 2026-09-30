@@ -1,7 +1,7 @@
 # 系统设置逐项说明
 
-设置页共 **27 项**，顺序与屏幕显示一致，枚举定义在
-[include/ui_model.h](../include/ui_model.h#L41-L72) 的 `SystemSettingField`。
+设置页共 **28 项**，顺序与屏幕显示一致，枚举定义在
+[include/ui_model.h](../include/ui_model.h#L47-L79) 的 `SystemSettingField`。
 
 真机每屏只显示 **5 行**，超出部分靠旋转滚动查看。
 
@@ -65,6 +65,7 @@
 | 25 | 触摸屏校准 | TOUCH CALIBRATION | 不支持 / 未校准 / 已校准 | — |
 | 26 | 恢复出厂配置 | FACTORY RESET | 执行 / 确认? | — |
 | 27 | 固件版本 | FIRMWARE VERSION | 只读 | — |
+| 28 | 芯片ID | CHIP ID | 只读（`CH-` + 12 位十六进制） | — |
 
 取值范围由 [src/ui_model.cpp](../src/ui_model.cpp#L8-L99) 的 `adjustSystemSetting`
 限制，并在 [src/settings.cpp](../src/settings.cpp#L6-L25) 的 `sanitize()` 中于载入
@@ -121,25 +122,48 @@ NTP → 手动校时值（`manualClockEpoch`）→ 占位串 `----/--/-- --:--:-
 只读，取值来自 [include/version.h](../include/version.h) 的 `FW_VERSION`，
 当前为 `1.0.0`。可用 build_flags 追加 `-DFW_VERSION=\"x.y.z\"` 覆盖，无需改源码。
 
+### 芯片ID
+
+只读，展示本机**逐台唯一**的芯片 ID，格式 `CH-XXXXXXXXXXXX`（12 位十六进制）。
+取值由 `NetworkManager::chipId()` 从 ESP32 eFuse 内的 48 位 MAC 生成：MAC 由
+IEEE 逐颗分配、天然唯一，固件再对其做 48 位全宽异或（双射、不丢位），因此
+**任意两颗芯片的结果必然不同，不会重复**。同一取值也用作 ArduinoOTA 接入密码
+（见 [networking.md](networking.md#ota-升级)）。
+
+批量部署时可在屏上直接核对本机 ID，与 Web 管理页「本机 OTA 密码（只读）」、
+开机串口日志 `[NET] chip id = CH-…` 三处一致。
+
+该条目的取值由 `main.cpp` 在生成界面快照时从 `network.chipId()` 补入
+（`UiModel` 不反向依赖网络层），显示层只读渲染，单击/旋转均无副作用、不置脏。
+
+### 只读条目
+
+「固件版本」与「芯片ID」同属系统设置页末端的只读条目：可被旋转选中、可被高亮，
+但单击不进入编辑态、旋转不改值、也不会把设置标记为「有未保存修改」。
+
 ## 新增设置项的改法
 
 设置页是枚举驱动的，新增一项只需同步 **4 处**：
 
-1. [include/ui_model.h](../include/ui_model.h#L41-L72) — 在 `SystemSettingField`
-   中按显示顺序插入枚举项（放在 `Version` 之前）
-2. [src/ui_model.cpp](../src/ui_model.cpp#L8-L99) — 在 `adjustSystemSetting` 的
-   switch 中加 case；数值类用 `constrain(..., min, max)`，开关类直接取反
-3. [src/tft_ui.cpp](../src/tft_ui.cpp#L390-L584) — 在 `zh[]` / `en[]` 数组的
+1. [include/ui_model.h](../include/ui_model.h#L47-L79) — 在 `SystemSettingField`
+   中按显示顺序插入枚举项（功能项放在 `Version` 之前，只读的「关于本机」信息项
+   放在 `Version` 之后、`Count` 之前）
+2. [src/ui_model.cpp](../src/ui_model.cpp#L11-L115) — 在 `adjustSystemSetting` 的
+   switch 中加 case；数值类用 `constrain(..., min, max)`，开关类直接取反，
+   只读项与 `Version` 并列进「直接 return」分组
+3. [src/tft_ui.cpp](../src/tft_ui.cpp#L428-L620) — 在 `zh[]` / `en[]` 数组的
    **同一位置**插入文案，并在 value 格式化 switch 中加对应 case
-4. [tools/ui_preview.html](../tools/ui_preview.html#L597-L733) — 在 `F` 数组同一
-   位置插入元数据（`zh`/`en`/`type`/`key`/`desc`/`range`）
+4. [tools/ui_preview.html](../tools/ui_preview.html#L597-L741) — 在 `F` 数组同一
+   位置插入元数据（`zh`/`en`/`type`/`key`/`desc`/`range`），并视类型在
+   `clickEncoder` / `settingValue` 中各加一个分支
 
 若新条目是**数值类**且要支持单击进入编辑态，还需在 [src/ui_model.cpp](../src/ui_model.cpp#L229-L238)
 的 `numeric` 白名单中加入它；开关类不需要。
 
 新增中文文案若用到字库外的汉字，需重跑 `python tools/genvlw.py` 重新生成
 `include/font_cn16.h` / `font_cn26.h`。该脚本会自动扫描 `src/` 与 `include/` 中
-字符串字面量里的汉字（注释中的不算）。
+字符串字面量里的汉字（注释中的不算；`web_page.h` / `wifi_portal_page.h` 属浏览器
+渲染文案，已被脚本排除，不会撑大字库）。
 
 ## 预览页
 
@@ -151,5 +175,5 @@ python -m http.server 8765 --directory tools
 
 然后访问 http://localhost:8765/ui_preview.html。
 
-真机每屏只显示 5 行，预览页因此在屏下把全部 27 项逐条列出说明与取值范围，并随
+真机每屏只显示 5 行，预览页因此在屏下把全部 28 项逐条列出说明与取值范围，并随
 屏内光标实时高亮。顶部快捷按钮中的「夜间/日间/自动」等价于修改「屏幕配色」。

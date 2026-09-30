@@ -696,6 +696,11 @@ void loop() {
     // 时钟优先 NTP,断网/未同步时回退上次手动校时值(main.cpp 的 currentEpoch)。
     formatClock(screen.clock, sizeof(screen.clock));
     screen.networkConnected = network.connected();
+    // 芯片 ID 恒定,首次读取后缓存,避免每 500ms 重新构造 String。
+    static char chipIdCache[20] = "";
+    if (!chipIdCache[0])
+      strlcpy(chipIdCache, network.chipId().c_str(), sizeof(chipIdCache));
+    strlcpy(screen.chipId, chipIdCache, sizeof(screen.chipId));
     screen.theme = resolveTheme();
     network.updateReadings(in, latestOutputs,
                            humidity); // Web/MQTT 据此返回数据

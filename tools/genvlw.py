@@ -78,6 +78,10 @@ BASE_CJK = (
 
 SRC_DIRS = ("src", "include")
 
+# 浏览器专用头:其中的中文(CSS/HTML/JS 文案)由浏览器渲染,TFT 从不绘制。
+# 纳入字库只会白白占用 Flash(实测会多出 60+ 个用不到的字形),故跳过。
+BROWSER_ONLY_HEADERS = ("web_page.h", "wifi_portal_page.h")
+
 
 def collect_literal_chars(text: str) -> set[str]:
     """只取字符串字面量里的非 ASCII 字符。
@@ -132,6 +136,8 @@ def collect_source_chars() -> set[str]:
             continue
         for name in sorted(os.listdir(root_dir)):
             if not name.endswith((".c", ".cpp", ".h", ".hpp")):
+                continue
+            if name in BROWSER_ONLY_HEADERS:
                 continue
             with open(os.path.join(root_dir, name), "r", encoding="utf-8") as handle:
                 found |= collect_literal_chars(handle.read())

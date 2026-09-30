@@ -46,6 +46,10 @@ public:
   uint8_t otaProgress() const;
   // 固定 mDNS/OTA 主机名,局域网访问 http://chamber.local/ 。
   const char *hostname() const { return "chamber"; }
+  // 逐机唯一的芯片 ID:由 eFuse 48 位 MAC 全宽映射(双射、不丢位),格式
+  // CH-XXXXXXXXXXXX(12 位十六进制),任意两颗芯片必然不同。屏幕「系统设置 →
+  // 关于本机」与 Web 设置页都展示它;同一取值也用作 ArduinoOTA 接入密码。
+  String chipId() const;
 
   // 由静态回调(WiFi 事件 / MQTT)转发,公开以便 free function 经 g_self 调用。
   void notifyStaConnected() { wifiJustConnected_ = true; }
@@ -98,7 +102,8 @@ private:
   void applyIpConfig();    // 启用静态 IP 时在 WiFi.begin 前下发 IPv4 配置
   bool allowApiRequest(bool write); // 限流判定:write=true 用写间隔,否则读间隔
   void sendRateLimited();           // 统一回复 429
-  String otaPassword() const;       // 按 MAC 逐机生成 OTA 密码 CH-XXXXXXXX
+  // OTA 密码复用唯一芯片 ID(见公开接口 chipId),Web 设置接口明文返回。
+  String otaPassword() const { return chipId(); }
   bool dispatchAction(const String &name); // 执行 Web/MQTT 发来的具名动作
   void setProfile(size_t index);           // 切料并同步 UI/控制器
   void publishState();                     // 周期发布完整状态 JSON

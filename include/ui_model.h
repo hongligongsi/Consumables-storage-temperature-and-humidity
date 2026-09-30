@@ -74,6 +74,7 @@ enum class SystemSettingField : uint8_t {
   TouchCalibration,
   FactoryReset,
   Version, // 只读展示固件版本号(值取自 version.h 的 FW_VERSION),不可修改
+  ChipId,  // 只读展示本机唯一芯片 ID(值由 main.cpp 从 network 补入),不可修改
   Count
 };
 
@@ -97,6 +98,7 @@ struct UiSnapshot {
   ChamberState state;           // 六态状态机:待机/检测/预热/打印/排气/故障
   Language language;            // 决定界面用中文还是英文
   char clock[24]; // "YYYY-MM-DD HH:MM:SS";无有效时间时为 "----/--/-- --:--:--"
+  char chipId[20]; // 本机唯一芯片 ID,如 "CH-1A2B3C4D5E6F"(main.cpp 从 network 补入)
   bool networkConnected; // STA 是否已联网(顶栏日期着色用)
   uint8_t theme;         // 当前生效配色: 0=日间, 1=夜间
   bool ahtValid;         // AHT20 温湿度读数是否有效

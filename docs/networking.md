@@ -82,7 +82,7 @@ curl -X POST http://<设备IP>/api/wifi/reset
   "ntpServer2": "pool.ntp.org", "staticIpEnabled": false,
   "staticIp": "192.168.1.50", "staticGateway": "192.168.1.1",
   "staticSubnet": "255.255.255.0", "staticDns1": "223.5.5.5",
-  "staticDns2": "1.1.1.1", "otaPassword": "CH-XXXXXXXX",
+  "staticDns2": "1.1.1.1", "otaPassword": "CH-XXXXXXXXXXXX",
   "heaterMaxCurrentA": 6, "heaterFanPercent": 100, "heaterBoardLimitC": 80,
   "brightness": 80, "language": "zh"
 }
@@ -215,8 +215,12 @@ NVS，重启后仍生效。
 
 ## OTA 升级
 
-主机名 `chamber`。OTA 密码根据 ESP32 芯片 MAC 为每台设备生成，格式为
-`CH-XXXXXXXX`，可在 Web 管理页查看，也会在启动串口日志中打印。
+主机名 `chamber`。设备 ID / OTA 密码由 ESP32 芯片 eFuse 内 48 位 MAC 生成，格式为
+`CH-XXXXXXXXXXXX`（12 位十六进制），可在 Web 管理页查看，也会在启动串口日志中打印。
+
+MAC 由 IEEE 逐颗分配、天然唯一；固件对该 48 位做整宽异或（双射、不丢位），因此
+**任意两颗芯片得到的 ID 必然不同，逐机唯一、不会重复**（早期的 8 位版本把 64 位
+折叠成 32 位，理论上存在碰撞）。
 
 - Arduino IDE：工具 → 端口 → 选择 `chamber`
 - PlatformIO：需显式指定 espota 协议，因为 `platformio.ini` 未配置

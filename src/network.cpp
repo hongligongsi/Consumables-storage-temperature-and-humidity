@@ -215,6 +215,8 @@ void NetworkManager::begin(ChamberController &controller, UiModel &ui,
   // TEMP-DEBUG 已清理:曾用 heap_caps 分级探测确认「内部 RAM 正常 / PSRAM 大块
   // 分配挂死」。根因与处置见 platformio.ini 的 PSRAM 注释段。
   esp_ota_mark_app_valid_cancel_rollback();
+  // 开机即打印本机唯一芯片 ID(由 eFuse MAC 生成),便于批量部署时逐台区分。
+  Serial.printf("[NET] chip id = %s\n", chipId().c_str());
   WiFi.onEvent(onWifiEvent);
   // 注意:WiFi.mode() 会初始化 WiFi/LWIP 并做大块分配。若 PSRAM 被并入默认堆
   // 且硬件不可靠,这里会死等到任务看门狗复位(表现为设备反复重启、看不到 WiFi)。
@@ -577,15 +579,17 @@ void NetworkManager::sendRateLimited() {
                 "{\"ok\":false,\"err\":\"rate limit\"}");
 }
 
-// 由 MAC 经 xor 混淆生成 OTA 密码 CH-XXXXXXXX(纯混淆防直接读 MAC,
-// 非密码学保护);设置接口里明文返回,供设备主人取用。
-String NetworkManager::otaPassword() const {
-  const uint64_t mac = ESP.getEfuseMac();
-  const uint32_t mixed = static_cast<uint32_t>(mac) ^
-                         static_cast<uint32_t>(mac >> 32) ^ 0x9E3779B9UL;
-  char password[20];
-  snprintf(password, sizeof(password), "CH-%08lX", (unsigned long)mixed);
-  return String(password);
+// 逐机唯一的芯片 ID(同时作为 ArduinoOTA 接入密码):取 eFuse 内 48 位 MAC,
+// 该 MAC 由 IEEE 逐颗分配、天然唯一,再整宽异或一个 48 位常量做轻度混淆。
+// 该异或是双射(不丢位),故任意两颗芯片的结果必然不同——保证显示/取用的
+// ID 逐机唯一,不会像旧的"64 位折叠成 32 位"那样出现碰撞。纯混淆,
+// 非密码学保护;设置接口里明文返回,供设备主人取用。
+String NetworkManager::chipId() const {
+  const uint64_t mac = ESP.getEfuseMac() & 0xFFFFFFFFFFFFULL; // 低 48 位即 MAC
+  const uint64_t mixed = mac ^ 0x9E3779B97F4AULL;             // 48 位全宽异或
+  char id[20];
+  snprintf(id, sizeof(id), "CH-%012llX", (unsigned long long)mixed);
+  return String(id);
 }
 
 // ---------- 子系统启动 ----------

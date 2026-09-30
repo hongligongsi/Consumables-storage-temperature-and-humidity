@@ -729,9 +729,16 @@
           zh: '固件版本', en: 'FIRMWARE VERSION', type: 'version',
           desc: '只读显示当前固件版本号,不可修改。',
           range: '只读'
+        },
+        {
+          zh: '芯片ID', en: 'CHIP ID', type: 'chipid',
+          desc: '只读显示本机唯一芯片 ID,由芯片 eFuse MAC 生成,逐台不同、不会重复。',
+          range: '只读'
         }
       ];
       var VERSION = '1.0.0';
+      // 与真机 network.chipId() 同格式:CH- + 12 位十六进制
+      var CHIP_ID = 'CH-1A2B3C4D5E6F';
 
       function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
       function L(zh, en) { return '<text class="zh">' + zh + '</text><text class="en">' + en + '</text>'; }
@@ -782,7 +789,7 @@
           } else if (fld.type === 'reset') {
             if (S.sysEditing) { factoryReset(); S.sysEditing = false; }
             else { S.sysEditing = true; }             // 再次单击才执行,防止误触
-          } else if (fld.type === 'version') {
+          } else if (fld.type === 'version' || fld.type === 'chipid') {
             // 只读
           } else if (fld.type === 'clock') {
             // 日期(3 段)/时间(2 段):单击进入并逐段推进,末段后退出编辑
@@ -1099,6 +1106,7 @@
             return S.st.touchCalibrated ? (zh ? '已校准' : 'READY') : (zh ? '未校准' : 'NOT SET');
           case 'reset': return S.sysEditing ? (zh ? '确认?' : 'CONFIRM?') : (zh ? '执行' : 'RUN');
           case 'version': return VERSION;
+          case 'chipid': return CHIP_ID;
         }
         return '';
       }
