@@ -93,6 +93,22 @@ FTDI→COM4(UART0) **只剩 ESP-ROM 与 ESP-IDF 日志**(`entry 0x`、`[E][Prefe
 - REST `/api/state` 的 lastFault/faultCount/lastFaultEpoch 即此档案;
   NVS 写失败只打日志不重试(记忆是增强不是前提,别拖热控)
 
+## RGB 灯带与注册码(2026-10-09)
+- RGB:GPIO18 单线 DIN 串 **4 颗** WS2812(同显一色);「RGB最大亮度」在
+  setRgb 内做全局缩放且缩放进颜色缓存(改设置即使颜色不变也会重发一帧);
+  「RGB跟随屏幕休眠」复用 screenIsSleeping 判定,熄屏帧靠缓存只发一次
+- 注册码 = FNV-1a-64(chipId + "FilamentChamber-RG1") 低 32 位 8 位大写 hex,
+  实现在 pure::regCodeFromChipId(**有主机端向量测试**,盐/算法改动会红);
+  NVS 键 regCode,恢复出厂刻意不清;上电未注册弹页、**长按跳过(提示不限制)**;
+  模态与 touchCalibrationActive 同构(main.cpp 持状态,dispatchUiAction 截获输入)
+- **genvlw.py 需要 PIL,要用系统 Python 跑**(AppData\Local\Programs\Python\Python313),
+  托管 Python 没装 PIL;font_check 只依赖标准库所以 CI 无碍
+- 新增设置项的完整链路(本次走两遍):settings.h/cpp(字段+NVS+sanitize+reset 键表)
+  → SystemSettingField 枚举 → ui_model.cpp(adjust 范围 + numeric 判定 + 请求标志)
+  → tft_ui(zh/en 标签 + value case)→ REST(network.cpp readInt/GET JSON)→
+  web_page.h ↔ web_management_preview.html → ui_preview.html(F 数组 + 默认值)→
+  README/settings.md/docs/README.md 三处表与"N 项" → genvlw + doc_check
+
 ## 故障码/告警编号与有效性(2026-10-09 复查)
 - **显示编号 = 枚举值**(AhtLost=1 → F-01,None=0 只是哨兵)。曾因 controller.h
   注释写成"下标+1",tft_ui 与 network 的 MQTT event 都多加了 1,整码错位 ——
