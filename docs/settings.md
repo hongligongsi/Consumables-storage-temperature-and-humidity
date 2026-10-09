@@ -26,7 +26,7 @@
 
 | # | 条目 | 英文 | 默认 | 说明 |
 | --- | --- | --- | --- | --- |
-| 2 | WiFi联网 | WIFI | 开 | 关闭后设备断开网络，Web 与 MQTT 均不可用。**本地关闭后可在本页重新打开**；远程 `POST /api/settings` 传 `wifiEnabled=0` 会被拒绝并返回 400 |
+| 2 | WiFi联网 | WIFI | 开 | 关闭后设备断开网络，Web 与 MQTT 均不可用。**本地关闭后可在本页重新打开**；远程 `POST /api/settings` 传 `wifiEnabled=0` 会被拒绝并返回 400。联网时本项右侧显示当前连接的 SSID（超长截断）与迷你信号格，方便确认连的是哪张网 |
 | 3 | MQTT上报 | MQTT | 关 | 打开后向 broker 上报状态。需先经 Web 接口配置 `mqttBroker`，broker 为空时打开也不会有流量 |
 | 4 | NTP校时 | NTP | 开 | 关闭则调用 `esp_sntp_stop()`，沿用上次时钟；已同步的时间在断电前保持有效 |
 | 5 | OTA升级 | OTA | 开 | 关闭则 `ArduinoOTA.end()`，设备不再出现在 OTA 端口列表。**关闭后无法远程重新打开**，只能回设置页或重启 |

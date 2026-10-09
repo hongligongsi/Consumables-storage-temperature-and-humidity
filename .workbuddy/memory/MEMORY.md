@@ -19,7 +19,11 @@ ESP32-S3 N16R8 智能耗材仓(温湿度 + 加热 + 排风),PlatformIO + TFT_eSP
   与台账 `BUILD.txt`/`.sha256`,**别手工 cp**
 - 串口回归:`python tools/serial_regression.py --port COM4 --seconds 30`(加 `--require-sensors`
   才要求 AHT20/INA226 在线,未接传感器的板子会失败属预期)
-- CI `.github/workflows/ci.yml` 三 job:固件编译 / 主机端单测 / 文档一致性
+- CI `.github/workflows/ci.yml` 三 job:固件编译 / 主机端单测 / 文档一致性;
+  已在 GitHub runner 上验过(10-09):文档一致性与主机端单测两 job green,固件编译作业
+  耗时最长(首次要下 xtensa 工具链),本机 `pio run` 已通过。
+  `concurrency.cancel-in-progress` 会让新推送顶掉旧运行,整体显示 cancelled 属正常
+- 查 CI 只能走 REST(curl api.github.com/.../actions/runs),本机 **没有 gh CLI**
 - 开发文档入口:`docs/development.md`(2026-10-09 新增)
 
 ## ⚠️ 串口日志分流(排障必读,踩过坑)
@@ -59,3 +63,59 @@ FTDI→COM4(UART0) **只剩 ESP-ROM 与 ESP-IDF 日志**(`entry 0x`、`[E][Prefe
 与 `.workbuddy/` 整棵(记忆日志 / 原理图切片 / 脚本 / `tmp/` 下的设计稿 html 与 png 截图)。
 > 旧策略为「整体忽略 + 逐项放行」,曾明确排除 `tmp/*.png`;用户 2026-10-09 明确要求
 > 「全部文件上传(含 .xxx)」后改为此版。若日后想收紧,只需把 `tmp/*.png` 加回排除项。
+
+## 字库与行尾(2026-10-09 踩坑)
+- genvlw.py 打印的字节是**数据字节数**,头文件大小≈数据×5(0xNN, 文本格式);README/
+  doc_check 标注的是**文件大小**。别把两者混比 —— 曾因此误判字库被缩小
+- autocrlf=true 下 `git checkout` 会把字库头文件转成 CRLF(每行+1B),doc_check 的
+  体积校验会误报;字库保持 genvlw 生成的 LF 版,勿用 git checkout 恢复
+- FaultCode 故障码 F-01…F-06:新增码只能追加在 Count 前;硬保护阈值是派生常量
+  (15℃/1.5 倍),**不加设置项**否则 doc_check 设置项数三方校验会红
+
+## 网络告警通道(2026-10-09)
+- `NetAlert`(ui_model.h)与 `FaultCode` 是**两条互不相干的通道**:W 码只提示
+  不停机,不进故障页不锁状态机;改任何一处都要同步 NET_ALERT_TEXTS 与 W 码表
+- 判定全是「连续 10 次同类失败」(NET_ALERT_STREAK=10,2026-10-09 从 3 提到 10,
+  跨过路由器重启/信号抖动;MQTT≈50s,WiFi≈1~2 分钟);WiFi 关闭/离线/从未配网
+  **刻意不报警**;WiFi 告警
+  优先于 MQTT。MQTT 告警**发不进 MQTT**,远程只能轮询 REST `netAlert` 字段
+- ⚠️ 判「从未配网」只能用 `g_wm.getWiFiSSID()`(读持久化 STA 配置);
+  **`WiFi.SSID()` 读的是"当前已连接的 AP",在 DISCONNECTED 事件里恒为空** ——
+  曾误用它当判据,导致 W-01/W-02 永不触发(2026-10-09 修)
+
+## 故障码/告警编号与有效性(2026-10-09 复查)
+- **显示编号 = 枚举值**(AhtLost=1 → F-01,None=0 只是哨兵)。曾因 controller.h
+  注释写成"下标+1",tft_ui 与 network 的 MQTT event 都多加了 1,整码错位 ——
+  改码时务必核对三处:屏上(tft_ui)、MQTT(event)、README/docs 表格
+- 故障页/告警**有效性判据只能有一份**:AHT20 用 main.cpp 的 `ahtFresh()`
+  (`!isnan && millis()-lastSensorOk<AHT_HOLD_MS`);chamberTemp 读失败会保留旧值,
+  显示侧若只看 `!isnan` 会把旧值当现值,与热控侧判据打架
+- 复位两条路径效果不同:长按 → `clearFault()`(热类故障进安全冷却,保留硬保护
+  计时以立即复锁);关系统 → update() 的 `!systemEnabled_` 分支(直接 Idle)。
+  故障锁定期只放行长按与系统总开关
+
+## 字库覆盖检查(2026-10-09 新增,防漏字)
+- `tools/font_check.py`:源码字面量字符 ⊆ `font_cn*.h` 字形表。**已并入 doc_check.py**
+  (importlib 按路径加载),CI docs 作业自动跑;**只依赖标准库,不需要 PIL/TTF**
+- 缺字的两种表现:**①码位不在表里 → 空心方框**(Smooth_font.cpp 的 else 分支 drawRect,
+  且只推进 spaceWidth+1、textWidth 同算 → 居中文本会整体偏移,现场像"排版错乱");
+  **②码位在表里但位图为空 → 静默不画**。加中文文案后必须重跑 genvlw.py
+- 扫描器刻意**独立实现**,不得与 genvlw.py 的 `collect_literal_chars` 合并(同逻辑自查
+  等于没查);font_check 额外看得懂 `R"(...)"` 与 `\uXXXX`/`\xNN`,genvlw 看不懂
+- genvlw.py 是确定性的:重跑后与仓库字库逐字节一致 → 可用来验证"字库是否与源码同步"
+  (先 `cp` 备份再 `cmp`;别用 git checkout,见上一条 autocrlf 坑)
+- 写脚本文档字符串时若要写 `\uXXXX` / `\xNN`,module docstring 必须是 `r"""..."""`
+  否则整个文件 SyntaxError(`compileall -q tools` 会拦住)
+- `BASE_CJK` 是**静态**兜底表,会随文案过期:当前 41 个字无引用,两字号合计白占 38 KB
+  Flash(font_check 会告警列出)。要精简就删 BASE_CJK 里的字再重生成,并跑 doc_check
+
+## WiFi 信号格(2026-10-09)
+- 主屏 4 格信号条的数据链:`NetworkManager::rssiDbm()` → `UiSnapshot::rssi`(int8_t,
+  未联网为哨兵 0)→ `pure::rssiBars()` → tft_ui 画 4 格
+- **阈值 -55/-65/-75 写在三处**:`include/pure_logic.h`(固件)、`include/web_page.h`
+  的 setBars(网页)、`tools/ui_preview.html`(模拟器)—— 改一处必须三处一起改
+- `kRssiUnknown = 0` 是哨兵(0 dBm 不会出现);`WiFi.RSSI()` 异常返回 ≥0 或 ≤-128 也按无信号
+- 绘制参数(固件与模拟器必须一致):条宽 3 / 间隙 2 / 起点 wx-9 / 底边 wy+10 / 高 4,7,10,13;
+  ≤1 格红、2 格黄、≥3 格绿;断网四格全空 + 红斜杠。底边 56,下方卡片自 y=62 起,别下移
+- UI 布局约定:主屏左侧状态行 y=46,X 方向从 15(状态点)→24(状态文字)→图标,长度按
+  `g.textWidth(stateText)` 累加;改文案长度会挤动右侧图标位置

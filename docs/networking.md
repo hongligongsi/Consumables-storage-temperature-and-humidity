@@ -56,7 +56,9 @@ curl -X POST http://<设备IP>/api/wifi/reset
 
 ```json
 {
-  "material": "PLA", "materialIndex": 0, "state": "Printing",
+  "material": "PLA", "materialIndex": 0, "state": "Printing", "fault": "none",
+  "netAlert": "none",
+  "lastFault": "BoardOverTemp", "faultCount": 3, "lastFaultEpoch": 1760000000,
   "chamberC": 38.50, "heaterBoardC": 55.20, "humidity": 22.10,
   "currentA": 4.30, "voltageV": 24.10,
   "exhaustPercent": 40, "heatPercent": 65, "heaterFan": 100,
@@ -70,6 +72,48 @@ curl -X POST http://<设备IP>/api/wifi/reset
 
 `state` 取值：`Idle` / `Detecting` / `Preheat` / `Printing` / `Cooling` /
 `Fault`。`net` 为 `online` / `offline`。
+
+`rssi` 为 STA 的接收信号强度（dBm），未联网时为 `null`。它与屏上主屏的 4 格信号条同源：
+后者由 `NetworkManager::rssiDbm()` 取值、`pure::rssiBars()` 折算（`≥ -55` 四格、`≥ -65`
+三格、`≥ -75` 两格、更弱一格），与 Web 管理页的 `setBars` 用同一套阈值。
+
+`fault` 为故障原因码短名，非故障态恒为 `none`，其余取值为 `AhtLost` /
+`NtcLost` / `BoardOverTemp` / `ChamberOverTemp` / `OverCurrent` / `InaLost`
+（含义见 [control.md](control.md) 的硬保护一节）。
+
+`lastFault` / `faultCount` / `lastFaultEpoch` 为 **NVS 故障记忆**（排障历史，
+与 `fault` 的"当前是否在故障"互不相干）：最近一次锁定的故障码短名（含已解除
+的，从未锁过为 `none`）、累计锁定次数、最近一次锁定时刻（epoch 秒，时钟不可
+用时为 `0`）。热类故障断电重启后会恢复 `Fault` 锁定，详见
+[control.md](control.md) 的「NVS 故障记忆」一节。
+
+`netAlert` 为网络告警码短名，无告警恒为 `none`。与故障走的是两条互不相干的
+通道：网络问题**只提示不停机**，不进故障页、不锁状态机，离线打印照常。设备
+端的呈现是主屏日期位置换成一行告警文案、系统设置页标题栏显示 `W-0x + 文案`。
+
+| 码    | 短名                | 含义          | 触发条件                                     |
+| ---- | ----------------- | ----------- | ---------------------------------------- |
+| W-01 | `WifiAuthFail`    | WiFi 认证失败   | 认证/关联类断开原因连续 10 次（密码错或加密方式不匹配）           |
+| W-02 | `WifiNoAp`        | 找不到 WiFi    | `NO_AP_FOUND` 连续 10 次（SSID 错或超出覆盖范围）      |
+| W-03 | `MqttAuthFail`    | MQTT 认证失败   | CONNACK 返回 4/5（broker 拒绝匿名或凭据错）连续 10 次 |
+| W-04 | `MqttUnreachable` | MQTT 连接超时   | 其余失败原因连续 10 次（地址/端口/网络不通；含 rc=2 客户端 ID 冲突） |
+
+阈值 10 次是为了滤掉路由器重启、信号抖动这类短时断开：一次路由器重启往往拖出
+好几个断开事件，3 次挡不住；10 次（MQTT 每 5 s 重试一次，约 50 s；WiFi 侧约
+1~2 分钟）才能确认是真连不上。连上即自动清除；功能开关关闭、离线运行、首次配网
+（从未存过凭据）都不算异常。改过 MQTT 参数后旧告警立即作废清零。WiFi 告警优先
+于 MQTT —— 前者是根因，后者多半是连带结果。
+
+两点行为限制需知悉：其一，MQTT 的重连在**加热中会被跳过**（预热/打印或加热
+占空比非 0 时不重连，避免与 PID 抢资源），因此打印过程中 broker 掉线，W-03/W-04
+要等打印结束、重连恢复尝试并连续失败 10 次后才会出现；其二，告警本身**发不进
+MQTT**。
+
+两点排障提示：告警本身**发不进 MQTT** —— `state` 主题虽带 `netAlert` 字段，
+但 broker 连不上（W-03/W-04）时发布不出去，WiFi 断了（W-01/W-02）时整个网络
+都不可用，所以远程只能在恢复后从 `/api/state` 或 `state` 主题里看到；串口日志
+`[NET] alert W-0x ...` 只出现在 USB-CDC 应用日志口，COM4（UART0）上只有
+ESP-ROM/IDF 日志。
 
 ### `GET /api/settings`
 
@@ -174,7 +218,9 @@ curl -X POST http://192.168.1.50/api/profile -d "index=0&minC=0&maxC=40&fanMin=3
 `state` 每 5 秒上报一次并 retain，新订阅者能立刻拿到最后状态。
 
 `event` 在**状态机跃迁**时上报（载荷为 `Idle`/`Preheat`/`Printing` 等 state
-名），也在下发命令成功和 MQTT 上线时上报。
+名），也在下发命令成功和 MQTT 上线时上报。进入故障时载荷改为
+`Fault F-0x <故障码名>`（如 `Fault F-03 BoardOverTemp`），比只报一个 `Fault`
+更能直接指导排查。
 
 ### 命令
 

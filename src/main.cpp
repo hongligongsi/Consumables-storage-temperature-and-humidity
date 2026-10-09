@@ -43,13 +43,25 @@ float supplyVoltage = NAN;               // INA226 总线电压(V)
 Ina226Sensor ina226;
 bool inaAvailable = false;    // INA226 是否在线
 uint32_t lastSensorOk = 0;    // AHT20 最近一次成功读数时刻
+// AHT20 读数的保持窗口:读取失败时 chamberTemp/humidity 会保留上次成功的值,
+// 用这段时间顶住偶发 I²C 失败,避免加热被单次读失败抖断。窗口外一律按无效
+// 处理(见 ahtFresh())。
+constexpr uint32_t AHT_HOLD_MS = 3000;
 ChamberController controller; // 热控状态机 + 双 PID
 UiModel ui;                   // UI 状态机
 SettingsStore settingsStore;  // NVS 持久化
 SystemSettings settings;      // 当前系统设置(内存中的唯一份)
+// NVS 故障记忆:最近一次故障的档案。锁故障时写、解除时只清 latched,
+// 断电重启后热类故障据此恢复 Fault 锁定(见 setup 与 updateThermalControl)。
+FaultRecord faultRecord;
+// 上一个热控周期看到的故障码,用于检测 锁定/解除 的边沿;setup 恢复锁定后
+// 会先与 controller.faultCode() 对齐,避免把"恢复"误记成一次新故障。
+FaultCode lastSeenFault = FaultCode::None;
 TftUi tftUi;                  // 显示层
-Outputs latestOutputs{0,     0,     false,
-                      false, false, ChamberState::Idle}; // 最近一次执行器输出
+// 最近一次执行器输出;末尾 fault 显式写成 None —— 漏写会被隐式零初始化,
+// 值恰好也对,但那样等于把正确性押在"枚举 0 就是 None"上。
+Outputs latestOutputs{0,      0,     false, false, false, ChamberState::Idle,
+                      FaultCode::None};
 uint32_t lastUiActivityMs = 0, buzzerOffMs = 0; // 最近操作时刻 / 蜂鸣器停止时刻
 bool automaticLight = false; // 打印联动自动开关的灯(区别于手动灯)
 ChamberState previousControlState = ChamberState::Idle; // 上周期状态(边沿检测)
@@ -239,16 +251,27 @@ void readSensors() {
   }
 }
 
+// AHT20 读数是否还算"新鲜"。读取失败时 chamberTemp/humidity 保留上次成功的
+// 值,用 AHT_HOLD_MS 顶住偶发 I²C 失败(加热不至于因为单次读失败就断);超出
+// 窗口即视为无效。
+// 热控与界面快照**必须共用这一个判据**:若界面那边只看 !isnan(),AHT20 挂掉后
+// 会一直拿旧值当"当前温度"显示,于是出现"故障页写着 AHT20 掉线、那一行的实测
+// 值却还是温度、指示灯还是绿的"这种自相矛盾。
+bool ahtFresh() {
+  return !isnan(chamberTemp) && millis() - lastSensorOk < AHT_HOLD_MS;
+}
+
 // 每 50ms 执行的热控节拍:组装 Readings → 跑控制器状态机 → 处理打印开始/
 // 结束的灯光蜂鸣联动 → 叠加手动灯/手动强排等 UI 覆盖 → 把 Outputs 写硬件。
 void updateThermalControl() {
-  const Readings in{chamberTemp,
+  const bool ahtOk = ahtFresh();
+  const Readings in{ahtOk ? chamberTemp : NAN,
                     heaterBoardTemp,
                     heaterCurrentA,
                     supplyVoltage,
                     temperatureRead(),
                     digitalRead(Pin::PIR) == HIGH,
-                    !isnan(chamberTemp) && millis() - lastSensorOk < 3000,
+                    ahtOk,
                     !isnan(heaterBoardTemp),
                     !isnan(heaterCurrentA)};
   Outputs out = controller.update(in, millis());
@@ -271,6 +294,29 @@ void updateThermalControl() {
   if (ui.settings().manualExhaust)
     out.exhaustPercent = 100;
   latestOutputs = out;
+  // ---- NVS 故障记忆:锁定/解除的边沿落盘 ----
+  // 锁定:记码+置 latched+累计次数+时刻;解除(长按复位/关系统)只清
+  // latched,码与次数留作排障历史,REST /api/state 的 lastFault 字段可查。
+  // NVS 写失败只打日志不重试 —— 记忆是安全增强而非前提,别让它拖住热控。
+  if (out.fault != lastSeenFault) {
+    if (out.fault != FaultCode::None) {
+      faultRecord.code = static_cast<uint8_t>(out.fault);
+      faultRecord.latched = true;
+      faultRecord.count =
+          faultRecord.count < 0xffff ? faultRecord.count + 1 : 0xffff;
+      faultRecord.epoch = static_cast<uint32_t>(currentEpoch());
+      const bool saved = settingsStore.saveFaultRecord(faultRecord);
+      Serial.printf("[FAULT] F-%02u latched, NVS %s (total %u)\n",
+                    (unsigned)out.fault, saved ? "saved" : "SAVE FAILED",
+                    (unsigned)faultRecord.count);
+    } else {
+      faultRecord.latched = false;
+      const bool saved = settingsStore.saveFaultRecord(faultRecord);
+      Serial.printf("[FAULT] latch released, NVS %s (history kept)\n",
+                    saved ? "saved" : "SAVE FAILED");
+    }
+    lastSeenFault = out.fault;
+  }
   setHotPower(out.heaterPercent);
   ledcWrite(HOT_FAN_PWM_CHANNEL, out.heaterFan
                                      ? lroundf(settings.heaterFanPercent *
@@ -359,16 +405,35 @@ void setup() {
   ledcWrite(BACKLIGHT_PWM_CHANNEL,
             lroundf(settings.brightness * ((1 << PWM_BITS) - 1) / 100.0f));
   controller.begin(millis());
+  // ---- NVS 故障记忆:热类故障断电重启后恢复锁定,防止拔电绕过保护 ----
+  faultRecord = settingsStore.loadFaultRecord();
+  if (faultRecord.latched && faultRecord.code != 0) {
+    const FaultCode code = static_cast<FaultCode>(faultRecord.code);
+    if (ChamberController::persistsAcrossReboot(code)) {
+      controller.restoreFault(code);
+      Serial.printf("[FAULT] F-%02u lock restored after reboot "
+                    "(total %u latches)\n",
+                    (unsigned)faultRecord.code, (unsigned)faultRecord.count);
+    } else {
+      // 传感器掉线类不恢复:开机本来就会重新检测,锁定只留历史记录。
+      faultRecord.latched = false;
+      settingsStore.saveFaultRecord(faultRecord);
+    }
+  }
+  // 对齐边沿基准:若上面恢复了锁定,首个热控周期不再当作"新故障"计数。
+  lastSeenFault = controller.faultCode();
   lastUiActivityMs = millis();
   // ---- 显示层(含渲染任务)与联网子系统,放最后启动 ----
   tftUi.begin();
   network.begin(controller, ui,
-                settings); // 联网:WiFi 配网门户 + Web/MQTT/NTP/OTA
+                settings,
+                faultRecord); // 联网:WiFi 配网门户 + Web/MQTT/NTP/OTA
+                              // (faultRecord 供 /api/state 回传故障记忆)
 }
 
 // 所有输入来源(编码器/触摸/串口)的统一出口。校准流程中先截获按键采集
 // 两点;否则交给 UiModel,再处理它产生的边沿请求(保存耗材/保存设置/
-// 进入校准/恢复出厂),按键音也在这里统一播放。
+// 进入校准/恢复出厂/解除故障锁定),按键音也在这里统一播放。
 void dispatchUiAction(UiAction action) {
   lastUiActivityMs = millis();
   if (touchCalibrationActive) {
@@ -403,6 +468,13 @@ void dispatchUiAction(UiAction action) {
     return;
   }
   ui.apply(action, controller);
+  // 故障页长按编码器 → UiModel 只置一个边沿标志,真正的复位动作在这里执行:
+  // 状态机归 controller 所有,输入回调不该直接改它。clearFault() 会清故障码
+  // 与 PID 历史,热类故障还会先进入安全冷却姿态(保持排风),不会瞬间停风。
+  if (ui.takeFaultResetRequest()) {
+    controller.clearFault();
+    Serial.println("Fault: cleared by encoder long press");
+  }
   applyRuntimeSettings();
   if (settings.keySound)
     startBuzzer(35);
@@ -565,6 +637,27 @@ void pollConsoleUi() {
   case 'h':
     action = UiAction::EncoderLongPress;
     break;
+  // 'i' —— I²C 总线扫描:用来判断 "AHT20/INA226 not detected" 是总线级还是
+  // 单器件级故障。0x08–0x77 是 7 位地址的可用区间(代码里的 8..119 等价于
+  // 0x08..0x77,0x00–0x07 与 0x78–0x7F 为保留地址)。逐地址发一次空写,
+  // endTransmission() 返回 0 表示从机应答(ACK)了地址。
+  //   一个 ACK 都没有 → 总线问题:上拉电阻、3V3 供电或 SDA/SCL 接反;
+  //   只有 0x38(或只有 0x40)→ 单颗器件问题(I²C 上 AHT20=0x38,INA226=0x40)。
+  case 'i': {
+    Serial.printf("I2C scan SDA=%d SCL=%d (0x08-0x77):\n", Pin::I2C_SDA,
+                  Pin::I2C_SCL);
+    uint8_t found = 0;
+    for (uint8_t addr = 8; addr < 120; ++addr) {
+      Wire.beginTransmission(addr);
+      if (Wire.endTransmission() == 0) { // 0 = 该地址收到 ACK
+        Serial.printf("  0x%02X ACK\n", addr);
+        ++found;
+      }
+    }
+    if (found == 0)
+      Serial.println("  no ACK: check pull-ups / 3V3 supply / SDA-SCL swap");
+    return;
+  }
   case 'W': // 打印联网状态,便于调试
     Serial.printf("NET: state=%d ip=%s time=%s mqtt=%d\n", (int)network.state(),
                   network.ipString().c_str(), network.timeString().c_str(),
@@ -683,19 +776,30 @@ void loop() {
   static uint32_t lastScreen = 0;
   if (millis() - lastScreen >= 500) { // 500ms:生成界面快照并渲染
     lastScreen = millis();
-    Readings in{chamberTemp,           heaterBoardTemp,
-                heaterCurrentA,        supplyVoltage,
-                temperatureRead(),     digitalRead(Pin::PIR) == HIGH,
-                !isnan(chamberTemp),   !isnan(heaterBoardTemp),
+    // 与热控节拍用同一个有效性判据(ahtFresh),并且无效时把值也传成 NAN:
+    // 显示层的约定是 NaN 显示 "--",这样 AHT20 掉线后屏上不会继续挂着旧温度。
+    const bool ahtOk = ahtFresh();
+    Readings in{ahtOk ? chamberTemp : NAN,  heaterBoardTemp,
+                heaterCurrentA,            supplyVoltage,
+                temperatureRead(),         digitalRead(Pin::PIR) == HIGH,
+                ahtOk,                     !isnan(heaterBoardTemp),
                 !isnan(heaterCurrentA)};
     UiSnapshot screen = ui.snapshot(controller, in, latestOutputs);
     screen.touchCalibrationActive = touchCalibrationActive;
     screen.touchCalibrationStep = touchCalibrationStep;
-    screen.humidity = humidity;
+    screen.humidity = ahtOk ? humidity : NAN;
     // 日期时间与生效配色由 main.cpp 填充:ui_model 不反向依赖 network.h。
     // 时钟优先 NTP,断网/未同步时回退上次手动校时值(main.cpp 的 currentEpoch)。
     formatClock(screen.clock, sizeof(screen.clock));
     screen.networkConnected = network.connected();
+    // 信号强度:屏上原本只有"通/断"二态图标(networkConnected),WiFi 弱到一格
+    // 也看不出来。这里补上真实 dBm,由界面折算成 4 格信号条;未联网时为哨兵 0。
+    screen.rssi = network.rssiDbm();
+    // 当前连接的 SSID:系统设置页 WiFi 项显示网络名用;未联网为空串。
+    strlcpy(screen.ssid, network.ssidString().c_str(), sizeof(screen.ssid));
+    // 网络告警(WiFi/MQTT 认证失败等)只作提示,不参与热控联锁、不停机;
+    // 判定与计数在 network.cpp,这里只搬运给显示层。
+    screen.netAlert = network.alert();
     // 芯片 ID 恒定,首次读取后缓存,避免每 500ms 重新构造 String。
     static char chipIdCache[20] = "";
     if (!chipIdCache[0])
@@ -703,7 +807,7 @@ void loop() {
     strlcpy(screen.chipId, chipIdCache, sizeof(screen.chipId));
     screen.theme = resolveTheme();
     network.updateReadings(in, latestOutputs,
-                           humidity); // Web/MQTT 据此返回数据
+                           ahtOk ? humidity : NAN); // Web/MQTT 据此返回数据
     // OTA 期间在屏幕底部叠加升级进度条(网络子系统→显示层桥接)。
     tftUi.setOtaProgress(network.otaActive(), network.otaProgress());
     tftUi.render(screen);

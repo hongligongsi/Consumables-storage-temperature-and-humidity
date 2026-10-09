@@ -85,4 +85,27 @@ inline uint8_t effectiveTheme(uint8_t rawTheme, bool clockValid,
                                                     : kThemeBlueNight;
 }
 
+// ------------------------------ WiFi 信号格数 ------------------------------
+// RSSI(dBm) → 信号格数 0..4。阈值与内置 Web 管理页(include/web_page.h 的
+// setBars)以及浏览器模拟器 tools/ui_preview.html 用的是**同一套** —— 三处各写
+// 一遍必然跑偏(故障码编号就吃过这个亏),改这里要三处一起改。
+constexpr int kRssiExcellent = -55; // ≥ 此值:4 格
+constexpr int kRssiGood = -65;      // ≥ 此值:3 格
+constexpr int kRssiFair = -75;      // ≥ 此值:2 格
+// 哨兵:0 dBm 在实际使用中不会出现,用它表示"未联网/未知",省一个 bool。
+// 正值同样按无信号处理,避免调用方喂进非法值时画出满格。
+constexpr int kRssiUnknown = 0;
+
+inline uint8_t rssiBars(int rssi) {
+  if (rssi >= kRssiUnknown)
+    return 0;
+  if (rssi >= kRssiExcellent)
+    return 4;
+  if (rssi >= kRssiGood)
+    return 3;
+  if (rssi >= kRssiFair)
+    return 2;
+  return 1; // 再弱也给一格:至少能看出"还连着",与全空的断网态区分开
+}
+
 } // namespace pure

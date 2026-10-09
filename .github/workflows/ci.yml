@@ -79,7 +79,8 @@ jobs:
       - name: 检查 tools/ 下的脚本可解析
         run: python -m compileall -q tools
 
-      # 拦住文档漂移:README 树里的行数/体积、设置项数、固件台账三方一致性。
+      # 拦住文档漂移:README 树里的行数/体积、设置项数、固件台账三方一致性、
+      # 字库覆盖(源码用到的字是否都在 font_cn*.h 里,见 tools/font_check.py)。
       # 这类数字没有守护机制就会悄悄跑偏(README 曾标 ui_model.h 194 行、实际 230 行)。
       - name: 校验文档与产物
         run: python tools/doc_check.py

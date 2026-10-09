@@ -39,6 +39,98 @@ NetworkManager network; // 全局单例(main.cpp 直接引用)
 static const char *kApSsid = "FilamentChamber-Setup"; // 无凭据时的 AP 热点名
 static const uint32_t MQTT_PUBLISH_MS = 5000;         // state 周期上报间隔 5s
 static const uint32_t MQTT_RECONNECT_MS = 5000;       // MQTT 断线重连节流 5s
+// 连续失败多少次才把网络告警显示到屏上。取 10 而不是 1:路由器重启、信号
+// 抖动、DHCP 续租都会造成短时断开,连报会把正常重连误判成故障;一次路由器
+// 重启(含信道扫描、DHCP 重新获取)往往拖出好几个断开事件,3 次挡不住。
+// MQTT 每 5s 重试一次,10 次≈50s;WiFi 侧重连由协议栈自动进行,10 次断开
+// 大约对应 1~2 分钟仍连不上,足以跨过正常的瞬断窗口。
+static const uint8_t NET_ALERT_STREAK = 10;
+
+// WiFi 断开原因码 → 是否属于"凭据/认证"类问题。这些原因出现说明 SSID 找得到
+// 但握不上手,基本就是密码错或加密方式(WPA2/WPA3)不匹配。
+static bool isWifiAuthReason(uint8_t reason) {
+  switch (static_cast<wifi_err_reason_t>(reason)) {
+  case WIFI_REASON_AUTH_EXPIRE:
+  case WIFI_REASON_NOT_AUTHED:
+  case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+  case WIFI_REASON_AUTH_FAIL:
+  case WIFI_REASON_ASSOC_FAIL:
+  case WIFI_REASON_HANDSHAKE_TIMEOUT:
+  case WIFI_REASON_CONNECTION_FAIL:
+  case WIFI_REASON_ASSOC_EXPIRE:
+    return true;
+  default:
+    return false;
+  }
+}
+
+// 告警码 → 英文短名。与 ui_model.h 的 NetAlert 枚举一一对应(屏上文案在
+// tft_ui.cpp,这里只服务串口日志与 REST 字段,故不含中文)。
+static const char *netAlertName(NetAlert alert) {
+  switch (alert) {
+  case NetAlert::WifiAuthFail:
+    return "WifiAuthFail";
+  case NetAlert::WifiNoAp:
+    return "WifiNoAp";
+  case NetAlert::MqttAuthFail:
+    return "MqttAuthFail";
+  case NetAlert::MqttUnreachable:
+    return "MqttUnreachable";
+  case NetAlert::None:
+  case NetAlert::Count:
+    break;
+  }
+  return "none";
+}
+
+// 对外暴露当前有效的告警短名(WiFi 告警优先于 MQTT,见 NetworkManager::alert)。
+const char *NetworkManager::alertName() const { return netAlertName(alert()); }
+
+// 屏上信号格的数据源。REST/MQTT 的 "rssi" 字段早就有了,屏上此前只有通/断二态。
+// 未联网时返回哨兵 0(0 dBm 不会出现),由 pure::rssiBars() 折算成 0 格。
+int8_t NetworkManager::rssiDbm() const {
+  if (!connected())
+    return pure::kRssiUnknown;
+  const int rssi = WiFi.RSSI();
+  // RSSI() 在异常时可能返回 0;按无信号处理,免得画成满格误导。
+  return (rssi < 0 && rssi > -128) ? static_cast<int8_t>(rssi)
+                                   : static_cast<int8_t>(pure::kRssiUnknown);
+}
+
+// 屏上 SSID 的数据源(系统设置页 WiFi 项)。connected() 已含 wifiEnabled=
+// false 的离线情形,那里自然返回空串,渲染层回退到 开/关 文案。
+String NetworkManager::ssidString() const {
+  return connected() ? WiFi.SSID() : String();
+}
+
+// 告警状态迁移:只在跨过阈值(出告警)或恢复时打日志,不每轮刷串口。
+void NetworkManager::setWifiAlert(NetAlert alert) {
+  if (wifiAlert_ == alert)
+    return;
+  wifiAlert_ = alert;
+  if (alert == NetAlert::None)
+    Serial.println("[NET] WiFi alert cleared");
+  else
+    // 日志里的编号与屏上一致(W-01 认证失败 / W-02 找不到 AP),方便对着屏幕复述。
+    Serial.printf("[NET] alert W-0%u %s (WiFi), %u consecutive failures\n",
+                  alert == NetAlert::WifiAuthFail ? 1u : 2u, netAlertName(alert),
+                  (unsigned)(alert == NetAlert::WifiAuthFail
+                                 ? wifiAuthFailStreak_
+                                 : wifiNoApStreak_));
+}
+
+void NetworkManager::setMqttAlert(NetAlert alert) {
+  if (mqttAlert_ == alert)
+    return;
+  mqttAlert_ = alert;
+  if (alert == NetAlert::None)
+    Serial.println("[NET] MQTT alert cleared");
+  else
+    // 同上:W-03 认证失败 / W-04 连不上 broker。
+    Serial.printf("[NET] alert W-0%u %s (MQTT), %u consecutive failures\n",
+                  alert == NetAlert::MqttAuthFail ? 3u : 4u, netAlertName(alert),
+                  (unsigned)mqttFailStreak_);
+}
 
 // ---------- 动作名 <-> UiAction 映射 ----------
 struct ActionMap {
@@ -95,6 +187,28 @@ static bool parseBoolStrict(const String &value, bool &out) {
     return true;
   }
   return false;
+}
+
+// 故障码 → 上报用短名:REST 的 fault 字段与 MQTT 的 event 主题共用。
+// 名称与固件内 FaultCode 枚举同名,便于把线上数据直接对回代码;无故障为 "none"。
+static const char *faultName(FaultCode code) {
+  switch (code) {
+  case FaultCode::AhtLost:
+    return "AhtLost";
+  case FaultCode::NtcLost:
+    return "NtcLost";
+  case FaultCode::BoardOverTemp:
+    return "BoardOverTemp";
+  case FaultCode::ChamberOverTemp:
+    return "ChamberOverTemp";
+  case FaultCode::OverCurrent:
+    return "OverCurrent";
+  case FaultCode::InaLost:
+    return "InaLost";
+  case FaultCode::None:
+    break;
+  }
+  return "none";
 }
 
 // JSON 字符串转义:处理引号/反斜杠/控制字符,0x20 以下不可打印字符直接丢弃。
@@ -204,11 +318,12 @@ static void onMqttMessage(char *topic, byte *payload, unsigned int len) {
 // 开机绑定控制器/UI/设置三个外部对象,注册 WiFi 事件,按 wifiEnabled 决定
 // 直接停在 Off 还是走静态 IP 配置 + WiFiManager 配网流程。
 void NetworkManager::begin(ChamberController &controller, UiModel &ui,
-                           SystemSettings &settings) {
+                           SystemSettings &settings, FaultRecord &faultRecord) {
   controller_ = &controller;
   ui_ = &ui;
   settings_ = settings;
   sharedSettings_ = &settings;
+  faultRecord_ = &faultRecord;
   g_self = this;
   // 固件有效性确认:启动进入这里说明本版本已稳定(未在看门狗/早期崩溃前挂掉),
   // 标记应用有效,取消失败回滚标志。若新版在 setup 早期崩溃,引导器会自动
@@ -311,6 +426,10 @@ void NetworkManager::loop() {
   // 处理 wifi 任务置的事件标志。
   if (wifiJustConnected_) {
     wifiJustConnected_ = false;
+    // 连上即证明凭据与 AP 都没问题,连带把两个失败计数与 WiFi 告警清零。
+    wifiAuthFailStreak_ = 0;
+    wifiNoApStreak_ = 0;
+    setWifiAlert(NetAlert::None);
     if (!mdnsStarted_) {
       mdnsStarted_ = MDNS.begin(hostname());
       if (mdnsStarted_)
@@ -333,6 +452,32 @@ void NetworkManager::loop() {
                   (unsigned)lastDisconnectReason_,
                   WiFi.disconnectReasonName(
                       static_cast<wifi_err_reason_t>(lastDisconnectReason_)));
+    // 分类计数:只统计同一种原因连续出现的次数,原因一变就重新计
+    // (例如"找不到 AP"→"认证失败"说明 SSID 已改对,不该继续累加)。
+    // 从未配置过凭据(首次上电、恢复出厂)时连不上是必经流程而不是故障 ——
+    // 用户正在配网门户里填资料,不能弹告警吓人。
+    // 判据必须用 WiFiManager 的**持久化**凭据:不能用 WiFi.SSID(),它读的是
+    // "当前已连接的 AP",而这里正处在刚断开的时刻,恒为空 —— 那样会让整段
+    // 分类逻辑永远走不进计数分支(等于 W-01/W-02 永不触发)。
+    if (g_wm.getWiFiSSID().isEmpty()) {
+      wifiNoApStreak_ = 0;
+      wifiAuthFailStreak_ = 0;
+    } else if (lastDisconnectReason_ == WIFI_REASON_NO_AP_FOUND) {
+      wifiNoApStreak_ = wifiNoApStreak_ < 0xff ? wifiNoApStreak_ + 1 : 0xff;
+      wifiAuthFailStreak_ = 0;
+      if (wifiNoApStreak_ >= NET_ALERT_STREAK)
+        setWifiAlert(NetAlert::WifiNoAp);
+    } else if (isWifiAuthReason(lastDisconnectReason_)) {
+      wifiAuthFailStreak_ =
+          wifiAuthFailStreak_ < 0xff ? wifiAuthFailStreak_ + 1 : 0xff;
+      wifiNoApStreak_ = 0;
+      if (wifiAuthFailStreak_ >= NET_ALERT_STREAK)
+        setWifiAlert(NetAlert::WifiAuthFail);
+    } else {
+      // 其它原因(路由器重启、信道切换、掉电…)属于正常重连,不报警。
+      wifiNoApStreak_ = 0;
+      wifiAuthFailStreak_ = 0;
+    }
   }
 
   // 服务器仅在 STA 连上、配置门户已关闭后处理请求，因此可安全使用标准 80 端口。
@@ -342,6 +487,13 @@ void NetworkManager::loop() {
     ArduinoOTA.handle();
 
   // MQTT 轮询与重连。
+  // 功能未启用、broker 未填或根本没联网时,连不上属预期,不报警:顺手清掉
+  // 关开关之前留下的告警,免得屏上一直挂着一条已无法恢复的提示。
+  if (!settings_.mqttEnabled || !settings_.mqttBroker[0] ||
+      WiFi.status() != WL_CONNECTED) {
+    mqttFailStreak_ = 0;
+    setMqttAlert(NetAlert::None);
+  }
   if (settings_.mqttEnabled && settings_.mqttBroker[0] &&
       WiFi.status() == WL_CONNECTED) {
     if (!mqttConfigured_)
@@ -361,6 +513,8 @@ void NetworkManager::loop() {
               hostname(), nullptr, nullptr,
               (String(settings_.mqttTopicPrefix) + "/online").c_str(), 1, true,
               "0")) {
+        mqttFailStreak_ = 0;
+        setMqttAlert(NetAlert::None);
         const String cmdTopic = String(settings_.mqttTopicPrefix) + "/cmd";
         g_mqtt.subscribe(cmdTopic.c_str());
         const String onlineTopic =
@@ -368,6 +522,23 @@ void NetworkManager::loop() {
         g_mqtt.publish(onlineTopic.c_str(), "1", true);
         publishEvent("online");
         Serial.printf("[MQTT] connected, sub %s\n", cmdTopic.c_str());
+      } else {
+        // g_mqtt.state() 即失败原因:CONNACK 返回码(4=凭据错、5=未授权)或
+        // PubSubClient 的负值错误(-4 超时、-2 TCP 连不上、-3 连接丢失)。
+        // 以前这里完全静默,连不上时既无串口日志也无屏上提示,只能靠猜。
+        const int rc = g_mqtt.state();
+        mqttFailStreak_ = mqttFailStreak_ < 0xff ? mqttFailStreak_ + 1 : 0xff;
+        Serial.printf("[MQTT] connect failed rc=%d (%u in a row)\n", rc,
+                      (unsigned)mqttFailStreak_);
+        if (mqttFailStreak_ >= NET_ALERT_STREAK) {
+          // 只有"凭据/授权"类才提示认证失败。BAD_CLIENT_ID(2)是客户端 ID
+          // 冲突(多台设备用同一个 ID 互相顶下线),改密码解决不了,归到
+          // "连不上"更贴合实际处置办法。
+          setMqttAlert((rc == MQTT_CONNECT_BAD_CREDENTIALS ||
+                        rc == MQTT_CONNECT_UNAUTHORIZED)
+                           ? NetAlert::MqttAuthFail
+                           : NetAlert::MqttUnreachable);
+        }
       }
     }
   }
@@ -378,8 +549,20 @@ void NetworkManager::loop() {
     lastChamberState_ = cur;
   } else if (cur != lastChamberState_) {
     if (settings_.mqttEnabled && WiFi.status() == WL_CONNECTED &&
-        g_mqtt.connected())
-      publishEvent(stateName((ChamberState)cur));
+        g_mqtt.connected()) {
+      // 故障态优先上报"故障码 + 原因",比只发一个 "Fault" 更能直接指导排查。
+      // 编号用枚举值本身(AhtLost=1 → "F-01"),与屏上编号、文档表格一致,
+      // 不要 +1 —— 曾经这里与 tft_ui 都多加了 1,报出来的码整体错一位。
+      if (outputs_.state == ChamberState::Fault &&
+          outputs_.fault != FaultCode::None) {
+        char event[48];
+        snprintf(event, sizeof(event), "Fault F-%02u %s",
+                 (unsigned)static_cast<uint8_t>(outputs_.fault),
+                 faultName(outputs_.fault));
+        publishEvent(event);
+      } else
+        publishEvent(stateName((ChamberState)cur));
+    }
     lastChamberState_ = cur;
   }
 
@@ -429,6 +612,10 @@ void NetworkManager::onSettingsChanged(const SystemSettings &settings) {
       WiFi.disconnect(true);
       state_ = NetState::Off;
     }
+    // 主动离线不是异常:清掉告警与计数,否则屏上会一直挂着一条提示。
+    setWifiAlert(NetAlert::None);
+    setMqttAlert(NetAlert::None);
+    wifiAuthFailStreak_ = wifiNoApStreak_ = mqttFailStreak_ = 0;
     return;
   }
   // 本地关掉 WiFi 后又打开:重新拉起配网流程。否则 state_ 一直停在 Off,
@@ -460,6 +647,10 @@ void NetworkManager::onSettingsChanged(const SystemSettings &settings) {
     if (g_mqtt.connected())
       g_mqtt.disconnect();
     mqttConfigured_ = false;
+    // 用户刚改过参数,旧告警的判据已经作废,清零重新观察(改了 broker 还挂着
+    // 旧地址的"连不上"提示会误导)。
+    mqttFailStreak_ = 0;
+    setMqttAlert(NetAlert::None);
   }
   if (settings_.mqttEnabled && settings_.mqttBroker[0] &&
       WiFi.status() == WL_CONNECTED && !mqttConfigured_)
@@ -1095,6 +1286,25 @@ String NetworkManager::buildStateJson() const {
   json += ui_ ? String((unsigned)ui_->materialIndex()) : String("0");
   json += F(",\"state\":\"");
   json += stateName(o.state);
+  json += F("\",\"fault\":\"");
+  json += faultName(o.fault);
+  // 网络告警码(非阻塞提示):断网/离线时远端取不到,但只要 WiFi 通就能看到
+  // MQTT 认证失败之类的根因,不必连串口。
+  json += F("\",\"netAlert\":\"");
+  json += netAlertName(alert());
+  // NVS 故障记忆(排障历史):lastFault 为最近一次锁定的故障码短名(含已
+  // 解除的),faultCount 为累计锁定次数,lastFaultEpoch 为最近一次锁定
+  // 时刻(epoch 秒,0=时钟不可用)。当前是否在故障仍看上面的 fault 字段。
+  json += F("\",\"lastFault\":\"");
+  json += (faultRecord_ && faultRecord_->code)
+              ? faultName(static_cast<FaultCode>(faultRecord_->code))
+              : "none";
+  json += F("\",\"faultCount\":");
+  json += String(faultRecord_ ? static_cast<unsigned>(faultRecord_->count)
+                              : 0u);
+  json += F(",\"lastFaultEpoch\":");
+  json += String(
+      faultRecord_ ? static_cast<unsigned long>(faultRecord_->epoch) : 0UL);
   json += F("\",\"chamberC\":");
   json += numberOrNull(r.chamberC);
   json += F(",\"heaterBoardC\":");

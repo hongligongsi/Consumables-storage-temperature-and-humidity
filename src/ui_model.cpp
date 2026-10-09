@@ -3,7 +3,8 @@
 // 三层职责划分:输入解析在 main.cpp,状态流转在本文件,绘制在 tft_ui.cpp。
 #include "ui_model.h"
 #include "pins.h"
-#include <sys/time.h> // settimeofday:手动校时
+#include "pure_logic.h" // rssi 哨兵 kRssiUnknown
+#include <sys/time.h>   // settimeofday:手动校时
 
 // 调整当前系统设置项:direction>0 为加/正向,direction<0 为减/反向。
 // 只处理可编辑项的取值变化,随后统一把新值下发给控制器并置脏(等待长按保存到
@@ -186,6 +187,19 @@ void UiModel::adjustClock(bool dateField, uint8_t sub, int direction) {
 // 单击进入编辑、双击上一项、长按退出并按脏标记请求保存);不在该页时才进入
 // 下方主界面/耗材页的动作分派。
 void UiModel::apply(UiAction action, ChamberController &controller) {
+  // 故障锁定期间只放行两个输入,其余一律忽略:全屏故障提示下不该还能改设置
+  // 或切料,避免排查时误动参数。
+  //   - 长按 = 复位(边沿交回 main.cpp 执行,不在输入回调里改状态机);
+  //   - 系统总开关 = 人工断电。这是历史上唯一的复位路径,且触摸/编码器/串口/
+  //     REST 都汇到 apply(),若一并拦掉就再也够不着"关闭系统"了。
+  if (controller.state() == ChamberState::Fault) {
+    if (action == UiAction::EncoderLongPress) {
+      faultResetRequested_ = true;
+      return;
+    }
+    if (action != UiAction::ToggleSystem)
+      return;
+  }
   if (systemSettingsOpen_) {
     // 旋转:编辑态改值,浏览态移动光标。取模范围含 Version 等只读项,长按回绕。
     const uint8_t count = static_cast<uint8_t>(SystemSettingField::Count);
@@ -398,12 +412,16 @@ UiSnapshot UiModel::snapshot(const ChamberController &controller,
           .name;
   s.nextMaterial = MATERIALS[(materialIndex_ + 1) % MATERIAL_COUNT].name;
   s.state = o.state;
+  s.fault = o.fault;
   s.language = controller.language();
-  // clock/networkConnected/chipId 由 main.cpp 填充:ui_model
+  // clock/networkConnected/rssi/ssid/chipId/netAlert 由 main.cpp 填充:ui_model
   // 不依赖网络层,避免循环包含。
   strncpy(s.clock, "--:--:--", sizeof(s.clock) - 1);
   s.chipId[0] = '\0';
+  s.ssid[0] = '\0';
   s.networkConnected = false;
+  s.rssi = pure::kRssiUnknown; // 0 = 无信号哨兵;联网后由 main.cpp 填真实 dBm
+  s.netAlert = NetAlert::None;
   // theme 填存储原始值,随后由 main.cpp 覆写为按时刻解析的生效值
   // (0=默认 1=IOS 2=蓝白·日 3=蓝白·夜);设置页行值直接读 SystemSettings。
   s.theme = systemSettings_ ? systemSettings_->theme : 2;

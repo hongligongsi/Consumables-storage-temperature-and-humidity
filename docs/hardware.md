@@ -189,7 +189,8 @@ INA226 用于加热电流软降功率；读取失败会在加热状态下触发�
 ### 4. 仓温传感器 AHT20
 
 AHT20 位于仓内，作为自动仓温闭环的输入。上电串口会打印
-`AHT20: detected / not detected`，未检测到时仓温项显示为无效。
+`AHT20: detected / not detected`，未检测到时仓温项显示为无效；若在预热或打印中
+连续 3 秒无效，会锁定 `Fault` 并在故障页显示 F-01（`AhtLost`）。
 
 ### 5. GPIO45（BOARD_FAN）上电风险
 

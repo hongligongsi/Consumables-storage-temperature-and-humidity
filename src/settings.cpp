@@ -263,6 +263,44 @@ bool SettingsStore::saveMaterialProfiles() {
   return ok;
 }
 
+// ---- NVS 故障记忆 ----
+// 键:faultCode(枚举值)/faultLatch(锁定未解除)/faultCnt(累计次数)/
+// faultEp(最近一次锁定时刻)。loadFaultRecord 做与设置层同样的脏数据防御:
+// 码超出 FaultCode::Count 一律丢弃(键刚写入成功不会出现,但 NVS 分区被
+// 外部工具动过、或将来枚举删项时可能出现)。
+FaultRecord SettingsStore::loadFaultRecord() {
+  Preferences p;
+  FaultRecord r;
+  if (!p.begin(NAMESPACE_NAME, true))
+    return r;
+  r.code = p.getUChar("faultCode", 0);
+  r.latched = p.getBool("faultLatch", false);
+  r.count = p.getUShort("faultCnt", 0);
+  r.epoch = p.getULong("faultEp", 0);
+  p.end();
+  // FaultCode::Count 在 controller.h;0(None) 与 1..Count-1 为合法值。
+  if (r.code >= static_cast<uint8_t>(FaultCode::Count))
+    r = FaultRecord{};
+  return r;
+}
+
+bool SettingsStore::saveFaultRecord(const FaultRecord &record) {
+  // 与 load 相同的防御:越界码整体按"无记录"落盘,不让脏值回写。
+  FaultRecord r = record;
+  if (r.code >= static_cast<uint8_t>(FaultCode::Count))
+    r = FaultRecord{};
+  Preferences p;
+  if (!p.begin(NAMESPACE_NAME, false))
+    return false;
+  bool ok = true;
+  ok &= p.putUChar("faultCode", r.code) > 0;
+  ok &= p.putBool("faultLatch", r.latched);
+  ok &= p.putUShort("faultCnt", r.count) > 0;
+  ok &= p.putULong("faultEp", r.epoch) > 0;
+  p.end();
+  return ok;
+}
+
 // 恢复出厂设置:只删除本固件拥有的键(系统设置 + 耗材预设),
 // 之后上层会用 SystemSettings 默认值重新运行。
 bool SettingsStore::reset() {
@@ -278,7 +316,9 @@ bool SettingsStore::reset() {
       "wifiEn",     "mqttEn",   "mqttBroker", "mqttPort",    "mqttPrefix",
       "ntpEn",      "otaEn",    "tz",         "ntp1",        "ntp2",
       "staticEn",   "staticIp", "gateway",    "subnet",      "dns1",
-      "dns2",       "theme",    "dayStart",   "nightStart",  "clockEp"};
+      "dns2",       "theme",    "dayStart",   "nightStart",  "clockEp",
+      // 故障记忆四键(NVS 故障记忆,见 loadFaultRecord)
+      "faultCode",  "faultLatch", "faultCnt",  "faultEp"};
   bool ok = true;
   // isKey 判定后再 remove,键不存在不算错误。
   for (const char *key : keys)

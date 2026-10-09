@@ -4,7 +4,7 @@
 
 `src/controller.cpp` 包含 PLA、PETG、TPU、ABS、ASA、PC、PA、PVA、PET、PPA、PEBA 与 CUSTOM 的温度/安全阈值预设。它与硬件访问分开，屏幕或编码器 UI 可直接调用 `setProfile()`、`requestPreheat()` 和 `setHeatLimit()`。
 
-控制状态为 `Idle → Preheat / Printing → Cooling`；温度采样连续失效 3 秒进入锁定 `Fault`，任何状态温度达到耗材安全阈值则停止加热并 100% 排气。`Fault` 不会自动复位，避免传感器偶发恢复后重新加热。
+控制状态为 `Idle → Preheat / Printing → Cooling`；温度采样连续失效 3 秒进入锁定 `Fault`，任何状态温度达到耗材安全阈值则停止加热并 100% 排气；软保护压不住时（超温/过流越过硬保护余量并持续 0.5 秒）同样锁定 `Fault`，同时给出 F-01…F-06 故障码。`Fault` 不会自动复位，避免传感器偶发恢复后重新加热。
 
 控制器现在以 50 ms 节拍工作，包含 `Idle → Detecting → Printing → Cooling` PIR 三态、分段排气、仓温/热板双 PID、热板硬过温、INA226 电流软降和 3%/周期 PWM 斜率限制。热板 NTC 与 INA226 的读取代码已接入，但 GPIO、NTC 参数和 INA226 地址仍须实物验证；`HEATER_ENABLED` 默认关闭，因此不会误启动加热。
 
@@ -63,15 +63,15 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 │  ├─ pins.h                 全部 GPIO 映射与外设开关宏（唯一引脚来源）
 │  ├─ controller.h           状态枚举、MaterialProfile、ChamberController 接口
 │  ├─ settings.h             SystemSettings 结构与默认值
-│  ├─ ui_model.h             UiAction / MainFocus / SystemSettingField 枚举、UiSnapshot 快照（230 行）
-│  ├─ pure_logic.h           不依赖 Arduino 的纯逻辑：芯片 ID、主题解析、时刻钳制（主机端可单测）
+│  ├─ ui_model.h             UiAction / MainFocus / SystemSettingField / NetAlert 枚举、UiSnapshot 快照（260 行）
+│  ├─ pure_logic.h           不依赖 Arduino 的纯逻辑：芯片 ID、主题解析、时刻钳制、信号格数（主机端可单测）
 │  ├─ tft_ui.h               TftUi 显示接口（31 行）
 │  ├─ network.h              NetworkManager 接口 / NetState
 │  ├─ web_page.h             内置 Web 管理页 HTML
 │  ├─ wifi_portal_page.h     WiFi 配网门户定制页 HTML
 │  ├─ ina226_sensor.h        INA226 采样接口（17 行）
-│  ├─ font_cn16.h            16 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 331 KB）
-│  └─ font_cn26.h            26 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 793 KB）
+│  ├─ font_cn16.h            16 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 374 KB）
+│  └─ font_cn26.h            26 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 897 KB）
 ├─ src/                      实现
 │  ├─ main.cpp               启动、外设初始化、50 ms 控制节拍、输入分发
 │  ├─ controller.cpp         状态机、12 种耗材预设、双 PID、安全联锁
@@ -92,6 +92,7 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
    ├─ run_host_tests.py       跑主机端单测（Windows 上自动补 MinGW 路径）
    ├─ publish_firmware.py     构建产物 → firmware/，并写下构建台账
    ├─ doc_check.py            校验文档数字与固件台账，由 CI 拦截漂移
+   ├─ font_check.py           校验字库是否覆盖源码用到的字符（doc_check 会调它）
    ├─ serial_regression.py    读串口周期上报并按区间断言
    ├─ ui_preview.html         可操作的真机界面模拟器
    ├─ web_management_preview.html  内置 Web 管理页的浏览器预览稿（实验室蓝浅色）
@@ -110,7 +111,7 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 | 功率输出   | 取两个 PID 的较小值                                                   | 再依次经过电流软降、用户功率上限、3%/周期斜率限制                                              |
 | 自动排气   | 按仓温高出最低仓温的幅度分三档                                                | 高出 ≥10 ℃ 用最高风速，≥5 ℃ 用中值，否则最低风速                                          |
 | 打印结束排气 | 进入 `Cooling` 计时                                                | 风速/时长取自耗材预设，可在设置页与 REST 修改                                              |
-| 安全联锁   | 热板硬过温 + 仓温超上限                                                  | 立即停加热、排气 100%、热板风扇全开，带 5 ℃/2 ℃ 回差                                       |
+| 安全联锁   | 热板硬过温 + 仓温超上限 + 硬保护停机                                            | 立即停加热、排气 100%、热板风扇全开，带 5 ℃/2 ℃ 回差；越界再超 15 ℃（电流超上限 1.5 倍）持续 0.5 s 锁 `Fault` |
 | 电流限制   | INA226 分流采样                                                    | 实测电流超限时按 3%/周期降压，读数失败视为传感器无效                                            |
 | 交互     | EC11 编码器 + 触摸（预留）+ 串口单键                                        | 旋转 / 单击 / 双击 / 长按四种手势                                                   |
 | 显示     | TFT_eSPI，480×320 横屏                                            | PSRAM 内 16-bit 双缓冲 Sprite，独立低优先级渲染任务                                    |
@@ -129,15 +130,17 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 | `Preheat`   | 预热 / PREHEAT | `Preheat`    | 「提前预热」被开启（`requestPreheat()` / 串口 `p` / REST `togglePreheat`），优先于 PIR |
 | `Printing`  | 打印 / PRINT   | `Printing`   | 运动持续 ≥ `PIR启动延时`（默认 25 s，1–300 s 可调）后判定开始打印                           |
 | `Cooling`   | 排气 / EXHAUST | `Cooling`    | ① 打印结束且「打印后排风」开启、时长为正时计时排气；② 安全联锁触发时的强制排气                             |
-| `Fault`     | 故障 / FAULT   | `Fault`      | 温度采样连续失效 3 s 后锁定                                                      |
+| `Fault`     | 故障 / FAULT   | `Fault`      | 传感器失效持续 3 s，或硬过温/硬过流持续 0.5 s 后锁定；故障码见下节                    |
 
 转移规则（`src/controller.cpp`）：
 
 | 当前态           | 条件                                       | 目标态                           |
 | ------------- | ---------------------------------------- | ----------------------------- |
-| 任意            | `systemEnabled == false`                 | `Idle`（清冷却计时与安全标记）            |
+| 任意            | `systemEnabled == false`                 | `Idle`（清冷却计时、安全标记与故障码）        |
+| 任意            | 硬保护越界持续 ≥ 0.5 s（`HARD_TRIP_MS`）          | `Fault`（锁定，优先级最高）             |
 | 任意（预热/打印中）    | 传感器无效持续 ≥ 3 s（`SENSOR_FAULT_MS`）         | `Fault`（锁定）                   |
-| `Fault`       | —                                        | 保持 `Fault`，需关闭再开启系统才允许重新进入状态机 |
+| `Fault`       | 长按编码器键（复位）                              | 热类故障→`Cooling`（保住 100 % 排风），其余→`Idle`；均清除故障码与计时 |
+| `Fault`       | 其余输入（仅系统总开关例外，仍可人工断电）                   | 保持 `Fault`（设置/切料等操作在故障页被忽略）   |
 | 任意            | 热板 ≥ 保护温度 或 仓温 ≥ 耗材上限                    | `Cooling`（含安全标记）              |
 | `Cooling`（安全） | 热板 ≥ 保护温度 −5 ℃ 或 仓温 ≥ 上限 −2 ℃            | 继续 `Cooling`（回差）              |
 | 任意            | 预热请求开启                                   | `Preheat`                     |
@@ -147,6 +150,64 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 | `Printing`    | 运动停止超时，且结束排气关闭或时长为 0                     | `Idle`                        |
 | `Cooling`     | 结束排气计时未满                                 | 继续 `Cooling`                  |
 | 其余            | —                                        | `Idle`                        |
+
+故障码（`FaultCode`，`include/controller.h`）：进入 `Fault` 的那一刻判定一次并保持，
+屏上顶栏显示 `F-0x` 与对应文案，REST `/api/state` 的 `fault` 字段与 MQTT `event` 主题同步上报。
+判定优先级是「硬过温 > 硬过流 > 传感器掉线」—— 越危险的越先报，掉线判据自带 valid 前置，
+不会掩盖真实的超温。
+
+| 码    | 枚举                 | 含义        | 判据                                        |
+| ---- | ------------------ | --------- | ----------------------------------------- |
+| F-01 | `AhtLost`          | 仓温传感器掉线   | `!ahtValid`（读数越界或 I²C 无应答）                |
+| F-02 | `NtcLost`          | 热板 NTC 掉线 | `!ntcValid`（ADC 采到端点，判为开路/短路）             |
+| F-03 | `BoardOverTemp`    | 热板硬过温     | `heaterBoardC ≥ 热板保护温度 + 15 ℃`            |
+| F-04 | `ChamberOverTemp`  | 仓温硬超上限    | `chamberC ≥ 耗材仓温上限 + 15 ℃`                |
+| F-05 | `OverCurrent`      | 加热回路硬过流   | 电流绝对值 > 加热电流上限 × 1.5                      |
+| F-06 | `InaLost`          | 电流采样掉线    | `!inaValid`（读数越界或 I²C 无应答）                |
+
+硬保护阈值相对软保护留有余量：软保护先动作（超温走 100 % 排气、过流走软降功率），
+只有压不住时（越界再超出上表余量）才升级为停机故障，避免与软保护抢动作、也避免单次尖峰误报。
+新增故障码只能追加在 `FaultCode::Count` 之前，不能改变已有码的相对顺序。
+
+**NVS 故障记忆（断电保持锁定）**：每次锁定故障都写入 NVS（码、累计次数、发生时刻）。
+热类故障（F-03/F-04/F-05）在锁定状态下断电重启，开机直接回到 `Fault` 态并显示原故障码
+—— 拔电重启不能绕过硬保护，仍须长按编码器复位；传感器掉线类（F-01/F-02/F-06）开机
+本来就会重新检测，不恢复锁定。复位只解除锁定，历史记录保留在 NVS，可通过 `/api/state`
+的 `lastFault` / `faultCount` / `lastFaultEpoch` 字段查询，恢复出厂时清除
+（详见 [control.md](docs/control.md)）。
+
+### 网络告警（W 码，只提示不停机）
+
+网络问题走的是另一条通道（`NetAlert`，`include/ui_model.h`），与故障互不相干：
+不进故障页、不锁状态机、不停加热，离线打印照常。出现告警时主屏把日期位置换成
+一行告警文案（告警色，时间仍在右侧），系统设置页标题栏中段显示 `W-0x + 文案`；
+REST `/api/state` 的 `netAlert` 字段同步上报。连续 10 次同类失败才提示（约 1 分钟），
+滤掉路由器重启、信号抖动这类短时断开；连上即自动清除。WiFi 告警优先于 MQTT ——
+前者是根因。功能开关关闭、离线运行、首次配网（从未存过凭据）都不算异常，不提示。
+
+| 码    | 枚举               | 含义           | 判据                                        |
+| ---- | ---------------- | ------------ | ----------------------------------------- |
+| W-01 | `WifiAuthFail`   | WiFi 认证失败    | 断开原因码属认证/关联类连续 10 次（密码错或加密方式不匹配）         |
+| W-02 | `WifiNoAp`       | 找不到 WiFi     | 断开原因码 `NO_AP_FOUND` 连续 10 次（SSID 错或超出覆盖）  |
+| W-03 | `MqttAuthFail`   | MQTT 认证失败    | CONNACK 返回 4/5（broker 拒绝匿名或凭据错）连续 10 次   |
+| W-04 | `MqttUnreachable` | MQTT 连接超时   | 其余失败原因连续 10 次（地址/端口/防火墙/网络不通；含 rc=2 客户端 ID 冲突） |
+
+新增告警码同样只能追加在 `NetAlert::Count` 之前。注意 MQTT 侧的告警**发不进 MQTT**：
+事件主题要靠 MQTT 本身可用，broker 连不上时消息出不去，远程只能靠 `/api/state` 轮询看到。
+
+### 主屏的 WiFi 信号格
+
+主屏状态文字右侧是 **4 格信号条**，直接反映当前 RSSI（数据源 `NetworkManager::rssiDbm()`，
+折算规则 `pure::rssiBars()`）：`≥ -55` 四格、`≥ -65` 三格、`≥ -75` 两格、更弱一格；一格标红、
+两格标黄、三格及以上为绿。未联网（含关闭 WiFi 离线运行）时四格全空并叠一道红斜杠——与
+"连着但很弱"区分得开。
+
+阈值与内置 Web 管理页、浏览器模拟器是**同一套**。此前屏上只有"通/断"二态图标，信号从满格
+掉到一格毫无区别，而 REST/MQTT 的 `rssi` 字段早就在上报了——现在三处口径一致。
+
+系统设置页的 **WiFi联网** 项也是同一套口径：联网时右侧直接显示当前连接的 SSID（超长截断）
+加一组迷你信号格（阈值/配色与主屏一致，尺寸缩小），未联网时保持「开 / 关」。SSID 来自
+`NetworkManager::ssidString()`，快照经 `UiSnapshot::ssid` 下发。
 
 各状态的实际输出（`Outputs`）：
 
@@ -166,6 +227,9 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 | 状态快照/刷屏周期 | 500 ms                                                            | `src/main.cpp` `loop()` |
 | 串口状态打印周期  | 2000 ms                                                           | `src/main.cpp` `loop()` |
 | 传感器失效判定   | 3 s                                                               | `SENSOR_FAULT_MS`       |
+| 硬保护触发时间   | 0.5 s                                                             | `HARD_TRIP_MS`          |
+| 硬过温余量     | 热板/仓温软限值 + 15 ℃                                                 | `HARD_OVER_MARGIN_C`    |
+| 硬过流倍数     | 加热电流上限 × 1.5                                                    | `HARD_OVER_CURRENT_FACTOR` |
 | 仓温 PID    | KP 8.0 / KI 0.04 / KD 15.0，积分限幅 ±200                              | `chamberPid()`          |
 | 热板 PID    | KP 4.0 / KI 0.02 / KD 3.0，积分限幅 ±300                               | `boardPid()`            |
 | PWM 斜率限制  | 3 %/周期（即 60 %/s）                                                  | `PWM_SLOPE_PER_50MS`    |
@@ -288,6 +352,8 @@ NTC 换算：`readNtcCelsius(pin, seriesOhm, nominalOhm, beta)` 默认按 10 kΩ
 | --- | --- |
 | `material` / `materialIndex` | 当前耗材名称与索引 |
 | `state` | `Idle` / `Detecting` / `Preheat` / `Printing` / `Cooling` / `Fault` |
+| `fault` | 故障原因码短名，非故障态为 `none`；取值见「故障码」表（`AhtLost` / `NtcLost` / `BoardOverTemp` / `ChamberOverTemp` / `OverCurrent` / `InaLost`） |
+| `netAlert` | 网络告警码短名，无告警为 `none`；取值见「网络告警」表（`WifiAuthFail` / `WifiNoAp` / `MqttAuthFail` / `MqttUnreachable`） |
 | `chamberC` / `heaterBoardC` / `humidity` | 仓温、热板温度、湿度（无效时为 `null`） |
 | `currentA` / `voltageV` | 加热电流与供电电压 |
 | `exhaustPercent` / `heatPercent` / `heaterFan` | 排气、加热、热板风扇输出百分比 |
@@ -312,7 +378,7 @@ MQTT（需先在 Web 接口配置 broker）：
 | 主题 | 方向 | 载荷 |
 | --- | --- | --- |
 | `<prefix>/state` | 上报 | 与 `/api/state` 相同，每 5 s 一次，retain |
-| `<prefix>/event` | 上报 | `{"event":"<动作名/状态名/online>"}` |
+| `<prefix>/event` | 上报 | `{"event":"<动作名/状态名/online>"}`；进入故障时改为 `Fault F-0x <故障码名>`，如 `Fault F-03 BoardOverTemp` |
 | `<prefix>/online` | 上报 | LWT，离线自动置 `"0"` |
 | `<prefix>/cmd` | 订阅 | `{"action":"<动作名>"}` 或 `{"profile":<索引>}` |
 
@@ -329,7 +395,7 @@ MQTT（需先在 Web 接口配置 broker）：
 
 `UiModel` 与所给主界面标注对应：耗材前后切换、自动排气、自动恒温、结束排气、系统工作状态、提前预热与灯光开关。未接上屏幕时可通过串口调试：`[`/`]` 切换耗材，`e` 排气自动控制，`t` 恒温自动控制，`p` 预热，`l` 灯光，`s` 系统启停，`x` 手动强排。
 
-主界面支持无触摸 EC11 完整导航：旋转移动白色/橙色焦点，单击执行当前项，双击开启/关闭手动强排，长按开启/关闭系统。可聚焦上一耗材、当前耗材设置、下一耗材、三个自动开关，以及底部的系统启停、提前预热、灯光和系统设置。进入耗材设置页后，旋转修改选中值，单击依次选择最低/最高仓温、最低/最高自动排气风速、打印结束排气风速和排气时长，双击选择上一项，长按写入 NVS 并返回。温度上下限至少相差 5℃，自动风速上下限会互相约束，打印结束风速范围为 0–100%，排气时长范围为 0–1800 秒（0 表示关闭）。REST `POST /api/profile` 除 `index` 外也接受 `minC`、`maxC`、`fanMin`、`fanMax`、`postFan`、`postSeconds`，校验通过后立即持久化。
+主界面支持无触摸 EC11 完整导航：旋转移动白色/橙色焦点，单击执行当前项，双击开启/关闭手动强排，长按开启/关闭系统。**故障页为全屏独占页**，顶栏显示故障码与类别、中部按码给出标题与处理建议并逐行列出 AHT20/NTC/INA226 的实测值，此时长按编码器键复位、系统总开关仍可用（人工断电），其余输入忽略。可聚焦上一耗材、当前耗材设置、下一耗材、三个自动开关，以及底部的系统启停、提前预热、灯光和系统设置。进入耗材设置页后，旋转修改选中值，单击依次选择最低/最高仓温、最低/最高自动排气风速、打印结束排气风速和排气时长，双击选择上一项，长按写入 NVS 并返回。温度上下限至少相差 5℃，自动风速上下限会互相约束，打印结束风速范围为 0–100%，排气时长范围为 0–1800 秒（0 表示关闭）。REST `POST /api/profile` 除 `index` 外也接受 `minC`、`maxC`、`fanMin`、`fanMax`、`postFan`、`postSeconds`，校验通过后立即持久化。
 
 主界面底部第一格为 PIR 状态指示，其余四格均可通过 EC11 聚焦并执行。进入 28 项系统设置后由 EC11 旋转选择，单击切换或进入数值编辑，长按保存返回。系统设置包括中英文、WiFi/MQTT/NTP/OTA 四项联网开关、按键音、亮度/休眠、打印保持亮屏、编码器方向、PIR 延时、灯光/蜂鸣联动、发热板限流/风扇 PWM/温度保护、界面主题（默认/IOS/蓝白）与日间/夜间开始时刻、日期与时间校准、恢复出厂、固件版本和芯片ID。当前硬件配置 `Pin::HAS_TOUCH_PANEL=false`，触摸轮询被完全停用，触摸校准项显示“不支持”；更换四线电阻触摸屏时可改为 `true` 后校准。恢复出厂只删除固件拥有的设置与耗材键，不清除未知键，因此预留的注册码数据会保留。
 
@@ -356,13 +422,18 @@ python3 -m pip install Pillow
 python3 tools/genvlw.py --font /path/to/chinese-font.ttf --preview
 ```
 
+“源码用到的字是否都已经在字库里”不靠人眼核对：`python tools/font_check.py` 会读回两个头文件的
+字形表，与 `src/`、`include/` 里字符串字面量的字符集求差，缺字时直接报出**是哪个字、来自哪个
+文件**，并顺带校验两个字号字形集一致、ASCII 0x20–0x7E 齐全、没有“在表里但位图为空”的字形。
+`doc_check.py` 已把它并入，所以 CI 的文档作业会一并拦住。
+
 ## 系统设置说明
 
 系统设置共 28 项，顺序与屏幕显示一致，**逐项说明与取值范围见
 [docs/settings.md](docs/settings.md)**。联网相关的 WiFi / MQTT / NTP / OTA 四项
 开关在长按保存后即时生效，无需重启。
 
-界面布局与中英文、日/夜配色可参考 `tools/ui_preview.html`（浏览器直接打开）。该页是可操作的真机模拟器：真机每屏只显示 5 行，需旋转滚动才能看全 28 项，页内因此把 28 项在屏下逐条列出说明与取值范围，并随屏内光标实时高亮。顶部快捷按钮中的“默认/IOS/蓝白”等价于修改“界面主题”这一项。
+界面布局与中英文、日/夜配色可参考 `tools/ui_preview.html`（浏览器直接打开）。该页是可操作的真机模拟器：真机每屏只显示 5 行，需旋转滚动才能看全 28 项，页内因此把 28 项在屏下逐条列出说明与取值范围，并随屏内光标实时高亮。顶部快捷按钮中的“默认/IOS/蓝白”等价于修改“界面主题”这一项，“信号强度”一组可直接预览 4 格/3 格/2 格/1 格与未联网四种主屏形态。
 
 设置页取值范围与默认值（`src/ui_model.cpp` 限制，`src/settings.cpp` 二次夹取）：
 
@@ -487,6 +558,7 @@ Get-ChildItem "$env:USERPROFILE\.platformio\packages\framework-arduinoespressif3
 | --- | --- | --- |
 | 纯逻辑单元测试 | `pio test -e native`（Windows 上改用 `python tools/run_host_tests.py`） | 否 |
 | 文档与固件台账一致性 | `python tools/doc_check.py` | 否 |
+| 字库覆盖（源码用到的字是否都在字库里） | `python tools/font_check.py`（`doc_check.py` 已含） | 否 |
 | 开机与读数回归 | `python tools/serial_regression.py --port COM4 --seconds 30` | 是 |
 
 Windows 上第一次跑主机端单测前，若机器上没有 MinGW/GCC，先装一次 PlatformIO 自带的那份（只装一次，之后 `run_host_tests.py` 会自己找到它）：
@@ -495,9 +567,11 @@ Windows 上第一次跑主机端单测前，若机器上没有 MinGW/GCC，先�
 pio pkg install --global --tool platformio/toolchain-gccmingw32
 ```
 
-**为什么要主机端单测。** 芯片 ID 混洗（同时就是 OTA 密码）、蓝白主题的日/夜解析、日/夜时刻钳制，这三段逻辑此前只能靠烧录后肉眼确认。它们已抽到 `include/pure_logic.h`（不依赖 Arduino），由 `test/test_pure_logic` 在桌面端覆盖 —— 固件与测试跑的是同一份代码，不是复制出来的第二份实现。
+**为什么要主机端单测。** 芯片 ID 混洗（同时就是 OTA 密码）、蓝白主题的日/夜解析、日/夜时刻钳制、WiFi 信号格数阈值，这四段逻辑此前只能靠烧录后肉眼确认。它们已抽到 `include/pure_logic.h`（不依赖 Arduino），由 `test/test_pure_logic` 在桌面端覆盖（14 个用例）—— 固件与测试跑的是同一份代码，不是复制出来的第二份实现。
 
 **为什么要校验文档。** README 里写着行数、字库体积、设置项数，这些数字没有任何机制守着，必然跑偏（曾出现 `ui_model.h` 标 194 行、实际 230 行，内联设置表漏掉第 28 项）。`doc_check.py` 把这些数字连同 `firmware/BUILD.txt` 台账一起变成断言；加 `--strict` 可让告警也导致失败。
+
+**为什么要校验字库。** 字库是 `genvlw.py` 扫源码字符串字面量生成的，“加了中文文案忘了重新生成”没有任何机制拦着（字形数 295 → 322 → 326，三次都靠人记得）。一旦漏字，屏上的表现是**一个空心方框**外加居中文本整体偏移，现场很难反推回字库。`font_check.py` 把“源码用到的字符 ⊆ 字库字形”变成断言，并顺带校验两个字号字形集一致、ASCII 齐全、没有空位图字形。
 
 **为什么要串口回归。** 整机没有测试夹具时，"烧录后盯日志"是唯一手段，也就没人愿意反复做。脚本把开机标记、`chamber=` 周期上报条数、温湿度合理区间、传感器在线状态变成可复现的判据，并支持 `--log` 复核别人抓好的日志。
 
@@ -560,13 +634,13 @@ Gerber 飞针网表确认本板上的 ST7796 为 SPI 连接：`RST=GPIO9`、`MIS
 这是屏幕休眠，仅关闭背光。到「屏幕休眠时间」把值调到 0 可禁用，或开启「打印时保持屏幕开启」让打印过程中不休眠。
 
 **Q：中文显示成方块或缺字。**
-字库只包含源码字符串里出现过的汉字。新增文案后需重跑 `python tools/genvlw.py` 重新生成 `include/font_cn16.h` 与 `include/font_cn26.h`。
+字库只包含源码字符串里出现过的汉字。新增文案后需重跑 `python tools/genvlw.py` 重新生成 `include/font_cn16.h` 与 `include/font_cn26.h`；漏了会被 `python tools/font_check.py`（已并入 `doc_check.py`）指出来，它会报出缺哪个字、来自哪个文件。注意方块还可能来自另一种情况：字符在字库里但所选字体没有该字形（位图为空），同样表现为空白或方框。
 
 **Q：多色打印中途被判定打印结束。**
 属于 PIR 长时间无动作导致的误判，把「PIR关闭延时」调大（例如 90 秒）即可。
 
 **Q：进入 `Fault` 后无法自动恢复。**
-这是刻意的故障锁定，防止传感器偶发恢复后重新加热。需关闭再开启系统（或重启设备）才能重新进入状态机。
+这是刻意的故障锁定，防止传感器偶发恢复后重新加热。故障页上**长按编码器键**即可复位；重启设备同样有效。复位不是“当作没事发生”：**热类故障（F-03/F-04/F-05）复位后先进入安全冷却**，保持 100 % 排气与热板风扇直到温度回落到软限以下，避免复位瞬间把设备置于比故障态更热的姿态；若硬保护条件仍在，下一控制周期就会立即复锁。传感器/采样掉线类（F-01/F-02/F-06）没有余热要排，直接回 `Idle`。故障页只响应长按复位与系统总开关（人工断电），其余输入一律忽略，避免排查期间误改设置。
 
 **Q：编译时提示找不到 `boot_app0.bin`。**
 该文件来自 Arduino 框架包而非本工程。用「编译与烧录」章节给出的 `Get-ChildItem` 命令定位实际路径后替换即可。

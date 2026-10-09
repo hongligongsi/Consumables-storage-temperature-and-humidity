@@ -6,6 +6,7 @@
 // 页面分发见 drawFrame:故障页/触摸校准/耗材设置/系统设置/主屏仪表盘。
 #include "tft_ui.h"
 
+#include "pure_logic.h" // rssiBars():信号格阈值(与 Web 管理页同一套)
 #include "font_cn16.h"
 #include "font_cn26.h"
 #include "pins.h"
@@ -318,42 +319,145 @@ bool buttonActive(uint8_t i, const UiSnapshot &s) {
          (i == 2 && s.preheat) || (i == 3 && s.light);
 }
 
-// 故障全屏页:三角警告符 + 传感器错误/系统已停止提示,底部逐一点名
-// AHT20/NTC/INA226 三个传感器的在线状态(绿点/红点),便于现场排查。
+// 故障页文案表:下标必须与 controller.h 的 FaultCode 一一对应
+// (None 占位不可删,否则全部故障码整体串位)。标题回答"哪里坏了",
+// 建议行回答"下一步做什么",现场不必回串口就能判断。
+struct FaultText {
+  const char *titleZh;
+  const char *titleEn;
+  const char *hintZh;
+  const char *hintEn;
+};
+
+const FaultText FAULT_TEXTS[] = {
+    {"系统故障", "SYSTEM FAULT", "请检查设备", "CHECK DEVICE"},
+    {"仓温传感器掉线", "AHT20 OFFLINE", "检查 I2C 接线与供电", "CHECK I2C WIRING"},
+    {"热板传感器掉线", "NTC OFFLINE", "检查 NTC 两芯接线", "CHECK NTC WIRING"},
+    {"热板超温", "BOARD OVERHEAT", "检查加热板与热风风扇", "CHECK HEATER AND FAN"},
+    {"仓温超上限", "CHAMBER OVERHEAT", "开门散热并检查排风",
+     "OPEN DOOR AND CHECK FAN"},
+    {"加热回路过流", "OVER CURRENT", "检查加热板与功率接线",
+     "CHECK HEATER WIRING"},
+    {"电流采样掉线", "INA226 OFFLINE", "检查 I2C 接线与供电", "CHECK I2C WIRING"},
+};
+static_assert(sizeof(FAULT_TEXTS) / sizeof(FAULT_TEXTS[0]) ==
+                  static_cast<size_t>(FaultCode::Count),
+              "FAULT_TEXTS 的条目数必须与 FaultCode 一致");
+
+// 网络告警文案表:下标与 ui_model.h 的 NetAlert 一一对应(None 占位不可删)。
+// 这类告警是**非阻塞提示** —— 不进故障页、不锁状态机、不停加热,只是把主屏
+// 日期位置和设置页标题栏换成一行说明,用户完全可以在离线状态继续打印。
+// 字数按主屏那一格的宽度(约 140 px)反推:中文字面 ≤6 字,英文 ≤14 字符,
+// 再长就会顶到右侧的时间。故障码前缀 "W-0x" 只在设置页显示,主屏不显示。
+struct NetAlertText {
+  const char *zh;
+  const char *en;
+};
+
+const NetAlertText NET_ALERT_TEXTS[] = {
+    {"", ""},
+    {"WiFi 认证失败", "WiFi AUTH FAIL"},   // W-01 密码错/加密方式不匹配
+    {"找不到 WiFi", "NO WiFi AP"},        // W-02 SSID 错或超出覆盖范围
+    {"MQTT 认证失败", "MQTT AUTH FAIL"},   // W-03 broker 拒绝匿名或凭据错
+    {"MQTT 连接超时", "MQTT TIMEOUT"},     // W-04 地址/端口/网络不通
+};
+static_assert(sizeof(NET_ALERT_TEXTS) / sizeof(NET_ALERT_TEXTS[0]) ==
+                  static_cast<size_t>(NetAlert::Count),
+              "NET_ALERT_TEXTS 的条目数必须与 NetAlert 一致");
+
+// 取当前告警的本地化短文案;None 返回空串(调用方已先判空)。
+const char *netAlertText(const UiSnapshot &s) {
+  const size_t i = static_cast<size_t>(s.netAlert);
+  if (i == 0 || i >= sizeof(NET_ALERT_TEXTS) / sizeof(NET_ALERT_TEXTS[0]))
+    return "";
+  const bool chinese = s.language == Language::Chinese;
+  return chinese ? NET_ALERT_TEXTS[i].zh : NET_ALERT_TEXTS[i].en;
+}
+
+// 故障页的一行传感器读数:在线状态点 + 名称 + 实测值(无效时整行标红)。
+void drawFaultRow(TFT_eSPI &g, int16_t y, const char *name, bool valid,
+                  const char *value) {
+  const uint16_t c = valid ? GOOD : G_RED;
+  g.fillCircle(112, y, 5, c);
+  g.setTextDatum(ML_DATUM);
+  g.setTextColor(TEXT, BG);
+  g.drawString(name, 128, y);
+  g.setTextDatum(MR_DATUM);
+  g.setTextColor(valid ? MUTED : G_RED, BG);
+  g.drawString(value, 368, y);
+}
+
+// 故障全屏页:顶栏给故障码与类别,三角警告符下方是按码变化的标题与处理
+// 建议,再把 AHT20/NTC/INA226 的在线状态与实测值逐行列出 —— 故障码告诉
+// 现场"哪种故障",实测值告诉"差多少",建议行告诉"做什么"。
 void drawFaultFrame(TFT_eSPI &g, const UiSnapshot &s) {
   const bool zh = s.language == Language::Chinese;
-  g.fillScreen(BG);
-  g.fillRect(0, 0, SCREEN_W, 30, MAROON);
-  g.fillTriangle(240, 48, 196, 124, 284, 124, G_RED);
-  g.fillCircle(240, 107, 5, TEXT);
-  g.fillRoundRect(237, 70, 7, 27, 3, TEXT);
+  const uint8_t code = static_cast<uint8_t>(s.fault);
+  // 枚举值本身就是屏上编号(AhtLost=1 → "F-01",None=0 只是哨兵),不要再 +1。
+  // 越界值理论上不会出现(只有 state==Fault 才画本页),真出现时退化为"只显示
+  // 文案、不显示编号",宁可没有编号也不能编出一个对不上表的码。
+  const bool hasCode =
+      code > 0 && code < static_cast<uint8_t>(FaultCode::Count);
+  const FaultText &ft = FAULT_TEXTS[hasCode ? code : 0];
 
+  g.fillScreen(BG);
+  // ---- 顶栏:故障码 + 类别(左)、时间(右) ----
+  g.fillRect(0, 0, SCREEN_W, 30, MAROON);
+  g.loadFont(FontCN16);
+  char header[40];
+  if (hasCode)
+    snprintf(header, sizeof(header), "F-%02u %s", code,
+             zh ? ft.titleZh : ft.titleEn);
+  else
+    snprintf(header, sizeof(header), "%s", zh ? ft.titleZh : ft.titleEn);
+  g.setTextDatum(ML_DATUM);
+  g.setTextColor(0xFFFF, MAROON);
+  g.drawString(header, 12, 15);
+  g.setTextDatum(MR_DATUM);
+  // clock 为 "YYYY-MM-DD HH:MM:SS",+11 跳过日期部分只保留 HH:MM:SS。
+  g.drawString(s.clock + 11, SCREEN_W - 12, 15);
+  g.unloadFont();
+
+  // ---- 警告三角 ----
+  g.fillTriangle(240, 44, 198, 116, 282, 116, G_RED);
+  g.fillRoundRect(237, 62, 7, 26, 3, TEXT);
+  g.fillCircle(240, 100, 5, TEXT);
+
+  // ---- 标题(按码)+ 处理建议 ----
   g.loadFont(FontCN26);
   g.setTextDatum(MC_DATUM);
   g.setTextColor(TEXT, BG);
-  g.drawString(zh ? "传感器错误" : "SENSOR FAULT", 240, 153);
+  g.drawString(zh ? ft.titleZh : ft.titleEn, 240, 142);
   g.unloadFont();
 
   g.loadFont(FontCN16);
   g.setTextDatum(MC_DATUM);
   g.setTextColor(WARN, BG);
-  g.drawString(zh ? "系统已停止" : "SYSTEM STOPPED", 240, 184);
-  g.setTextColor(MUTED, BG);
-  g.drawString(zh ? "请检查" : "CHECK SENSORS", 240, 207);
+  g.drawString(zh ? ft.hintZh : ft.hintEn, 240, 172);
 
-  const char *names[] = {"AHT20", "NTC", "INA226"};
-  const bool valid[] = {s.ahtValid, s.ntcValid, s.inaValid};
-  for (uint8_t i = 0; i < 3; ++i) {
-    const int16_t x = 104 + i * 136;
-    const uint16_t c = valid[i] ? GOOD : G_RED;
-    g.fillCircle(x - 32, 250, 5, c);
-    g.setTextColor(c, BG);
-    g.setTextDatum(ML_DATUM);
-    g.drawString(names[i], x - 20, 250);
-  }
-  g.setTextColor(TEXT, MAROON);
+  // ---- 三路传感器:名称 + 在线点 + 实测值 ----
+  char aht[28], ntc[28], ina[28];
+  if (s.ahtValid)
+    snprintf(aht, sizeof(aht), "%.1f℃ %.0f%%", s.chamberC, s.humidity);
+  else
+    strlcpy(aht, "--", sizeof(aht));
+  if (s.ntcValid)
+    snprintf(ntc, sizeof(ntc), "%.0f℃ / 限 %.0f℃", s.heaterBoardC,
+             s.heaterBoardLimitC);
+  else
+    strlcpy(ntc, "--", sizeof(ntc));
+  if (s.inaValid)
+    snprintf(ina, sizeof(ina), "%.1fV %.2fA", s.voltageV, s.currentA);
+  else
+    strlcpy(ina, "--", sizeof(ina));
+  drawFaultRow(g, 208, "AHT20", s.ahtValid, aht);
+  drawFaultRow(g, 236, "NTC", s.ntcValid, ntc);
+  drawFaultRow(g, 264, "INA226", s.inaValid, ina);
+
+  // ---- 复位提示(长按编码器键,见 main.cpp 的故障态输入处理)----
   g.setTextDatum(MC_DATUM);
-  g.drawString(s.clock, 240, 15);
+  g.setTextColor(MUTED, BG);
+  g.drawString(zh ? "长按编码器键复位" : "HOLD ENCODER KEY TO RESET", 240, 296);
   g.unloadFont();
   g.setTextDatum(TL_DATUM);
 }
@@ -507,6 +611,17 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
   g.setTextDatum(MR_DATUM);
   g.setTextColor(ACCENT, PANEL_ALT);
   g.drawString(page, 468, 16);
+  // 标题栏中段顺带显示网络告警(带故障码前缀):来这一页的多半就是要改
+  // WiFi/MQTT 参数,原因直接摆在眼前,不必退回主屏看。仍然是提示性质 ——
+  // 不拦任何设置项的编辑与保存。
+  if (s.netAlert != NetAlert::None) {
+    char alert[28];
+    snprintf(alert, sizeof(alert), "W-0%u %s",
+             (unsigned)static_cast<uint8_t>(s.netAlert), netAlertText(s));
+    g.setTextDatum(MC_DATUM);
+    g.setTextColor(WARN, PANEL_ALT);
+    g.drawString(alert, 258, 16);
+  }
 
   for (uint8_t row = 0; row < 5; ++row) {
     const uint8_t item = first + row;
@@ -527,7 +642,17 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
               sizeof(value));
       break;
     case SystemSettingField::WifiEnabled:
-      strlcpy(value, v.wifiEnabled ? on : off, sizeof(value));
+      // 联网时右侧直接显示当前 SSID,比孤零零一个"开"信息量大:连的哪张网
+      // 一眼可见(信号格画在值文本右侧,见循环尾)。SSID 最长 32 字符,行内
+      // 放不下就截到 17 字符加 "...";未联网保持 开/关。
+      if (v.wifiEnabled && s.networkConnected && s.ssid[0]) {
+        if (strlen(s.ssid) > 20)
+          snprintf(value, sizeof(value), "%.17s...", s.ssid);
+        else
+          strlcpy(value, s.ssid, sizeof(value));
+      } else {
+        strlcpy(value, v.wifiEnabled ? on : off, sizeof(value));
+      }
       break;
     case SystemSettingField::MqttEnabled:
       strlcpy(value, v.mqttEnabled ? on : off, sizeof(value));
@@ -638,6 +763,21 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
     g.setTextDatum(MR_DATUM);
     g.setTextColor(active ? ACCENT : TEXT, rowBg);
     g.drawString(value, 450, y + 20);
+    // WiFi 行联网时,在值文本与行右边之间补一组迷你信号格:与主屏同一套
+    // 阈值(pure::rssiBars)与配色(≤1 格红/2 格黄/≥3 格绿),尺寸缩小到
+    // 2px 条宽 + 1px 间隙,高度 3/6/9/12,不与右对齐到 x=450 的文本重叠。
+    if (static_cast<SystemSettingField>(item) ==
+            SystemSettingField::WifiEnabled &&
+        s.networkConnected) {
+      const uint8_t level = pure::rssiBars(s.rssi);
+      const uint16_t barColor = level <= 1 ? G_RED : (level == 2 ? WARN : GOOD);
+      const int16_t bottom = y + 31;
+      for (uint8_t i = 0; i < 4; ++i) {
+        const int16_t bh = 3 + i * 3;
+        g.fillRect(453 + i * 3, bottom - bh, 2, bh,
+                   i < level ? barColor : MUTED);
+      }
+    }
   }
   g.setTextDatum(MC_DATUM);
   g.setTextColor(MUTED, BG);
@@ -858,24 +998,40 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
                                : tx.state,
                24, 46);
   g.setTextDatum(MC_DATUM);
-  g.setTextColor(s.networkConnected ? GOOD : MUTED, PANEL);
-  g.drawString(dateBuf, 150, 46);
+  if (s.netAlert != NetAlert::None) {
+    // 有网络告警时,日期位让给告警文案(告警色)。选这里正是因为这一格
+    // 不承载任何操作:不影响离线打印、不遮挡焦点,时间也照常在右侧走。
+    // 联网图标同时由上方逻辑保持"绿=WiFi 通/灰色带斜杠=断网",两者合起来
+    // 足以区分"WiFi 断了"与"WiFi 通但 MQTT 失败"。
+    g.setTextColor(WARN, PANEL);
+    g.drawString(netAlertText(s), 150, 46);
+  } else {
+    g.setTextColor(s.networkConnected ? GOOD : MUTED, PANEL);
+    g.drawString(dateBuf, 150, 46);
+  }
   g.setTextDatum(MR_DATUM);
   g.drawString(timeBuf, 290, 46);
-  // WiFi 扇形信号图标,紧跟状态文字之后:联网绿色,断网灰色并加红斜杠。
+  // WiFi 信号格,紧跟状态文字之后。原来是"通=绿 / 断=灰+斜杠"的二态扇形图标 ——
+  // 只反映 networkConnected 这个 bool,信号从满格掉到一格在屏上毫无区别,而
+  // REST/MQTT 早就上报 rssi 了。现在按 pure::rssiBars() 画 4 格:
+  // 阈值与内置 Web 管理页一致(≥-55 四格 / ≥-65 三格 / ≥-75 两格 / 更弱一格),
+  // 弱信号标黄、极弱标红;未联网时四格全空 + 红斜杠,与"连着但很弱"区分开。
   {
     const char *st =
         s.manualExhaust ? (chinese ? "强制排气" : "MANUAL PURGE") : tx.state;
     const int16_t wx = 24 + g.textWidth(st) + 12, wy = 50;
-    const uint16_t wc = s.networkConnected ? GOOD : MUTED;
-    g.drawCircle(wx, wy, 9, wc);
-    g.fillRect(wx - 10, wy + 1, 21, 9, PANEL); // 抹掉下半圆,只留上弧
-    g.drawCircle(wx, wy, 5, wc);
-    g.fillRect(wx - 6, wy + 1, 13, 6, PANEL);
-    g.fillCircle(wx, wy, 2, wc);
+    const uint8_t level =
+        s.networkConnected ? pure::rssiBars(s.rssi) : 0; // 未联网恒 0 格
+    const uint16_t barColor = level <= 1 ? G_RED : (level == 2 ? WARN : GOOD);
+    const int16_t bottom = wy + 10; // 底边:下方卡片自 y=62 起,留 2px 间隙
+    for (uint8_t i = 0; i < 4; ++i) {
+      const int16_t bx = wx - 9 + i * 5; // 3px 条宽 + 2px 间隙
+      const int16_t bh = 4 + i * 3;      // 逐级升高:4 / 7 / 10 / 13
+      g.fillRect(bx, bottom - bh, 3, bh, i < level ? barColor : MUTED);
+    }
     if (!s.networkConnected) {
-      g.drawLine(wx - 7, wy - 9, wx + 7, wy + 5, G_RED);
-      g.drawLine(wx - 6, wy - 9, wx + 8, wy + 5, G_RED);
+      g.drawLine(wx - 10, wy - 5, wx + 10, bottom + 1, G_RED);
+      g.drawLine(wx - 9, wy - 5, wx + 11, bottom + 1, G_RED);
     }
   }
   g.setTextDatum(MC_DATUM);

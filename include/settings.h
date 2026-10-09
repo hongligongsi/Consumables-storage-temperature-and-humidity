@@ -54,11 +54,27 @@ struct SystemSettings {
       0; // 手动校时 epoch;0=未设置,重启后 NTP 未同步时回退
 };
 
+// NVS 故障记忆:最近一次故障的档案(与 SystemSettings 分开存放,恢复出厂
+// 时一并清除)。code 是 FaultCode 的枚举值(0=从未锁过故障);latched 表示
+// 锁定是否仍未解除 —— 断电重启后 main.cpp 据此恢复热类故障的 Fault 锁定,
+// 防止拔电绕过保护;count 为累计锁定次数;epoch 为最近一次锁定时刻
+// (main.cpp 的 currentEpoch(),时钟不可用时为 0)。
+// 解除锁定(长按复位/关系统)只清 latched,code/count/epoch 留作排障历史。
+struct FaultRecord {
+  uint8_t code = 0;
+  bool latched = false;
+  uint16_t count = 0;
+  uint32_t epoch = 0;
+};
+
 class SettingsStore {
 public:
   SystemSettings load();
   bool save(const SystemSettings &settings);
   void loadMaterialProfiles();
   bool saveMaterialProfiles();
+  // 故障记忆读写:load 在键不存在时返回全零默认(从未锁过故障)。
+  FaultRecord loadFaultRecord();
+  bool saveFaultRecord(const FaultRecord &record);
   bool reset();
 };

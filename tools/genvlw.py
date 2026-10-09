@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""从系统 TTF 生成 TFT_eSPI 平滑字体(vlw)格式的 C 头文件。
+r"""从系统 TTF 生成 TFT_eSPI 平滑字体(vlw)格式的 C 头文件。
 
 TFT_eSPI 的 vlw 格式没有官方文档,格式来自 Extensions/Smooth_font.cpp 的逆向注释:
 
@@ -29,6 +29,10 @@ TFT_eSPI 的 vlw 格式没有官方文档,格式来自 Extensions/Smooth_font.cp
 用法:
     python tools/genvlw.py            # 生成 include/font_cn16.h、include/font_cn26.h
     python tools/genvlw.py --preview  # 额外输出 tools/preview_cn.png 供人眼核对
+
+生成后请跑 tools/font_check.py 复核覆盖:它会用**独立实现**的扫描器反查"源码用到的
+字符是否都在字库里",并在 CI 的 docs 作业里拦住漏字(本脚本的 collect_literal_chars
+看不懂原始字符串与 \uXXXX / \xNN 转义,那些写法会被 font_check.py 报出来)。
 """
 
 from __future__ import annotations
@@ -70,6 +74,9 @@ SIZES = [
 EXTRA_CHARS = "\u00b0\u2103"
 
 # 兜底汉字:即使某个字暂时没写进源码也不至于变成空白框。
+# 注意它是**静态**的,随文案改动会逐渐过期 —— 目前有 41 个字已无人引用,16px+26px
+# 两个字号合计白占约 38 KB Flash(tools/font_check.py 会告警并列出是哪些字)。
+# 有了那个检查兜底后,这里可以放心精简,需要时再往回收。
 BASE_CJK = (
     "智能耗材仓排风自动温度打印后主板湿床电压流最低高速时间待机预照明设置开关"
     "就绪检测中气故障语言状态文英网络已连接未确定取消返回启用禁警告正常请稍候"

@@ -160,6 +160,39 @@ void test_clamp_minutes_of_day(void) {
   TEST_ASSERT_EQUAL_UINT16(1425, pure::clampMinutesOfDay(65535));
 }
 
+// ------------------------------ WiFi 信号格数 ------------------------------
+
+// 边界取等号(≥ -55 才算 4 格),与网页 setBars 的写法一致。
+void test_rssi_bars_thresholds(void) {
+  TEST_ASSERT_EQUAL_UINT8(4, pure::rssiBars(-40));
+  TEST_ASSERT_EQUAL_UINT8(4, pure::rssiBars(-55));
+  TEST_ASSERT_EQUAL_UINT8(3, pure::rssiBars(-56));
+  TEST_ASSERT_EQUAL_UINT8(3, pure::rssiBars(-65));
+  TEST_ASSERT_EQUAL_UINT8(2, pure::rssiBars(-66));
+  TEST_ASSERT_EQUAL_UINT8(2, pure::rssiBars(-75));
+  TEST_ASSERT_EQUAL_UINT8(1, pure::rssiBars(-76));
+  TEST_ASSERT_EQUAL_UINT8(1, pure::rssiBars(-100)); // 极弱也留一格,与断网区分
+}
+
+// 无信号哨兵必须落 0 格:0 dBm 不会出现,正值属非法输入,同样不能画成满格。
+void test_rssi_unknown_is_zero_bars(void) {
+  TEST_ASSERT_EQUAL_UINT8(0, pure::rssiBars(pure::kRssiUnknown));
+  TEST_ASSERT_EQUAL_UINT8(0, pure::rssiBars(1));
+  TEST_ASSERT_EQUAL_UINT8(0, pure::rssiBars(127));
+}
+
+// 结构性质:信号越强,格数只能单调不减。将来若有人把阈值改反(例如强弱颠倒),
+// 光比几个固定向量看不出来,这条会立刻红。
+void test_rssi_bars_monotonic(void) {
+  uint8_t previous = 0;
+  for (int rssi = -100; rssi <= -30; ++rssi) {
+    const uint8_t bars = pure::rssiBars(rssi);
+    TEST_ASSERT_TRUE(bars >= previous);
+    TEST_ASSERT_TRUE(bars <= 4);
+    previous = bars;
+  }
+}
+
 // ------------------------------ 入口 ------------------------------
 
 int main(int, char **) {
@@ -175,5 +208,8 @@ int main(int, char **) {
   RUN_TEST(test_theme_day_window_wraps_midnight);
   RUN_TEST(test_theme_equal_bounds_yield_no_day);
   RUN_TEST(test_clamp_minutes_of_day);
+  RUN_TEST(test_rssi_bars_thresholds);
+  RUN_TEST(test_rssi_unknown_is_zero_bars);
+  RUN_TEST(test_rssi_bars_monotonic);
   return UNITY_END();
 }

@@ -13,12 +13,15 @@
   2. 设置项数:枚举 Count、README 内联表、docs/settings.md 表、"N 项"字样
   3. firmware.bin 台账自洽:体积与 SHA-256 三方(BUILD.txt / .sha256 / 文件本体)
   4. 镜像新鲜度:源码在台账记录的提交之后是否又改过(仅告警,不阻塞)
+  5. 字库覆盖:源码字符串字面量用到的字符必须都在 font_cn*.h 里(见 tools/font_check.py)
 
 只依赖标准库与 git;没有 git(例如从 tarball 解压)时跳过第 4 项。
+第 5 项复用 tools/font_check.py 的实现,不重复写一份扫描器。
 """
 
 import argparse
 import hashlib
+import importlib.util
 import re
 import subprocess
 import sys
@@ -321,6 +324,28 @@ def check_freshness(report: Report) -> None:
         report.ok()
 
 
+# --------------------------- 5. 字库覆盖 ---------------------------
+
+
+def check_fonts(report: Report) -> None:
+    """字库是否覆盖了源码里真正会绘制的字符。
+
+    字库由 genvlw.py 扫源码字面量生成,"加中文文案忘了重新生成"没有机制守着 ——
+    项目里已经发生过三次。漏字的现场表现是屏上一个空心方框 + 居中排版偏移,
+    很难反推回字库,所以在 CI 里直接拦。
+
+    实现放在 tools/font_check.py(可单独运行),这里只把结果并进同一份报告。
+    """
+    path = PROJECT_DIR / "tools" / "font_check.py"
+    if not path.exists():
+        report.warn("tools/font_check.py 缺失,跳过字库覆盖检查")
+        return
+    spec = importlib.util.spec_from_file_location("_font_check", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.run_check(report, quiet=True)
+
+
 # --------------------------- 入口 ---------------------------
 
 
@@ -335,6 +360,7 @@ def main() -> int:
     check_tree_numbers(report)
     check_settings_count(report)
     check_firmware_ledger(report)
+    check_fonts(report)
     check_freshness(report)
 
     for text, fix in report.warnings:

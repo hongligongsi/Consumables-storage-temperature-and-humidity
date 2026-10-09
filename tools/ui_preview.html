@@ -480,10 +480,34 @@
         <button type="button" data-quick="net" data-val="1" aria-pressed="true">已联网</button>
         <button type="button" data-quick="net" data-val="0" aria-pressed="false">未联网</button>
       </div>
+      <div class="seg" role="group" aria-label="信号强度">
+        <span>信号强度</span>
+        <button type="button" data-quick="rssi" data-val="-48" aria-pressed="false">满格 -48</button>
+        <button type="button" data-quick="rssi" data-val="-60" aria-pressed="true">良 -60</button>
+        <button type="button" data-quick="rssi" data-val="-70" aria-pressed="false">弱 -70</button>
+        <button type="button" data-quick="rssi" data-val="-85" aria-pressed="false">极弱 -85</button>
+      </div>
       <div class="seg" role="group" aria-label="故障">
         <span>演示</span>
-        <button type="button" data-quick="fault" data-val="1">传感器故障页</button>
+        <button type="button" data-quick="fault" data-val="1">进入故障页</button>
         <button type="button" data-quick="reset" data-val="1">重置模拟器</button>
+      </div>
+      <div class="seg" role="group" aria-label="故障码">
+        <span>故障码</span>
+        <button type="button" data-quick="faultcode" data-val="1" aria-pressed="false">F-01 仓温掉线</button>
+        <button type="button" data-quick="faultcode" data-val="2" aria-pressed="false">F-02 NTC 掉线</button>
+        <button type="button" data-quick="faultcode" data-val="3" aria-pressed="true">F-03 热板超温</button>
+        <button type="button" data-quick="faultcode" data-val="4" aria-pressed="false">F-04 仓温超限</button>
+        <button type="button" data-quick="faultcode" data-val="5" aria-pressed="false">F-05 过流</button>
+        <button type="button" data-quick="faultcode" data-val="6" aria-pressed="false">F-06 采样掉线</button>
+      </div>
+      <div class="seg" role="group" aria-label="网络告警">
+        <span>网络告警</span>
+        <button type="button" data-quick="netalert" data-val="0" aria-pressed="true">无</button>
+        <button type="button" data-quick="netalert" data-val="1" aria-pressed="false">W-01 WiFi 认证</button>
+        <button type="button" data-quick="netalert" data-val="2" aria-pressed="false">W-02 找不到 AP</button>
+        <button type="button" data-quick="netalert" data-val="3" aria-pressed="false">W-03 MQTT 认证</button>
+        <button type="button" data-quick="netalert" data-val="4" aria-pressed="false">W-04 MQTT 不通</button>
       </div>
     </div>
 
@@ -608,14 +632,22 @@
         pirMotion: false,
         hasTouch: false,
         netConnected: true,        // STA 是否已联网(顶栏日期/WiFi 图标着色)
+        rssi: -58,                 // WiFi 信号强度 dBm;未联网时为 0(哨兵)
+                                   // 阈值与固件 pure::rssiBars() 与网页 setBars 同一套
+        ssid: 'HomeWiFi',          // 当前连接的 SSID:设置页 WiFi 项显示网络名
+                                   // (未联网时固件显示回退到 开/关,这里用 netConnected 模拟)
         // 耗材设置页
         matField: 0, matDirty: false,
         // 系统设置页
         sysField: 0, sysEditing: false, sysDirty: false, sysSubField: 0,
         // 触摸校准
         calibStep: 0,
-        // 故障演示的传感器有效位
-        faultSensors: [true, false, true]
+        // 故障演示:故障码(1..6,与固件 FaultCode 枚举一一对应)与三颗传感器有效位
+        faultCode: 3,
+        faultSensors: [true, true, true],
+        // 网络告警演示(0=无,1..4 与固件 NetAlert 的 W-01..W-04 一一对应)。
+        // 与故障码不同,这是"只提示不停机"的非阻塞通道,不切页面。
+        netAlert: 0
       };
 
       try {
@@ -1051,19 +1083,30 @@
         h += '<circle cx="15" cy="46" r="4" style="fill:' + stateColor + '"/>';
         h += '<text x="24" y="50" text-anchor="start" font-size="11" class="zh" style="fill:' + stateColor + '">' + stateZh + '</text>';
         h += '<text x="24" y="50" text-anchor="start" font-size="11" class="en" style="fill:' + stateColor + '">' + stateEn + '</text>';
-        // WiFi 扇形信号图标(状态文字之后):联网绿,断网灰并加红斜杠
+        // WiFi 信号格(状态文字之后):4 格,阈值与固件 pure::rssiBars() 与内置
+        // Web 管理页 setBars 同一套(≥-55 四格 / ≥-65 三格 / ≥-75 两格 / 更弱一格)。
+        // 以前是"通/断"二态的扇形图标,信号强弱在屏上完全看不出来。
         var sw = 0;
         for (var ci = 0; ci < stateText.length; ci++) sw += stateText.charCodeAt(ci) > 127 ? 11 : 6.2;
-        var wx = 24 + sw + 12, wy = 46, wc = S.netConnected ? 'var(--good)' : 'var(--muted)';
-        h += '<path d="M' + (wx - 8) + ' ' + (wy + 1) + ' a8 8 0 0 1 16 0" fill="none" stroke="' + wc + '" stroke-width="2.4"/>';
-        h += '<path d="M' + (wx - 4.5) + ' ' + (wy + 1) + ' a4.5 4.5 0 0 1 9 0" fill="none" stroke="' + wc + '" stroke-width="2.4"/>';
-        h += '<circle cx="' + wx + '" cy="' + (wy + 1) + '" r="2.2" style="fill:' + wc + '"/>';
+        var wx = 24 + sw + 12, wy = 46, wb = 56, level = S.netConnected ? rssiBars(S.rssi) : 0;
+        var barColor = level <= 1 ? 'var(--g-red)' : (level === 2 ? 'var(--warn)' : 'var(--good)');
+        for (var bi = 0; bi < 4; bi++) {
+          var bh = 4 + bi * 3;
+          h += '<rect x="' + (wx - 9 + bi * 5) + '" y="' + (wb - bh) + '" width="3" height="' + bh + '" style="fill:' + (bi < level ? barColor : 'var(--muted)') + '"/>';
+        }
         if (!S.netConnected) {
-          h += '<line x1="' + (wx - 7) + '" y1="' + (wy - 7) + '" x2="' + (wx + 7) + '" y2="' + (wy + 5) + '" stroke="var(--g-red)" stroke-width="1.6"/>';
-          h += '<line x1="' + (wx - 6) + '" y1="' + (wy - 7) + '" x2="' + (wx + 8) + '" y2="' + (wy + 5) + '" stroke="var(--g-red)" stroke-width="1.6"/>';
+          h += '<line x1="' + (wx - 10) + '" y1="' + (wy - 5) + '" x2="' + (wx + 10) + '" y2="' + (wb + 1) + '" stroke="var(--g-red)" stroke-width="1.6"/>';
+          h += '<line x1="' + (wx - 9) + '" y1="' + (wy - 5) + '" x2="' + (wx + 11) + '" y2="' + (wb + 1) + '" stroke="var(--g-red)" stroke-width="1.6"/>';
         }
         var clockColor = S.netConnected ? 'var(--good)' : 'var(--muted)';
-        h += '<text x="150" y="50" text-anchor="middle" font-size="11" style="fill:' + clockColor + '">' + clockText.slice(0, 10) + '</text>';
+        // 有网络告警时,日期位让给告警文案(告警色):只提示不停机,离线打印照旧。
+        if (S.netAlert) {
+          var na = NET_ALERT_TEXTS[S.netAlert] || { zh: '', en: '' };
+          h += '<text x="150" y="50" text-anchor="middle" font-size="11" class="zh" style="fill:var(--warn)">' + na.zh + '</text>';
+          h += '<text x="150" y="50" text-anchor="middle" font-size="11" class="en" style="fill:var(--warn)">' + na.en + '</text>';
+        } else {
+          h += '<text x="150" y="50" text-anchor="middle" font-size="11" style="fill:' + clockColor + '">' + clockText.slice(0, 10) + '</text>';
+        }
         h += '<text x="290" y="50" text-anchor="end" font-size="11" style="fill:' + clockColor + '">' + clockText.slice(11) + '</text>';
 
         // 三个自动开关行,焦点 3/4/5
@@ -1175,7 +1218,13 @@
         var zh = S.st.language === 'zh';
         switch (f.type) {
           case 'lang': return zh ? '中文' : 'EN';
-          case 'bool': return S.st[f.key] ? (zh ? '开' : 'ON') : (zh ? '关' : 'OFF');
+          case 'bool':
+            // WiFi 项联网时显示当前 SSID(超长截断),比孤零零的"开"信息量大;
+            // 信号格画在值文本右侧,见 renderSystem 的行循环。
+            if (f.key === 'wifiEnabled' && S.st.wifiEnabled && S.netConnected && S.ssid) {
+              return S.ssid.length > 20 ? S.ssid.slice(0, 17) + '...' : S.ssid;
+            }
+            return S.st[f.key] ? (zh ? '开' : 'ON') : (zh ? '关' : 'OFF');
           case 'num': return S.st[f.key] + f.unit;
           case 'time': return hhmm(S.st[f.key]);
           case 'enc': return S.st.encoderReversed ? (zh ? '反向' : 'REVERSE') : (zh ? '正向' : 'NORMAL');
@@ -1223,6 +1272,14 @@
         h += '<text x="10" y="21" font-size="13" class="t zh">系统设置</text>';
         h += '<text x="10" y="21" font-size="13" class="t en">SYSTEM SETTINGS</text>';
         h += '<text x="468" y="21" text-anchor="end" font-size="11" class="a">' + (S.sysField + 1) + '/' + F.length + (S.sysDirty ? ' *' : '') + '</text>';
+        // 网络告警顺带显示在标题栏中段(带 W-0x 前缀):来这一页的多半就是要改
+        // WiFi/MQTT,原因摆在眼前;仍然只是提示,不拦任何设置项的编辑与保存。
+        if (S.netAlert) {
+          var sna = NET_ALERT_TEXTS[S.netAlert];
+          var stag = 'W-0' + S.netAlert + ' ';
+          h += '<text x="258" y="21" text-anchor="middle" font-size="11" class="w zh">' + stag + sna.zh + '</text>';
+          h += '<text x="258" y="21" text-anchor="middle" font-size="11" class="w en">' + stag + sna.en + '</text>';
+        }
 
         // 滚动窗口:选中项保持在 5 行内;first 上限为 F.length-5,否则末项永远不可见
         var first = S.sysField >= 2 ? S.sysField - 2 : 0;
@@ -1233,6 +1290,16 @@
           h += '<text x="27" y="' + (y + 20) + '" font-size="13" class="' + (activeRow ? 't' : 'm') + ' zh">' + f.zh + '</text>';
           h += '<text x="27" y="' + (y + 20) + '" font-size="13" class="' + (activeRow ? 't' : 'm') + ' en">' + f.en + '</text>';
           h += '<text x="450" y="' + (y + 20) + '" text-anchor="end" font-size="13" class="' + (activeRow ? 'a' : 't') + '">' + settingValue(f) + '</text>';
+          // WiFi 行联网时补迷你信号格:与主屏同一套阈值/配色,2px 条宽 + 1px 间隙,
+          // 高度 3/6/9/12,画在值文本右侧与行边之间(与固件 drawSystemSettings 对齐)。
+          if (f.key === 'wifiEnabled' && S.netConnected) {
+            var lv = rssiBars(S.rssi);
+            var bc = lv <= 1 ? 'var(--g-red)' : (lv === 2 ? 'var(--warn)' : 'var(--good)');
+            for (var sb = 0; sb < 4; sb++) {
+              var sbh = 3 + sb * 3;
+              h += '<rect x="' + (453 + sb * 3) + '" y="' + (y + 31 - sbh) + '" width="2" height="' + sbh + '" style="fill:' + (sb < lv ? bc : 'var(--muted)') + '"/>';
+            }
+          }
         }
         if (S.sysEditing) {
           h += '<text x="240" y="290" text-anchor="middle" font-size="11" class="m zh">旋转修改　单击完成</text>';
@@ -1260,27 +1327,87 @@
         return h;
       }
 
-      function renderFault() {
-        var h = '<rect width="480" height="320" class="fill-bg"/>';
-        h += '<rect x="0" y="0" width="480" height="30" style="fill:var(--maroon)"/>';
-        h += '<path d="M240 48 L196 124 L284 124 Z" style="fill:var(--g-red)"/>';
-        h += '<circle cx="240" cy="107" r="5" style="fill:var(--text)"/>';
-        h += '<rect x="236.5" y="70" width="7" height="27" rx="3" style="fill:var(--text)"/>';
-        h += '<text x="240" y="15" text-anchor="middle" font-size="11" style="fill:var(--text)">' + clockText + '</text>';
-        h += '<text x="240" y="157" text-anchor="middle" font-size="20" font-weight="600" class="t zh">传感器错误</text>';
-        h += '<text x="240" y="157" text-anchor="middle" font-size="20" font-weight="600" class="t en">SENSOR FAULT</text>';
-        h += '<text x="240" y="188" text-anchor="middle" font-size="12" class="w zh">系统已停止</text>';
-        h += '<text x="240" y="188" text-anchor="middle" font-size="12" class="w en">SYSTEM STOPPED</text>';
-        h += '<text x="240" y="211" text-anchor="middle" font-size="11" class="m zh">请检查</text>';
-        h += '<text x="240" y="211" text-anchor="middle" font-size="11" class="m en">CHECK SENSORS</text>';
-        var names = ['AHT20', 'NTC', 'INA226'], xs = [72, 208, 344];
-        for (var i = 0; i < 3; i++) {
-          var c = S.faultSensors[i] ? 'var(--good)' : 'var(--g-red)';
-          h += '<circle cx="' + (xs[i] + 0) + '" cy="250" r="5" style="fill:' + c + '"/>';
-          h += '<text x="' + (xs[i] + 12) + '" y="254" font-size="11" style="fill:' + c + '">' + names[i] + '</text>';
-        }
-        return h;
+    // 故障页文案表:下标与固件 FaultCode 一一对应(0 为 None 占位)，
+    // 与 src/tft_ui.cpp 的 FAULT_TEXTS 保持同步。
+    // hz/he 是处理建议行,v 是演示用的三行读数。
+    var FAULT_TEXTS = [
+      null,
+      { zh: '仓温传感器掉线', en: 'AHT20 OFFLINE', hz: '检查 I2C 接线与供电', he: 'CHECK I2C WIRING',
+        v: { aht: '--', ntc: '24℃ / 限 80℃', ina: '24.1V 0.00A' } },
+      { zh: '热板传感器掉线', en: 'NTC OFFLINE', hz: '检查 NTC 两芯接线', he: 'CHECK NTC WIRING',
+        v: { aht: '24.6℃ 41%', ntc: '--', ina: '24.1V 0.00A' } },
+      { zh: '热板超温', en: 'BOARD OVERHEAT', hz: '检查加热板与热风风扇', he: 'CHECK HEATER AND FAN',
+        v: { aht: '24.6℃ 41%', ntc: '92℃ / 限 80℃', ina: '24.1V 5.87A' } },
+      { zh: '仓温超上限', en: 'CHAMBER OVERHEAT', hz: '开门散热并检查排风', he: 'OPEN DOOR AND CHECK FAN',
+        v: { aht: '46.2℃ 38%', ntc: '78℃ / 限 80℃', ina: '24.1V 5.12A' } },
+      { zh: '加热回路过流', en: 'OVER CURRENT', hz: '检查加热板与功率接线', he: 'CHECK HEATER WIRING',
+        v: { aht: '31.5℃ 40%', ntc: '76℃ / 限 80℃', ina: '24.0V 9.30A' } },
+      { zh: '电流采样掉线', en: 'INA226 OFFLINE', hz: '检查 I2C 接线与供电', he: 'CHECK I2C WIRING',
+        v: { aht: '24.6℃ 41%', ntc: '55℃ / 限 80℃', ina: '--' } }
+    ];
+
+    // RSSI(dBm) → 信号格数 0..4。阈值与固件 include/pure_logic.h 的 pure::rssiBars()
+    // 以及内置 Web 管理页(web_page.h 的 setBars)是同一套;三处任一处改动都要同步,
+    // 否则屏上和网页会对同一个网络给出不同结论。0 与正值是"无信号"哨兵。
+    function rssiBars(rssi) {
+      if (!(rssi < 0)) return 0;
+      if (rssi >= -55) return 4;
+      if (rssi >= -65) return 3;
+      if (rssi >= -75) return 2;
+      return 1;
+    }
+
+    // 网络告警文案表:下标与固件 NetAlert 的 W-01..W-04 一一对应(0 为 None),
+    // 与 src/tft_ui.cpp 的 NET_ALERT_TEXTS 保持同步。这是非阻塞提示通道:
+    // 只换掉主屏日期位与设置页标题栏中段,不切页面、不停机。
+    var NET_ALERT_TEXTS = [
+      null,
+      { zh: 'WiFi 认证失败', en: 'WiFi AUTH FAIL' },
+      { zh: '找不到 WiFi', en: 'NO WiFi AP' },
+      { zh: 'MQTT 认证失败', en: 'MQTT AUTH FAIL' },
+      { zh: 'MQTT 连接超时', en: 'MQTT TIMEOUT' }
+    ];
+
+    // 故障页:顶栏给故障码与类别,中部按码给标题与处理建议,再逐行列出
+    // 三颗传感器的在线状态与实测值,底部写明复位方式。
+    function renderFault() {
+      var code = Math.min(Math.max(S.faultCode | 0, 1), 6);
+      var ft = FAULT_TEXTS[code];
+      function pad(n) { return (n < 10 ? '0' : '') + n; }
+      var tag = 'F-' + pad(code) + ' ';
+
+      var h = '<rect width="480" height="320" class="fill-bg"/>';
+      h += '<rect x="0" y="0" width="480" height="30" style="fill:var(--maroon)"/>';
+      h += '<text x="12" y="15" font-size="11" style="fill:#fff" class="zh">' + tag + ft.zh + '</text>';
+      h += '<text x="12" y="15" font-size="11" style="fill:#fff" class="en">' + tag + ft.en + '</text>';
+      h += '<text x="468" y="15" text-anchor="end" font-size="11" style="fill:#fff">' +
+        clockText.slice(11) + '</text>';
+      h += '<path d="M240 44 L198 116 L282 116 Z" style="fill:var(--g-red)"/>';
+      h += '<circle cx="240" cy="100" r="5" style="fill:var(--text)"/>';
+      h += '<rect x="236.5" y="62" width="7" height="26" rx="3" style="fill:var(--text)"/>';
+      h += '<text x="240" y="142" text-anchor="middle" font-size="20" font-weight="600" class="t zh">' + ft.zh + '</text>';
+      h += '<text x="240" y="142" text-anchor="middle" font-size="20" font-weight="600" class="t en">' + ft.en + '</text>';
+      h += '<text x="240" y="172" text-anchor="middle" font-size="12" class="w zh">' + ft.hz + '</text>';
+      h += '<text x="240" y="172" text-anchor="middle" font-size="12" class="w en">' + ft.he + '</text>';
+
+      var rows = [
+        ['AHT20', S.faultSensors[0], ft.v.aht],
+        ['NTC', S.faultSensors[1], ft.v.ntc],
+        ['INA226', S.faultSensors[2], ft.v.ina]
+      ];
+      for (var i = 0; i < 3; i++) {
+        var y = 208 + i * 28;
+        var valid = rows[i][1];
+        var c = valid ? 'var(--good)' : 'var(--g-red)';
+        h += '<circle cx="112" cy="' + (y - 4) + '" r="5" style="fill:' + c + '"/>';
+        h += '<text x="128" y="' + y + '" font-size="11" style="fill:var(--text)">' + rows[i][0] + '</text>';
+        h += '<text x="368" y="' + y + '" text-anchor="end" font-size="11" style="fill:' +
+          (valid ? 'var(--muted)' : 'var(--g-red)') + '">' + rows[i][2] + '</text>';
       }
+      h += '<text x="240" y="296" text-anchor="middle" font-size="11" class="m zh">长按编码器键复位</text>';
+      h += '<text x="240" y="296" text-anchor="middle" font-size="11" class="m en">HOLD ENCODER KEY TO RESET</text>';
+      return h;
+    }
 
       var clockText = '--:--:--';
       function updateClock() {
@@ -1360,6 +1487,7 @@
           extra = (zh ? '　第 ' : ' item ') + (S.sysField + 1) + '/' + F.length +
             (S.sysEditing && editable ? (zh ? ' ·编辑中' : ' EDITING') : '');
         }
+        if (S.screen === 'fault') extra = '　F-0' + Math.min(Math.max(S.faultCode | 0, 1), 6);
         document.getElementById('cap-state').textContent = (zh ? names[idx] : namesEn[idx]) + extra;
         var th = document.querySelector('.doc').getAttribute('data-theme');
         var thName = th === 'ios' ? (zh ? '默认' : 'DEFAULT')
@@ -1402,9 +1530,23 @@
             if (!S.hasTouch && S.screen === 'calib') S.screen = 'system';
           } else if (kind === 'net') {
             S.netConnected = val === '1';
+          } else if (kind === 'rssi') {
+            // 切信号强度:顺带置为已联网,否则四格全空看不出档位差异。
+            S.rssi = parseInt(val, 10);
+            S.netConnected = true;
           } else if (kind === 'fault') {
             S.screen = S.screen === 'fault' ? 'main' : 'fault';
-            btn.textContent = S.screen === 'fault' ? '退出故障页' : '传感器故障页';
+            btn.textContent = S.screen === 'fault' ? '退出故障页' : '进入故障页';
+          } else if (kind === 'faultcode') {
+            // 切换故障码,并让三颗传感器的在线位与故障类型自洽:
+            // F-01/F-02/F-06 是掉线类(对应那颗变红),超温/过流类三颗都在线。
+            S.faultCode = parseInt(val, 10);
+            S.faultSensors = [val !== '1', val !== '2', val !== '6'];
+          } else if (kind === 'netalert') {
+            // 网络告警只是提示:不切页面、不改状态机,离线打印照旧可用。
+            // W-01/W-02 是 WiFi 层失败,顺带把联网图标打回断网态更贴近真机。
+            S.netAlert = parseInt(val, 10);
+            if (val === '1' || val === '2') S.netConnected = false;
           } else if (kind === 'reset') {
             factoryReset();
             S.screen = 'main'; S.mainFocus = 1; S.materialIndex = 0;
@@ -1413,8 +1555,10 @@
               systemEnabled: true, preheat: false, light: false, manualExhaust: false
             };
             S.matDirty = S.sysDirty = S.sysEditing = false; S.calibStep = 0;
-            S.pirMotion = false; S.hasTouch = false; S.netConnected = true;   // 演示输入一并归位
-            document.querySelector('[data-quick="fault"]').textContent = '传感器故障页';
+            S.pirMotion = false; S.hasTouch = false; S.netConnected = true; S.rssi = -58; // 演示输入一并归位
+            S.faultCode = 3; S.faultSensors = [true, true, true];             // 故障演示一并归位
+            S.netAlert = 0;                                                    // 网络告警一并归位
+            document.querySelector('[data-quick="fault"]').textContent = '进入故障页';
           }
           syncQuickButtons();
           render();
@@ -1433,6 +1577,9 @@
         q('pir', S.pirMotion ? 1 : 0);
         q('touch', S.hasTouch ? 1 : 0);
         q('net', S.netConnected ? 1 : 0);
+        q('rssi', S.rssi);
+        q('faultcode', S.faultCode);
+        q('netalert', S.netAlert);
       }
 
       syncQuickButtons();

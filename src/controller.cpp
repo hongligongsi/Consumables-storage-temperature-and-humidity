@@ -41,6 +41,11 @@ void resetMaterialProfiles() {
 namespace {
 constexpr uint32_t SENSOR_FAULT_MS =
     3UL * 1000UL; // 预热/打印中传感器失效多久判故障
+// 硬保护阈值:软保护先动作(超温走全速排气、过流走软降功率),只有超出
+// 软限值一段余量才升级为停机故障,避免与软保护抢动作、也避免单次尖峰误报。
+constexpr uint32_t HARD_TRIP_MS = 500UL;         // 连续越界多久锁故障
+constexpr float HARD_OVER_MARGIN_C = 15.0f;      // 硬过温余量(相对软限值)
+constexpr float HARD_OVER_CURRENT_FACTOR = 1.5f; // 硬过流倍数
 constexpr float KP = 8.0f, KI = 0.04f, KD = 15.0f; // 仓温 PID 参数
 constexpr float BOARD_KP = 4.0f, BOARD_KI = 0.02f,
                 BOARD_KD = 3.0f;           // 热板限温 PID 参数
@@ -50,6 +55,82 @@ constexpr float PWM_SLOPE_PER_50MS = 3.0f; // 发热板 PWM 每 50ms 最大变�
 // 记录开机时刻基准(人感计时与 PID 的 dt 都以它为起点)。
 void ChamberController::begin(uint32_t now) {
   lastMotionMs_ = lastPidMs_ = now;
+}
+
+// 解除故障锁定(唯一调用点:屏上长按编码器,见 main.cpp)。
+// 复位不等于"当作没事发生",两种故障的收尾姿态不同:
+//   - 热类(过温/过流):复位后先进**安全冷却** —— 保持 100% 排气与热板风扇,
+//     直到温度回落到软限以下。故障态本来就是全速排风,若复位直接回 Idle,
+//     排风与热板风扇会立刻停,等于把设备置于比故障态更热的姿态。
+//   - 非热类(传感器/采样掉线):没有余热要排,直接回待机。
+// 热类分支**故意不清 hardTripSinceMs_**:硬保护条件若仍在,下一控制周期
+// (50 ms)立即复锁,而不是重新等满 HARD_TRIP_MS;条件解除后 update() 里的
+// `if (!hardProtect)` 自会把它清零。
+void ChamberController::clearFault() {
+  const bool wasThermal = fault_ == FaultCode::BoardOverTemp ||
+                          fault_ == FaultCode::ChamberOverTemp ||
+                          fault_ == FaultCode::OverCurrent;
+  fault_ = FaultCode::None;
+  invalidSinceMs_ = 0;
+  lastPwm_ = 0;
+  integral_ = previousError_ = boardIntegral_ = boardPreviousError_ = 0;
+  coolingStartedMs_ = 0;
+  if (wasThermal) {
+    state_ = ChamberState::Cooling;
+    safetyCooling_ = true;
+  } else {
+    state_ = ChamberState::Idle;
+    safetyCooling_ = false;
+    hardTripSinceMs_ = 0;
+  }
+}
+
+// 热类(硬过温/硬过流)故障在断电重启后仍要恢复锁定 —— 它们意味着加热回路
+// 已经表现出失控,拔电重启不能当作"处理过了"。传感器掉线类不在此列:开机
+// 本来就会重新检测传感器,恢复了也只会被新判定立即覆盖。
+bool ChamberController::persistsAcrossReboot(FaultCode code) {
+  return code == FaultCode::BoardOverTemp ||
+         code == FaultCode::ChamberOverTemp || code == FaultCode::OverCurrent;
+}
+
+// 开机时从 NVS 恢复故障锁定(main.cpp 的 setup 调用,码来自 FaultRecord)。
+// 与自然锁定的差别只有一处:hardTripSinceMs_ 清零而不是保留 —— 重启后
+// 尚无可信读数,复锁条件交给后续 update() 重新评估;反正 Fault 分支本身
+// 不再判定,Fault 态的安全姿态(全速排风)不依赖这个计时。
+void ChamberController::restoreFault(FaultCode code) {
+  if (code == FaultCode::None || code >= FaultCode::Count)
+    return;
+  state_ = ChamberState::Fault;
+  fault_ = code;
+  // 与 clearFault() 对齐地清掉 PID 历史与各计时,避免复位后旧积分卷土重来。
+  integral_ = previousError_ = boardIntegral_ = boardPreviousError_ = 0;
+  lastPwm_ = 0;
+  invalidSinceMs_ = 0;
+  hardTripSinceMs_ = 0;
+  safetyCooling_ = false;
+  coolingStartedMs_ = 0;
+}
+
+// 判定故障原因码。优先级:硬过温 > 硬过流 > 传感器掉线 —— 越危险的越先报,
+// 让人在现场第一眼看到最该处理的那条;掉线判据自带 valid 前置,所以不会把
+// 真实的超温掩盖掉,反之亦然(读数无效时不判越界)。
+FaultCode ChamberController::classifyFault(const Readings &in) const {
+  if (in.ntcValid && in.heaterBoardC >= boardLimitC_ + HARD_OVER_MARGIN_C)
+    return FaultCode::BoardOverTemp;
+  if (in.ahtValid && in.chamberC >= profile().chamberMaxC + HARD_OVER_MARGIN_C)
+    return FaultCode::ChamberOverTemp;
+  if (in.inaValid &&
+      fabsf(in.heaterCurrentA) > maxCurrentA_ * HARD_OVER_CURRENT_FACTOR)
+    return FaultCode::OverCurrent;
+  // 传感器掉线:按 AHT20 → NTC → INA226 报第一颗失效的;
+  // 三颗同时掉线时报仓温传感器(它是本产品的主传感器)。
+  if (!in.ahtValid)
+    return FaultCode::AhtLost;
+  if (!in.ntcValid)
+    return FaultCode::NtcLost;
+  if (!in.inaValid)
+    return FaultCode::InaLost;
+  return FaultCode::None;
 }
 
 // 切换当前耗材预设;同时清空两个 PID 的历史项,防止旧耗材的积分带到新耗材。
@@ -159,7 +240,7 @@ float ChamberController::boardPid(float input, float dt) {
 // 每个 50ms 控制周期执行一次:先跑状态机(人感/预热/过温/打印结束),
 // 再按状态计算发热板占空比与各路风扇。返回的 Outputs 由 main.cpp 写硬件。
 Outputs ChamberController::update(const Readings &in, uint32_t now) {
-  Outputs out{0, 0, false, false, false, state_};
+  Outputs out{0, 0, false, false, false, state_, fault_};
   const ChamberState previousState = state_;
   // ---- PIR 人感计时 ----
   // lastMotionMs_:最近一次看到人的时刻(用于打印保持);
@@ -173,18 +254,51 @@ Outputs ChamberController::update(const Readings &in, uint32_t now) {
 
   // 三路安全相关传感器(AHT20 仓温/NTC 板温/INA226 电流)全部有效才允许加热。
   const bool sensorsValid = in.ahtValid && in.ntcValid && in.inaValid;
+  // 硬保护:超出软限值一段余量(热板/仓温)或超出电流硬限。软保护会先动作
+  // (超温全速排气、过流软降功率),所以正常工况下这些条件不会成立;一旦成立
+  // 说明软保护已经压不住,直接锁停机故障,不必等 3 秒。
+  const bool hardOverTemp =
+      (in.ntcValid && in.heaterBoardC >= boardLimitC_ + HARD_OVER_MARGIN_C) ||
+      (in.ahtValid && in.chamberC >= profile().chamberMaxC + HARD_OVER_MARGIN_C);
+  const bool hardOverCurrent =
+      in.inaValid &&
+      fabsf(in.heaterCurrentA) > maxCurrentA_ * HARD_OVER_CURRENT_FACTOR;
+  const bool hardProtect = hardOverTemp || hardOverCurrent;
+  if (!hardProtect)
+    hardTripSinceMs_ = 0; // 越界解除即清零，重新计时必须再次连续越界
+
   if (!systemEnabled_) {
+    // 关系统等于人工干预:顺带解除故障锁定并清全部计时。
+    // 这是屏上长按复位之外的第二条复位路径(历史行为,保留)。
     state_ = ChamberState::Idle;
+    fault_ = FaultCode::None;
+    invalidSinceMs_ = 0;
+    hardTripSinceMs_ = 0;
     safetyCooling_ = false;
     coolingStartedMs_ = 0;
   } else if (state_ == ChamberState::Fault) {
-    // 故障锁定，关闭再开启系统才允许重新进入状态机。
+    // 故障锁定:除"关闭再开启系统"外,唯一解除途径是故障页长按编码器
+    // (见 UiModel::apply 置位 + main.cpp 的 takeFaultResetRequest)。
+    // 锁定期间不做任何判定,避免故障未排除就自动恢复加热。
+  } else if (hardProtect) {
+    // 硬保护与传感器掉线不同:它不要求"之前处于预热/打印",任何状态(含待机、
+    // 排气)下越界都成立 —— 加热回路失控不该取决于状态机当前走到哪一步。
+    // 需连续越界 HARD_TRIP_MS 才锁故障以滤掉采样尖峰;中途恢复则已在上面
+    // 把计时清零,重新越界必须再连续坚持这么久。
+    if (!hardTripSinceMs_)
+      hardTripSinceMs_ = now;
+    if (now - hardTripSinceMs_ >= HARD_TRIP_MS) {
+      state_ = ChamberState::Fault;
+      fault_ = classifyFault(in);
+    }
   } else if (!sensorsValid && (previousState == ChamberState::Preheat ||
                                previousState == ChamberState::Printing)) {
     if (!invalidSinceMs_)
       invalidSinceMs_ = now;
-    if (now - invalidSinceMs_ >= SENSOR_FAULT_MS)
+    if (now - invalidSinceMs_ >= SENSOR_FAULT_MS) {
       state_ = ChamberState::Fault;
+      fault_ = classifyFault(in);
+    }
   } else {
     invalidSinceMs_ = 0;
     const bool overTemperature =
@@ -315,5 +429,6 @@ Outputs ChamberController::update(const Readings &in, uint32_t now) {
                  (in.inaValid && fabsf(in.heaterCurrentA) > 0.05f) ||
                  out.heaterPercent > 0 || out.exhaustPercent > 0 || out.light;
   out.state = state_;
+  out.fault = fault_;
   return out;
 }

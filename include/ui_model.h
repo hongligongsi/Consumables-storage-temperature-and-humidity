@@ -41,6 +41,20 @@ enum class MainFocus : uint8_t {
   Count
 };
 
+// 网络告警码:与 FaultCode 是两条互不相干的通道 —— 网络问题不参与任何热控
+// 联锁,绝不停机、不锁状态机,只在主屏顶栏把日期位置换成一行提示(离线打印
+// 照常可用)。编号 W-01…W-04,新增码只能追加在 Count 之前,否则历史含义错位。
+// 定义在 ui_model.h 而非 network.h,是为了让显示层能引用它而网络层又能包含
+// 显示层:反向包含会形成循环(ui_model.h 刻意不依赖网络层)。
+enum class NetAlert : uint8_t {
+  None = 0,        // 无告警(联网正常、功能关闭,或尚未攒够失败次数)
+  WifiAuthFail,    // W-01 WiFi 认证失败:密码错或加密方式不匹配
+  WifiNoAp,        // W-02 未找到指定 AP:SSID 写错或超出覆盖范围
+  MqttAuthFail,    // W-03 MQTT 认证失败:broker 拒绝匿名连接或凭据错
+  MqttUnreachable, // W-04 MQTT 连不上 broker:地址/端口/防火墙/网络不通
+  Count
+};
+
 // 系统设置页的条目,顺序即界面显示顺序。
 // 增删条目时只需改这里:页码总数与滚动窗口都按 Count 动态计算,无需改渲染代码。
 // 注意 Count 仅为末尾哨兵(既表示条目总数,也用作取模边界),不对应任何真实条目。
@@ -96,10 +110,18 @@ struct UiSnapshot {
   const char *previousMaterial; // 上一种耗材名(切料区显示)
   const char *nextMaterial;     // 下一种耗材名(切料区显示)
   ChamberState state;           // 六态状态机:待机/检测/预热/打印/排气/故障
+  FaultCode fault;              // 故障原因码,仅 state==Fault 时有意义(否则 None)
   Language language;            // 决定界面用中文还是英文
   char clock[24]; // "YYYY-MM-DD HH:MM:SS";无有效时间时为 "----/--/-- --:--:--"
   char chipId[20]; // 本机唯一芯片 ID,如 "CH-1A2B3C4D5E6F"(main.cpp 从 network 补入)
+  char ssid[33];   // 当前连接的 WiFi SSID(空串=未连接)。main.cpp 从 network 补入,
+                   // 系统设置页 WiFi 项据此显示网络名;注意与"从未配网"的判定
+                   // 语义相反 —— 那里读的是持久化凭据,这里要的是"现在连着谁"
   bool networkConnected; // STA 是否已联网(顶栏日期着色用)
+  int8_t rssi;           // 当前 WiFi 信号强度(dBm);未联网时为 0(哨兵,见 pure_logic.h
+                         // 的 kRssiUnknown)。main.cpp 从 network 补入,屏上据此画
+                         // 4 格信号条 —— 网络层 REST/MQTT 早就上报 rssi,之前只是没上屏
+  NetAlert netAlert;     // 网络告警码;main.cpp 从 network 补入,None 表示正常
   uint8_t theme; // 当前生效配色: 0=默认(iOS 浅色), 1=IOS(深色 HMI),
                  // 2=蓝白·日间, 3=蓝白·夜间;ui_model 填存储原始值,
                  // main.cpp 每帧覆写为按时刻解析的生效值
@@ -203,6 +225,13 @@ public:
     factoryResetRequested_ = false;
     return requested;
   }
+  // 故障页长按编码器触发的复位请求(边沿)。main.cpp 收到后调用
+  // controller.clearFault() —— 与其它重操作一样不在输入回调里直接执行。
+  bool takeFaultResetRequest() {
+    const bool requested = faultResetRequested_;
+    faultResetRequested_ = false;
+    return requested;
+  }
 
 private:
   UiSettings settings_;                              // 主界面运行态开关
@@ -221,6 +250,7 @@ private:
   bool systemSettingsSaveRequested_ = false; // 请求保存系统设置(边沿)
   bool touchCalibrationRequested_ = false;   // 请求进入触摸校准(边沿)
   bool factoryResetRequested_ = false;       // 请求恢复出厂设置(边沿)
+  bool faultResetRequested_ = false;         // 请求解除故障锁定(边沿)
   SystemSettingField systemSettingField_ =
       SystemSettingField::Language; // 设置页选中条目
   // 旋转编码器改系统设置:开关类取反、数值类按步长增减,并置脏。
