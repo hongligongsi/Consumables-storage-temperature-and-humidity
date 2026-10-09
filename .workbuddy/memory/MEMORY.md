@@ -81,7 +81,17 @@ FTDI→COM4(UART0) **只剩 ESP-ROM 与 ESP-IDF 日志**(`entry 0x`、`[E][Prefe
   优先于 MQTT。MQTT 告警**发不进 MQTT**,远程只能轮询 REST `netAlert` 字段
 - ⚠️ 判「从未配网」只能用 `g_wm.getWiFiSSID()`(读持久化 STA 配置);
   **`WiFi.SSID()` 读的是"当前已连接的 AP",在 DISCONNECTED 事件里恒为空** ——
-  曾误用它当判据,导致 W-01/W-02 永不触发(2026-10-09 修)
+  曾误用它当判据,导致 W-01/W-02 永不触发(2026-10-09 修)。与之相对,屏显
+  "当前连着谁"用 `network.ssidString()`(connected() 才返回 WiFi.SSID())
+
+## NVS 故障记忆(2026-10-09)
+- `FaultRecord`(settings.h)四键:code/latched/count/epoch;锁故障落盘、
+  解锁只清 latch 留历史、恢复出厂全清
+- 只有热类(F-03/04/05)跨重启恢复锁定(`persistsAcrossReboot`/`restoreFault`);
+  传感器掉线类开机清 latch 留历史。main.cpp 的 `lastSeenFault` 必须先与
+  setup 恢复态对齐,否则"恢复"会被边沿检测记成一次新故障
+- REST `/api/state` 的 lastFault/faultCount/lastFaultEpoch 即此档案;
+  NVS 写失败只打日志不重试(记忆是增强不是前提,别拖热控)
 
 ## 故障码/告警编号与有效性(2026-10-09 复查)
 - **显示编号 = 枚举值**(AhtLost=1 → F-01,None=0 只是哨兵)。曾因 controller.h
