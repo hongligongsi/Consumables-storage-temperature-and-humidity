@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>固件激活 · 注册码生成器</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    background: #f6f4f0;
+    color: #2b2b2b;
+    min-height: 100vh;
+    padding: 48px 20px;
+  }
+  .wrap { max-width: 520px; margin: 0 auto; }
+  h1 { font-size: 26px; font-weight: 700; margin-bottom: 18px; }
+  .tip { font-size: 14px; color: #6b6b6b; line-height: 1.7; margin-bottom: 26px; }
+  .card {
+    background: #fff;
+    border: 1px solid #e8e4dd;
+    border-radius: 14px;
+    padding: 26px 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  label { display: block; font-size: 14px; font-weight: 600; margin: 16px 0 8px; }
+  label:first-child { margin-top: 0; }
+  input {
+    width: 100%;
+    padding: 11px 13px;
+    font-size: 15px;
+    font-family: ui-monospace, Consolas, monospace;
+    border: 1px solid #d8d4cd;
+    border-radius: 8px;
+    outline: none;
+    background: #fbfaf8;
+    letter-spacing: .5px;
+  }
+  input:focus { border-color: #3a7bd5; background: #fff; }
+  .hint { font-size: 12.5px; color: #c07a3a; line-height: 1.6; margin-top: 8px; }
+  .btn {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%;
+    margin-top: 18px;
+    padding: 13px 16px;
+    font-size: 14px;
+    color: #fff;
+    background: #3a3a3a;
+    border: none;
+    border-left: 4px solid #3a7bd5;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .btn:hover { background: #2e2e2e; }
+  .btn .ico { opacity: .7; }
+  .result {
+    margin-top: 20px;
+    padding: 18px;
+    text-align: center;
+    background: #f0f7ee;
+    border: 1px solid #cfe3c8;
+    border-radius: 10px;
+    display: none;
+  }
+  .result.show { display: block; }
+  .result .code {
+    font-size: 34px;
+    font-weight: 700;
+    font-family: ui-monospace, Consolas, monospace;
+    letter-spacing: 6px;
+    color: #1e6b2a;
+    margin: 6px 0 12px;
+  }
+  .copy {
+    padding: 7px 18px;
+    font-size: 13px;
+    border: 1px solid #9fc793;
+    background: #fff;
+    color: #1e6b2a;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .copy:hover { background: #e8f3e3; }
+  .verify-ok  { margin-top: 14px; font-size: 14px; color: #1e6b2a; display: none; }
+  .verify-bad { margin-top: 14px; font-size: 14px; color: #b3392f; display: none; }
+  .err { margin-top: 10px; font-size: 13px; color: #b3392f; display: none; }
+  .foot {
+    margin-top: 22px;
+    font-size: 12px;
+    color: #9a9a9a;
+    line-height: 1.7;
+  }
+  .foot code { background: #eeeae3; padding: 1px 5px; border-radius: 4px; }
+  .selfcheck { color: #1e6b2a; }
+  .selfcheck.fail { color: #b3392f; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>固件激活</h1>
+  <p class="tip">注册码由芯片 ID 离线派生（一机一码），本页面不联网、不上传任何数据。
+     芯片 ID 显示在设备「系统设置 → 芯片ID」与注册码页顶部，格式 <b>CH-</b> + 12 位十六进制。</p>
+
+  <div class="card">
+    <label for="chip">您芯片的ID：</label>
+    <input id="chip" type="text" placeholder="CH-1A2B3C4D5E6F" maxlength="15" autocomplete="off" spellcheck="false">
+    <p class="hint">屏幕中显示的芯片 ID，如：CH-1A2B3C4D5E6F。请务必填写准确，否则注册码将无法通过校验。</p>
+
+    <button class="btn" id="gen"><span>点击按钮生成注册码</span><span class="ico">⟳</span></button>
+    <p class="err" id="err">芯片 ID 格式不正确：应为 CH- + 12 位十六进制（0-9 / A-F）。</p>
+
+    <div class="result" id="result">
+      <div style="font-size:13px;color:#55804c">该设备的注册码</div>
+      <div class="code" id="code">--------</div>
+      <button class="copy" id="copy">复制</button>
+    </div>
+
+    <label for="auth" style="margin-top:24px">您的授权码（可选，用于核对）：</label>
+    <input id="auth" type="text" placeholder="8 位注册码,如 02812C46" maxlength="8" autocomplete="off" spellcheck="false">
+    <button class="btn" id="verify" style="border-left-color:#8a8a8a"><span>校验授权码与芯片 ID 是否匹配</span><span class="ico">✓</span></button>
+    <p class="verify-ok" id="vok">✓ 匹配：该授权码可用于此芯片 ID 的设备。</p>
+    <p class="verify-bad" id="vbad">✗ 不匹配：授权码与芯片 ID 不对应，请核对两处输入。</p>
+  </div>
+
+  <p class="foot">
+    算法：FNV-1a-64(chipId + 盐) 取低 32 位，8 位大写十六进制；与固件
+    <code>pure::regCodeFromChipId()</code>（include/pure_logic.h）及模拟器
+    <code>tools/ui_preview.html</code> 为同一实现，改动须三处同步。<br>
+    <span id="selfcheck" class="selfcheck"></span>
+  </p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  // 与固件 pure::regCodeFromChipId 同一套:FNV-1a-64(chipId + 盐) 低 32 位。
+  function regCodeFromChipId(chipId) {
+    var h = 14695981039346656037n, prime = 1099511628211n, mask = 0xFFFFFFFFFFFFFFFFn;
+    var s = chipId + 'FilamentChamber-RG1';
+    for (var i = 0; i < s.length; i++) {
+      h ^= BigInt(s.charCodeAt(i));
+      h = (h * prime) & mask;
+    }
+    return (h & 0xFFFFFFFFn).toString(16).toUpperCase().padStart(8, '0');
+  }
+
+  // 归一化:去空白、转大写;12 位裸 hex 自动补 CH- 前缀。
+  function normalizeChipId(raw) {
+    var s = String(raw || '').replace(/\s+/g, '').toUpperCase();
+    if (/^[0-9A-F]{12}$/.test(s)) s = 'CH-' + s;
+    return /^CH-[0-9A-F]{12}$/.test(s) ? s : null;
+  }
+
+  var chipEl = document.getElementById('chip'),
+      authEl = document.getElementById('auth'),
+      errEl = document.getElementById('err'),
+      resultEl = document.getElementById('result'),
+      codeEl = document.getElementById('code');
+
+  function currentCode() {
+    var chip = normalizeChipId(chipEl.value);
+    errEl.style.display = chip ? 'none' : 'block';
+    return chip ? regCodeFromChipId(chip) : null;
+  }
+
+  document.getElementById('gen').addEventListener('click', function () {
+    var code = currentCode();
+    if (!code) { resultEl.classList.remove('show'); return; }
+    codeEl.textContent = code;
+    resultEl.classList.add('show');
+  });
+
+  document.getElementById('copy').addEventListener('click', function () {
+    var t = codeEl.textContent, btn = this;
+    function done() { btn.textContent = '已复制'; setTimeout(function () { btn.textContent = '复制'; }, 1500); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done);
+    else {
+      var ta = document.createElement('textarea');
+      ta.value = t; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta); done();
+    }
+  });
+
+  document.getElementById('verify').addEventListener('click', function () {
+    var code = currentCode();
+    var ok = document.getElementById('vok'), bad = document.getElementById('vbad');
+    ok.style.display = bad.style.display = 'none';
+    if (!code) return;
+    var auth = String(authEl.value || '').replace(/\s+/g, '').toUpperCase();
+    if (!/^[0-9A-F]{8}$/.test(auth)) { bad.textContent = '✗ 授权码应为 8 位十六进制。'; bad.style.display = 'block'; return; }
+    (auth === code ? ok : bad).style.display = 'block';
+  });
+
+  // 算法自检:向量来自主机端单测(test_pure_logic)。不通过说明实现跑偏。
+  var sc = document.getElementById('selfcheck');
+  if (regCodeFromChipId('CH-1A2B3C4D5E6F') === '02812C46') {
+    sc.textContent = '算法自检通过（CH-1A2B3C4D5E6F → 02812C46）。';
+  } else {
+    sc.textContent = '⚠ 算法自检失败,生成结果不可信,请检查浏览器是否支持 BigInt。';
+    sc.classList.add('fail');
+  }
+
+  // 支持 #芯片ID 锚点:打开链接即自动填入并生成,方便把结果页直接发给用户。
+  var fromHash = normalizeChipId(decodeURIComponent(location.hash.slice(1)));
+  if (fromHash) {
+    chipEl.value = fromHash;
+    document.getElementById('gen').click();
+  }
+})();
+</script>
+</body>
+</html>

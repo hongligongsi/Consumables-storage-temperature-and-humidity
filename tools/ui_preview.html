@@ -490,6 +490,7 @@
       <div class="seg" role="group" aria-label="故障">
         <span>演示</span>
         <button type="button" data-quick="fault" data-val="1">进入故障页</button>
+        <button type="button" data-quick="reg" data-val="1">注册码页</button>
         <button type="button" data-quick="reset" data-val="1">重置模拟器</button>
       </div>
       <div class="seg" role="group" aria-label="故障码">
@@ -639,6 +640,11 @@
         ssid: 'HomeWiFi',          // 当前连接的 SSID:设置页 WiFi 项显示网络名
                                    // (未联网时固件显示回退到 开/关,这里用 netConnected 模拟)
         registered: false,         // 注册状态:设置页"注册码"项的取值(mock)
+        // 注册码页(模态,与固件 main.cpp 的 registrationActive 同构):
+        // regPos 当前输入位,regBuf 8 位字符,regResult 0=输入中 1=成功 2=失败
+        regPos: 0,
+        regBuf: ['0','0','0','0','0','0','0','0'],
+        regResult: 0,
         // 耗材设置页
         matField: 0, matDirty: false,
         // 系统设置页
@@ -841,6 +847,22 @@
       // 与真机 network.chipId() 同格式:CH- + 12 位十六进制
       var CHIP_ID = 'CH-1A2B3C4D5E6F';
 
+      // 注册码派生:FNV-1a-64(chipId + 盐) 低 32 位,8 位大写十六进制。
+      // 与固件 pure::regCodeFromChipId(include/pure_logic.h)及
+      // tools/regcode_generator.html 是**同一套算法**,改动必须三处同步。
+      // 自检向量:CH-1A2B3C4D5E6F → 02812C46(主机端单测也有这组)。
+      function regCodeFromChipId(chipId) {
+        var h = 14695981039346656037n, prime = 1099511628211n, mask = 0xFFFFFFFFFFFFFFFFn;
+        var s = chipId + 'FilamentChamber-RG1';
+        for (var i = 0; i < s.length; i++) {
+          h ^= BigInt(s.charCodeAt(i));
+          h = (h * prime) & mask;
+        }
+        return (h & 0xFFFFFFFFn).toString(16).toUpperCase().padStart(8, '0');
+      }
+      // 模拟器里"正确"的注册码:输入它即演示注册成功,输别的演示失败。
+      var EXPECTED_REG_CODE = regCodeFromChipId(CHIP_ID);
+
       function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
       function L(zh, en) { return '<text class="zh">' + zh + '</text><text class="en">' + en + '</text>'; }
       // 双语 MR/ML 文本:text-anchor 由外层 tspan 不便,直接给两元素并附带属性
@@ -851,10 +873,27 @@
       }
 
       /* ---------------- EC11 动作(对齐 UiModel::apply) ---------------- */
+      var REG_CHARS = '0123456789ABCDEF';
+      function openRegistration() {
+        // 与固件 startRegistration() 一致:输入区归零、结果清空
+        S.screen = 'reg';
+        S.regPos = 0;
+        S.regBuf = ['0','0','0','0','0','0','0','0'];
+        S.regResult = 0;
+      }
       function rotateDir(d) {
         // 编码器反向设置在 main.cpp 事件层取反,对所有页面生效
         if (S.st.encoderReversed) d = -d;
         beep();
+        if (S.screen === 'reg') {
+          // 注册页:旋转在当前位循环 0-9/A-F;结果态下字符已定不再改动
+          if (!S.regResult) {
+            var idx = REG_CHARS.indexOf(S.regBuf[S.regPos]);
+            if (idx < 0) idx = 0;
+            S.regBuf[S.regPos] = REG_CHARS[(idx + 16 + d) % 16];
+          }
+          return;
+        }
         if (S.screen === 'main') {
           S.mainFocus = (S.mainFocus + d + 10) % 10;
         } else if (S.screen === 'material') {
@@ -871,6 +910,23 @@
 
       function clickEncoder() {
         beep();
+        if (S.screen === 'reg') {
+          // 注册页:单击确认进位,8 位齐即校验;结果态下单击分别进系统(成功)
+          // 或清零重输(失败)。校验算法与固件 pure::regCodeFromChipId 同一套。
+          if (S.regResult === 1) {
+            S.registered = true;
+            S.screen = 'main';
+          } else if (S.regResult === 2) {
+            S.regPos = 0;
+            S.regBuf = ['0','0','0','0','0','0','0','0'];
+            S.regResult = 0;
+          } else if (S.regPos < 7) {
+            S.regPos++;
+          } else {
+            S.regResult = S.regBuf.join('') === EXPECTED_REG_CODE ? 1 : 2;
+          }
+          return;
+        }
         if (S.screen === 'calib') {
           // drawTouchCalibration:单击采点,两步完成
           if (S.calibStep === 0) { S.calibStep = 1; }
@@ -887,6 +943,8 @@
           if (fld.type === 'touch') {
             if (S.hasTouch) { S.screen = 'calib'; S.calibStep = 0; }
             // 未接触摸屏:单击无反应,显示“不支持”
+          } else if (fld.type === 'reg') {
+            openRegistration();                  // 注册码项:单击进入注册页
           } else if (fld.type === 'reset') {
             if (S.sysEditing) { factoryReset(); S.sysEditing = false; }
             else { S.sysEditing = true; }             // 再次单击才执行,防止误触
@@ -919,6 +977,7 @@
 
       function longPressEncoder() {
         beep();
+        if (S.screen === 'reg') { S.screen = 'main'; S.regResult = 0; return; } // 长按跳过/退出
         if (S.screen === 'calib') { S.screen = 'system'; S.calibStep = 0; return; } // 长按取消校准
         if (S.screen === 'material') {
           S.screen = 'main';
@@ -1346,6 +1405,33 @@
         return h;
       }
 
+      // 注册码页:与固件 drawRegistration(tft_ui.cpp) 逐元素对齐 ——
+      // 标题、芯片ID 行、8 个字符格(当前位高亮描边)、结果行、底部操作提示。
+      function renderRegistration() {
+        var zh = S.st.language === 'zh';
+        var h = '<rect width="480" height="320" class="fill-bg"/>';
+        h += '<text x="240" y="52" text-anchor="middle" font-size="20" class="t zh">注册码输入</text>';
+        h += '<text x="240" y="52" text-anchor="middle" font-size="20" class="t en">REGISTRATION</text>';
+        h += '<text x="240" y="90" text-anchor="middle" font-size="12" class="m">' + (zh ? '芯片ID:' : 'CHIP ID:') + ' ' + CHIP_ID + '</text>';
+        for (var i = 0; i < 8; i++) {
+          var x = 36 + i * 52, current = (S.regResult === 0 && i === S.regPos);
+          h += '<rect x="' + x + '" y="116" width="44" height="56" rx="6" fill="var(--panel)" stroke="' + (current ? 'var(--accent)' : 'var(--border)') + '"/>';
+          var ch = '_';
+          if (i < S.regPos || S.regResult || current) ch = S.regBuf[i];
+          h += '<text x="' + (x + 22) + '" y="152" text-anchor="middle" font-size="20" class="' + (current ? 'a' : 't') + '">' + ch + '</text>';
+        }
+        if (S.regResult === 1) {
+          h += '<text x="240" y="212" text-anchor="middle" font-size="13" class="g zh">注册成功,单击进入系统</text>';
+          h += '<text x="240" y="212" text-anchor="middle" font-size="13" class="g en">REGISTERED - CLICK TO START</text>';
+        } else if (S.regResult === 2) {
+          h += '<text x="240" y="212" text-anchor="middle" font-size="13" style="fill:var(--g-red)" class="zh">注册码错误,单击重新输入</text>';
+          h += '<text x="240" y="212" text-anchor="middle" font-size="13" style="fill:var(--g-red)" class="en">WRONG CODE - CLICK TO RETRY</text>';
+        }
+        h += '<text x="240" y="284" text-anchor="middle" font-size="11" class="m zh">旋转选字符　单击确认　长按跳过</text>';
+        h += '<text x="240" y="284" text-anchor="middle" font-size="11" class="m en">TURN: CHAR  CLICK: OK  HOLD: SKIP</text>';
+        return h;
+      }
+
     // 故障页文案表:下标与固件 FaultCode 一一对应(0 为 None 占位)，
     // 与 src/tft_ui.cpp 的 FAULT_TEXTS 保持同步。
     // hz/he 是处理建议行,v 是演示用的三行读数。
@@ -1441,7 +1527,8 @@
       function renderScreen() {
         updateClock();
         var inner = ICONS.defs;
-        if (S.screen === 'fault') inner += renderFault();
+        if (S.screen === 'reg') inner += renderRegistration();
+        else if (S.screen === 'fault') inner += renderFault();
         else if (S.screen === 'calib') inner += renderCalib();
         else if (S.screen === 'material') inner += renderMaterial();
         else if (S.screen === 'system') inner += renderSystem();
@@ -1497,9 +1584,9 @@
 
       function updateCaption() {
         var zh = S.st.language === 'zh';
-        var names = ['主界面', '耗材设置', '系统设置', '触摸校准', '故障告警'];
-        var namesEn = ['MAIN', 'MATERIAL', 'SYSTEM', 'CALIBRATION', 'FAULT'];
-        var idx = { main: 0, material: 1, system: 2, calib: 3, fault: 4 }[S.screen];
+        var names = ['主界面', '耗材设置', '系统设置', '触摸校准', '故障告警', '注册码'];
+        var namesEn = ['MAIN', 'MATERIAL', 'SYSTEM', 'CALIBRATION', 'FAULT', 'REGISTRATION'];
+        var idx = { main: 0, material: 1, system: 2, calib: 3, fault: 4, reg: 5 }[S.screen];
         var extra = '';
         if (S.screen === 'system') {
           var editable = ['num', 'time', 'clock', 'theme'].indexOf(F[S.sysField].type) >= 0;
@@ -1566,6 +1653,8 @@
             // W-01/W-02 是 WiFi 层失败,顺带把联网图标打回断网态更贴近真机。
             S.netAlert = parseInt(val, 10);
             if (val === '1' || val === '2') S.netConnected = false;
+          } else if (kind === 'reg') {
+            openRegistration(); // 演示注册流程;正确码 = FNV(CHIP_ID),见 EXPECTED_REG_CODE
           } else if (kind === 'reset') {
             factoryReset();
             S.screen = 'main'; S.mainFocus = 1; S.materialIndex = 0;
@@ -1577,6 +1666,7 @@
             S.pirMotion = false; S.hasTouch = false; S.netConnected = true; S.rssi = -58; // 演示输入一并归位
             S.faultCode = 3; S.faultSensors = [true, true, true];             // 故障演示一并归位
             S.netAlert = 0;                                                    // 网络告警一并归位
+            S.registered = false; S.regResult = 0; S.regPos = 0;               // 注册演示一并归位
             document.querySelector('[data-quick="fault"]').textContent = '进入故障页';
           }
           syncQuickButtons();
@@ -1602,6 +1692,8 @@
       }
 
       syncQuickButtons();
+      // 支持 #reg 锚点:打开链接直接进注册码页(演示/文档截图用)
+      if (location.hash === '#reg') openRegistration();
       render();
       setInterval(function () { if (S.screen === 'main' || S.screen === 'fault') renderScreen(); }, 1000);
     })();

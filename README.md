@@ -96,6 +96,7 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
    ├─ serial_regression.py    读串口周期上报并按区间断言
    ├─ ui_preview.html         可操作的真机界面模拟器
    ├─ web_management_preview.html  内置 Web 管理页的浏览器预览稿（实验室蓝浅色）
+   ├─ regcode_generator.html  注册码离线生成器（芯片 ID → 8 位注册码，可核对授权码）
    └─ preview_cn.png          字库生成预览图
 ```
 

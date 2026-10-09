@@ -109,6 +109,10 @@ def reg_code(chip_id, salt="FilamentChamber-RG1"):
     return "%08X" % (h & 0xFFFFFFFF)
 ```
 
+也可以直接用 `tools/regcode_generator.html`（浏览器打开，纯离线）：输入芯片 ID
+生成 8 位注册码，并可反向核对「授权码与芯片 ID 是否匹配」；页面内置与主机端
+单测相同的自检向量（`CH-1A2B3C4D5E6F → 02812C46`）。
+
 行为约定：
 
 - **上电未注册** → 先弹注册页：旋转编码器在当前位循环 `0-9`/`A-F`，单击确认
