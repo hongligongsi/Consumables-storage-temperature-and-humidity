@@ -158,6 +158,6 @@ private:
   bool safetyCooling_ = false;
   float integral_ = 0, previousError_ = 0;
   float boardIntegral_ = 0, boardPreviousError_ = 0, lastPwm_ = 0;
-  float maxCurrentA_ = 6, boardLimitC_ = 80;
+  float maxCurrentA_ = 6, boardLimitC_ = 150;
   uint8_t heaterFanPercent_ = 100;
 };

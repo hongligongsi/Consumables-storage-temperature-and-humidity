@@ -1352,17 +1352,17 @@
     var FAULT_TEXTS = [
       null,
       { zh: '仓温传感器掉线', en: 'AHT20 OFFLINE', hz: '检查 I2C 接线与供电', he: 'CHECK I2C WIRING',
-        v: { aht: '--', ntc: '24℃ / 限 80℃', ina: '24.1V 0.00A' } },
+        v: { aht: '--', ntc: '24℃ / 限 150℃', ina: '24.1V 0.00A' } },
       { zh: '热板传感器掉线', en: 'NTC OFFLINE', hz: '检查 NTC 两芯接线', he: 'CHECK NTC WIRING',
         v: { aht: '24.6℃ 41%', ntc: '--', ina: '24.1V 0.00A' } },
       { zh: '热板超温', en: 'BOARD OVERHEAT', hz: '检查加热板与热风风扇', he: 'CHECK HEATER AND FAN',
-        v: { aht: '24.6℃ 41%', ntc: '92℃ / 限 80℃', ina: '24.1V 5.87A' } },
+        v: { aht: '24.6℃ 41%', ntc: '92℃ / 限 150℃', ina: '24.1V 5.87A' } },
       { zh: '仓温超上限', en: 'CHAMBER OVERHEAT', hz: '开门散热并检查排风', he: 'OPEN DOOR AND CHECK FAN',
-        v: { aht: '46.2℃ 38%', ntc: '78℃ / 限 80℃', ina: '24.1V 5.12A' } },
+        v: { aht: '46.2℃ 38%', ntc: '78℃ / 限 150℃', ina: '24.1V 5.12A' } },
       { zh: '加热回路过流', en: 'OVER CURRENT', hz: '检查加热板与功率接线', he: 'CHECK HEATER WIRING',
-        v: { aht: '31.5℃ 40%', ntc: '76℃ / 限 80℃', ina: '24.0V 9.30A' } },
+        v: { aht: '31.5℃ 40%', ntc: '76℃ / 限 150℃', ina: '24.0V 9.30A' } },
       { zh: '电流采样掉线', en: 'INA226 OFFLINE', hz: '检查 I2C 接线与供电', he: 'CHECK I2C WIRING',
-        v: { aht: '24.6℃ 41%', ntc: '55℃ / 限 80℃', ina: '--' } }
+        v: { aht: '24.6℃ 41%', ntc: '55℃ / 限 150℃', ina: '--' } }
     ];
 
     // RSSI(dBm) → 信号格数 0..4。阈值与固件 include/pure_logic.h 的 pure::rssiBars()

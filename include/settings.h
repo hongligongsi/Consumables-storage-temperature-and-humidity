@@ -22,7 +22,7 @@ struct SystemSettings {
   bool beepOnStop = true;
   uint8_t heaterMaxCurrentA = 6; // UI/电流采样校准完成后实施闭环限流
   uint8_t heaterFanPercent = 100;
-  uint16_t heaterBoardLimitC = 80;
+  uint16_t heaterBoardLimitC = 150;
   uint16_t touchXMin = 300;
   uint16_t touchXMax = 3800;
   uint16_t touchYMin = 300;

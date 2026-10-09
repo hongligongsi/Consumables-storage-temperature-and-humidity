@@ -240,7 +240,7 @@ $('brightness').value=s.brightness??80;
 $('rgbMaxBrightness').value=s.rgbMaxBrightness??100;
 $('rgbFollowScreenSleep').checked=!!s.rgbFollowScreenSleep;
 $('heaterFanPercent').value=s.heaterFanPercent??100;
-$('heaterBoardLimitC').value=s.heaterBoardLimitC??80;
+$('heaterBoardLimitC').value=s.heaterBoardLimitC??150;
 $('heaterMaxCurrentA').value=s.heaterMaxCurrentA??6;
 briVal();fanVal();rgbBriVal();
 $('wifiEnabled').textContent=s.wifiEnabled?'已启用':'已关闭'}

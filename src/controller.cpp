@@ -291,8 +291,12 @@ Outputs ChamberController::update(const Readings &in, uint32_t now) {
       state_ = ChamberState::Fault;
       fault_ = classifyFault(in);
     }
-  } else if (!sensorsValid && (previousState == ChamberState::Preheat ||
-                               previousState == ChamberState::Printing)) {
+  } else if (!sensorsValid && autoTemperature_ &&
+             (previousState == ChamberState::Preheat ||
+              previousState == ChamberState::Printing)) {
+    // 传感器掉线检测只在"加热功能开着且处于加热相关状态"时才做:
+    // 温控(自动加热)关闭时加热输出恒为 0,传感器好坏没有安全意义,
+    // 掉线不应锁机;其余状态(待机/检测/冷却)同样不检测。
     if (!invalidSinceMs_)
       invalidSinceMs_ = now;
     if (now - invalidSinceMs_ >= SENSOR_FAULT_MS) {

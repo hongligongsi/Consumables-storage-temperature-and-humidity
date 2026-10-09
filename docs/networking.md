@@ -127,7 +127,7 @@ ESP-ROM/IDF 日志。
   "staticIp": "192.168.1.50", "staticGateway": "192.168.1.1",
   "staticSubnet": "255.255.255.0", "staticDns1": "223.5.5.5",
   "staticDns2": "1.1.1.1", "otaPassword": "CH-XXXXXXXXXXXX",
-  "heaterMaxCurrentA": 6, "heaterFanPercent": 100, "heaterBoardLimitC": 80,
+  "heaterMaxCurrentA": 6, "heaterFanPercent": 100, "heaterBoardLimitC": 150,
   "brightness": 80, "rgbMaxBrightness": 100, "rgbFollowScreenSleep": false,
   "language": "zh"
 }
