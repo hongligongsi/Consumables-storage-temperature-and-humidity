@@ -1,0 +1,17 @@
+# firmware.bin 构建台账 —— 由 tools/publish_firmware.py 自动生成,请勿手改
+# 校验:python tools/doc_check.py   刷新:pio run && python tools/publish_firmware.py
+env = esp32-s3-n16r8
+version = 1.0.0
+platform = espressif32@6.7.0
+commit = b703c3f948f4246ce96cc9ae7f0a371882d6c1c1
+commit_short = b703c3f
+commit_date = 2026-09-30
+source_dirty = true
+source_dirty_files = M platformio.ini M src/main.cpp M src/network.cpp M src/settings.cpp ?? include/pure_logic.h
+build_time = 2026-10-09 14:06:49
+size = 1288240
+sha256 = 3f99caae860fda45ccd4150c5ba79549afc14e112bbf5097963ff7a4c8a04910
+bootloader_size = 15104
+partitions_size = 3072
+
+# 烧录偏移见 README「烧录预编译固件」一节:本文件是纯应用镜像,只能写 0x10000。

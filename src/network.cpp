@@ -4,6 +4,7 @@
 // 设计约束:全部非阻塞,由 loop() 轮询,绝不能卡住 main.cpp 的 50ms 热控节拍;
 // wifi 任务回调只置标志,真正的状态变更都在 loop() 任务上下文执行。
 #include "network.h"
+#include "pure_logic.h"
 #include "version.h"
 #include "web_page.h"
 #include "wifi_portal_page.h"
@@ -584,11 +585,11 @@ void NetworkManager::sendRateLimited() {
 // 该异或是双射(不丢位),故任意两颗芯片的结果必然不同——保证显示/取用的
 // ID 逐机唯一,不会像旧的"64 位折叠成 32 位"那样出现碰撞。纯混淆,
 // 非密码学保护;设置接口里明文返回,供设备主人取用。
+// 算法本体在 pure_logic.h(主机端可单测):低 48 位 MAC 与固定掩码全宽异或。
+// 异或在 48 位空间上是双射,既保证逐机唯一,又避免把 MAC 明文暴露给 Web/OTA。
 String NetworkManager::chipId() const {
-  const uint64_t mac = ESP.getEfuseMac() & 0xFFFFFFFFFFFFULL; // 低 48 位即 MAC
-  const uint64_t mixed = mac ^ 0x9E3779B97F4AULL;             // 48 位全宽异或
-  char id[20];
-  snprintf(id, sizeof(id), "CH-%012llX", (unsigned long long)mixed);
+  char id[pure::kChipIdBufferSize];
+  pure::formatChipId(ESP.getEfuseMac(), id, sizeof(id));
   return String(id);
 }
 

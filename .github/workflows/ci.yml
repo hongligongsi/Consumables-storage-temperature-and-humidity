@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# 同一个分支上的旧运行没有价值,新的推上来就把旧的掐掉,省额度也省等待。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    name: 固件编译
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # espressif32 平台 + xtensa 工具链有 300MB 上下,缓存能省掉绝大部分时间。
+      # key 带上 platformio.ini 的哈希:改了平台版本就会自动重建缓存。
+      - name: 缓存 PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: 安装 PlatformIO
+        run: pip install --upgrade platformio
+
+      # default_envs 已锁定固件环境,这里不会误编主机端测试。
+      - name: 编译固件
+        run: pio run
+
+      # pio run 结尾自己会打 RAM/Flash 占用,这里只把四件套的体积固定下来,
+      # 方便对比"这次改动让镜像胖了多少"。
+      - name: 上报产物体积
+        run: |
+          ls -l .pio/build/esp32-s3-n16r8/bootloader.bin \
+                .pio/build/esp32-s3-n16r8/partitions.bin \
+                .pio/build/esp32-s3-n16r8/firmware.bin
+
+  host-tests:
+    name: 主机端单元测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装 PlatformIO
+        run: pip install --upgrade platformio
+
+      # native 平台用系统自带的 g++,ubuntu-latest 已预装,无需额外安装。
+      # 测试对象是 include/pure_logic.h:芯片 ID 混洗(OTA 密码)、主题日/夜解析、
+      # 时刻钳制 —— 这些此前只能靠烧录后肉眼验证。
+      - name: 运行纯逻辑单元测试
+        run: pio test -e native
+
+  docs:
+    name: 文档与固件台账一致性
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 镜像新鲜度要比对台账记录的提交与 HEAD 的差异,浅克隆查不到历史。
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 检查 tools/ 下的脚本可解析
+        run: python -m compileall -q tools
+
+      # 拦住文档漂移:README 树里的行数/体积、设置项数、固件台账三方一致性。
+      # 这类数字没有守护机制就会悄悄跑偏(README 曾标 ui_model.h 194 行、实际 230 行)。
+      - name: 校验文档与产物
+        run: python tools/doc_check.py

@@ -20,7 +20,10 @@ pio device monitor -b 115200
 
 ## 烧录预编译固件
 
-仓库中的 `firmware/firmware.bin` 是与当前源码对应的应用镜像（约 1.2 MB）。
+仓库中的 `firmware/firmware.bin` 是某一次构建的快照，不是"永远等于当前源码"。
+它对应哪个源码提交、体积与 SHA-256 是多少，以同目录的 `BUILD.txt` 为准
+（`python tools/publish_firmware.py --check` 可直接打印并核对）。要得到与本地源码
+严格对应的镜像，先 `pio run` 再 `python tools/publish_firmware.py`，不要手工复制。
 下面把 `COM3` 换成实际串口。
 
 ### 参数说明

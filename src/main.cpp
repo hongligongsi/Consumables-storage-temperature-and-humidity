@@ -6,6 +6,7 @@
 #include "ina226_sensor.h"
 #include "network.h"
 #include "pins.h"
+#include "pure_logic.h"
 #include "settings.h"
 #include "tft_ui.h"
 #include "ui_model.h"
@@ -113,21 +114,19 @@ void formatClock(char *out, size_t size) {
 
 // 生效配色:theme 0/1(默认/IOS)为固定单套配色直接采用;
 // theme==2(蓝白)按时刻落在日间区间与否,解析为 2=蓝白·日间 / 3=蓝白·夜间。
+// 判定规则本体在 pure_logic.h,本函数只负责把"现在几点"喂给它。
 uint8_t resolveTheme() {
-  if (settings.theme != 2)
-    return settings.theme;
   const time_t now = currentEpoch();
-  if (!clockValid(now))
-    return 3; // 无有效时间时按夜间渲染,避免白天误亮/夜间误暗
-  struct tm tm{};
-  localtime_r(&now, &tm);
-  const uint16_t minutes = static_cast<uint16_t>(tm.tm_hour * 60 + tm.tm_min);
-  const uint16_t day = settings.dayStartMinutes;
-  const uint16_t night = settings.nightStartMinutes;
-  // 日间区间 [dayStart, nightStart);跨零点时取补集。
-  const bool isDay = day <= night ? (minutes >= day && minutes < night)
-                                  : (minutes >= day || minutes < night);
-  return isDay ? 2 : 3;
+  const bool valid = clockValid(now);
+  uint16_t minutes = 0;
+  if (valid) {
+    struct tm tm{};
+    localtime_r(&now, &tm);
+    minutes = static_cast<uint16_t>(tm.tm_hour * 60 + tm.tm_min);
+  }
+  return pure::effectiveTheme(settings.theme, valid, minutes,
+                              settings.dayStartMinutes,
+                              settings.nightStartMinutes);
 }
 
 // 把系统设置里"影响热控行为"的项同步给控制器(语言/PIR 延时/加热限制/

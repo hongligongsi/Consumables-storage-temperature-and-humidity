@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智能耗材仓 · 真机交互模拟器 (480x320)</title>
+  <style>
+    /* ============================================================
+   * 主题令牌
+   * 两套均为固件当前实际配色,由 tft_ui.cpp 的 kNightPalette /
+   * kDayPalette 的 RGB565 常量精确换算(亮蓝 iOS 风格改版后):
+   *   夜 bg 0x1B7A / panel 0x12B7 / panelAlt 0x0A33 / border 0x3C3C
+   *      muted 0xAE5E / text 0xFFFF / accent 0x4E1E / warn 0xFEA7
+   *      good 0x4EE9 / gRed 0xFA8A / gYellow 0xFEA7 / gMagenta 0xFB56
+   *      gCyan 0x5E5F
+   *   日 bg 0xEF9F / panel 0xFFFF / panelAlt 0xD73F / border 0xB67D
+   *      muted 0x5B91 / text 0x0908 / accent 0x03DF / warn 0xDC80
+   *      good 0x2D89 / gRed 0xD9A6 / gYellow 0xC440 / gMagenta 0xC233
+   *      gCyan 0x0C3F
+   * preheat = stateAccent() 里预热态的硬编码紫 0x78B6,日夜共用。
+   * ============================================================ */
+    :root {
+      --page-bg: #f4f6f9;
+      --page-text: #14213a;
+      --page-muted: #64748b;
+      --chip-bg: #ffffff;
+      --chip-border: #cdd8e8;
+      --chip-on-bg: #e7efff;
+      --chip-on-border: #186DD6;
+      --chip-on-text: #0b3a8c;
+      --bezel: #11151a;
+    }
+
+    [data-theme="night"] {
+      --bg: #186DD6;
+      --panel: #1055BD;
+      --panel-alt: #08459C;
+      --border: #3986E7;
+      --muted: #ADCBF7;
+      --text: #ffffff;
+      --active: #2979EF;
+      --accent: #4AC3F7;
+      --warn: #FFD739;
+      --good: #4ADF4A;
+      --maroon: #B52829;
+      --g-red: #FF5152;
+      --g-yellow: #FFD739;
+      --g-magenta: #FF69B5;
+      --g-cyan: #5ACBFF;
+      --preheat: #7B14B5;
+    }
+
+    [data-theme="day"] {
+      --bg: #EFF3FF;
+      --panel: #ffffff;
+      --panel-alt: #D6E7FF;
+      --border: #B5CFEF;
+      --muted: #5A718C;
+      --text: #082042;
+      --active: #CEE7FF;
+      --accent: #0079FF;
+      --warn: #DE9200;
+      --good: #29B24A;
+      --maroon: #8C1C18;
+      --g-red: #DE3431;
+      --g-yellow: #C68A00;
+      --g-magenta: #C6459C;
+      --g-cyan: #0886FF;
+      --preheat: #7B14B5;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      background: var(--page-bg);
+      color: var(--page-text);
+      font: 14px/1.6 "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      display: flex;
+      justify-content: center;
+    }
+
+    .doc {
+      width: min(980px, 100%);
+    }
+
+    h1 {
+      font-size: 18px;
+      margin: 0 0 4px;
+    }
+
+    .sub {
+      color: var(--page-muted);
+      font-size: 13px;
+      margin: 0 0 16px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px 18px;
+      margin-bottom: 16px;
+    }
+
+    .seg {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .seg>span {
+      font-size: 12px;
+      color: var(--page-muted);
+      margin-right: 2px;
+    }
+
+    .seg button {
+      font: 500 13px/1.4 "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--chip-border);
+      background: var(--chip-bg);
+      color: var(--page-muted);
+      cursor: pointer;
+    }
+
+    .seg button[aria-pressed="true"] {
+      border-color: var(--chip-on-border);
+      background: var(--chip-on-bg);
+      color: var(--chip-on-text);
+    }
+
+    .bezel {
+      background: var(--bezel);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+    }
+
+    .screen-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 6px;
+      background: var(--bg);
+    }
+
+    .ec11 {
+      margin-top: 14px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .ec11 button {
+      font: 600 14px/1 "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      padding: 14px 18px;
+      border-radius: 10px;
+      cursor: pointer;
+      user-select: none;
+      border: 1px solid #d3dce8;
+      background: #eef3fb;
+      color: #14213a;
+      min-width: 74px;
+    }
+
+    .ec11 button:hover {
+      background: #e1eaf8;
+    }
+
+    .ec11 button:active {
+      background: #186DD6;
+      color: #fff;
+    }
+
+    .ec11 .key {
+      min-width: 92px;
+      background: #ffffff;
+      border-color: #b9c6da;
+    }
+
+    .ec11-hint {
+      text-align: center;
+      font-size: 12px;
+      color: var(--page-muted);
+      margin-top: 8px;
+    }
+
+    .ec11-hint kbd {
+      font: 600 11px/1.6 Consolas, monospace;
+      background: #fff;
+      border: 1px solid var(--chip-border);
+      border-bottom-width: 2px;
+      border-radius: 4px;
+      padding: 0 5px;
+    }
+
+    .caption {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--page-muted);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .note {
+      margin-top: 18px;
+      font-size: 12px;
+      color: var(--page-muted);
+      border-top: 1px solid var(--chip-border);
+      padding-top: 12px;
+    }
+
+    /* 屏下条目说明:一屏内看到全部 18 项,并高亮屏内当前选中项 */
+    .legend {
+      margin-top: 18px;
+    }
+
+    .legend h2 {
+      font-size: 14px;
+      margin: 0 0 4px;
+    }
+
+    .legend .tip {
+      font-size: 12px;
+      color: var(--page-muted);
+      margin: 0 0 10px;
+    }
+
+    .legend ol {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 8px;
+    }
+
+    .legend li {
+      display: flex;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--chip-border);
+      border-radius: 8px;
+      background: var(--chip-bg);
+      cursor: pointer;
+    }
+
+    .legend li:hover {
+      border-color: var(--chip-on-border);
+    }
+
+    .legend li.on {
+      border-color: var(--chip-on-border);
+      background: var(--chip-on-bg);
+    }
+
+    .legend .no {
+      flex: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: var(--page-bg);
+      color: var(--page-muted);
+      font: 600 11px/22px Consolas, monospace;
+      text-align: center;
+    }
+
+    .legend li.on .no {
+      background: var(--chip-on-border);
+      color: #ffffff;
+    }
+
+    .legend .body {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .legend .head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .legend .name {
+      font-weight: 600;
+    }
+
+    .legend .val {
+      margin-left: auto;
+      flex: none;
+      font: 600 12px/1.6 Consolas, monospace;
+      color: var(--chip-on-text);
+    }
+
+    .legend .desc,
+    .legend .meta {
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .legend .desc {
+      color: var(--page-muted);
+    }
+
+    .legend .meta {
+      color: var(--page-muted);
+      opacity: 0.8;
+    }
+
+    /* SVG 主题绑定 */
+    .fill-bg {
+      fill: var(--bg);
+    }
+
+    .fill-panel {
+      fill: var(--panel);
+    }
+
+    .fill-alt {
+      fill: var(--panel-alt);
+    }
+
+    .fill-active {
+      fill: var(--active);
+    }
+
+    .stroke-border {
+      stroke: var(--border);
+    }
+
+    .stroke-text {
+      stroke: var(--text);
+    }
+
+    .stroke-accent {
+      stroke: var(--accent);
+    }
+
+    .stroke-warn {
+      stroke: var(--warn);
+    }
+
+    .stroke-good {
+      stroke: var(--good);
+    }
+
+    .stroke-red {
+      stroke: var(--g-red);
+    }
+
+    .t {
+      fill: var(--text);
+    }
+
+    .m {
+      fill: var(--muted);
+    }
+
+    .a {
+      fill: var(--accent);
+    }
+
+    .w {
+      fill: var(--warn);
+    }
+
+    .g {
+      fill: var(--good);
+    }
+
+    .gc-red {
+      color: var(--g-red);
+    }
+
+    .gc-green {
+      color: var(--good);
+    }
+
+    .gc-yellow {
+      color: var(--g-yellow);
+    }
+
+    .gc-warn {
+      color: var(--warn);
+    }
+
+    .gc-magenta {
+      color: var(--g-magenta);
+    }
+
+    .gc-cyan {
+      color: var(--g-cyan);
+    }
+
+    .gc-text {
+      color: var(--text);
+    }
+
+    /* 语言显示控制(属性挂 .doc) */
+    [data-lang="zh"] .en,
+    [data-lang="en"] .zh {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="doc" data-theme="night" data-lang="zh">
+    <h1>智能耗材仓 · 真机交互模拟器</h1>
+    <p class="sub">ST7796 480×320,渲染坐标与操作逻辑与固件一致(src/tft_ui.cpp、src/ui_model.cpp)。用下方 EC11 像真机一样操作。</p>
+
+    <div class="controls">
+      <div class="seg" role="group" aria-label="语言">
+        <span>语言(快捷)</span>
+        <button type="button" data-quick="lang" data-val="zh" aria-pressed="true">中文</button>
+        <button type="button" data-quick="lang" data-val="en" aria-pressed="false">English</button>
+      </div>
+      <div class="seg" role="group" aria-label="主题">
+        <span>主题(快捷)</span>
+        <button type="button" data-quick="theme" data-val="night" aria-pressed="true">夜间</button>
+        <button type="button" data-quick="theme" data-val="day" aria-pressed="false">日间</button>
+        <button type="button" data-quick="theme" data-val="auto" aria-pressed="false">自动</button>
+      </div>
+      <div class="seg" role="group" aria-label="PIR">
+        <span>PIR 传感器</span>
+        <button type="button" data-quick="pir" data-val="0" aria-pressed="true">无运动</button>
+        <button type="button" data-quick="pir" data-val="1" aria-pressed="false">检测到运动</button>
+      </div>
+      <div class="seg" role="group" aria-label="触摸">
+        <span>触摸屏</span>
+        <button type="button" data-quick="touch" data-val="0" aria-pressed="true">未接(真机现状)</button>
+        <button type="button" data-quick="touch" data-val="1" aria-pressed="false">已接入</button>
+      </div>
+      <div class="seg" role="group" aria-label="联网">
+        <span>联网状态</span>
+        <button type="button" data-quick="net" data-val="1" aria-pressed="true">已联网</button>
+        <button type="button" data-quick="net" data-val="0" aria-pressed="false">未联网</button>
+      </div>
+      <div class="seg" role="group" aria-label="故障">
+        <span>演示</span>
+        <button type="button" data-quick="fault" data-val="1">传感器故障页</button>
+        <button type="button" data-quick="reset" data-val="1">重置模拟器</button>
+      </div>
+    </div>
+
+    <div class="bezel">
+      <svg id="screen" class="screen-svg" viewBox="0 0 480 320" role="img" aria-label="480x320 屏幕"></svg>
+    </div>
+
+    <div class="ec11">
+      <button type="button" id="btn-left" title="逆时针旋转一格">⟲ 左旋</button>
+      <button type="button" id="btn-dbl" class="key" title="双击(350ms 内两次)">双击</button>
+      <button type="button" id="btn-click" class="key" title="单击">单 击</button>
+      <button type="button" id="btn-long" class="key" title="按住 ≥0.8s(此处点按等效)">长按 0.8s</button>
+      <button type="button" id="btn-right" title="顺时针旋转一格">右旋 ⟳</button>
+    </div>
+    <p class="ec11-hint">
+      键盘:<kbd>←</kbd><kbd>→</kbd> 旋转　<kbd>Enter</kbd> 单击　<kbd>D</kbd> 双击　<kbd>L</kbd> 长按　｜　
+      主界面:旋转移焦点,单击执行,双击强排,长按启停系统;设置页:旋转改值/移光标,长按保存返回
+    </p>
+
+    <div class="caption">
+      <span id="cap-state">—</span>
+      <span id="cap-mode">—</span>
+    </div>
+
+    <section class="legend">
+      <h2 id="legend-title">系统设置 · 条目说明</h2>
+      <p class="tip" id="legend-tip">真机每屏只显示 5 行,靠旋转滚动查看全部条目。下表把全部条目一次列全,并实时高亮屏内当前选中项;点击任一条目可直接把屏内光标跳到该项。</p>
+      <ol id="legend-list"></ol>
+    </section>
+
+    <p class="note">
+      说明:日间与夜间均为固件实际配色(系统设置 → 屏幕配色,或选“自动”按日间/夜间开始时刻切换)。
+      仪表数值为演示数据,PIR/故障由上方开关模拟硬件输入;
+      系统设置与耗材参数在“长按保存返回”后写入浏览器本地存储,与真机写入 NVS 对应,刷新页面仍保留。
+    </p>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      /* ---------------- 耗材预设(与 controller.cpp MATERIALS[] 一致) ---------------- */
+      var MAT_DEFAULTS = [
+        ['PLA', 0, 40, 30, 100, 100, 180],
+        ['PETG', 25, 50, 30, 80, 80, 180],
+        ['TPU', 0, 40, 0, 30, 30, 120],
+        ['ABS', 40, 70, 10, 30, 30, 300],
+        ['ASA', 40, 70, 10, 30, 30, 300],
+        ['PC', 50, 90, 10, 30, 30, 300],
+        ['PA', 40, 70, 10, 30, 30, 300],
+        ['PVA', 0, 40, 20, 60, 60, 180],
+        ['PET', 25, 50, 30, 80, 80, 180],
+        ['PPA', 50, 90, 10, 30, 30, 300],
+        ['PEBA', 25, 50, 20, 60, 60, 180],
+        ['CUSTOM', 0, 40, 0, 100, 100, 180]
+      ];
+      // [名称, 最低温, 最高温, 最低风速, 最高风速, 排气风速, 排气秒]
+      function defaultMaterials() {
+        return MAT_DEFAULTS.map(function (m) {
+          return { name: m[0], minC: m[1], maxC: m[2], fanMin: m[3], fanMax: m[4], postFan: m[5], postSec: m[6] };
+        });
+      }
+      function defaultSettings() {
+        // 与 include/settings.h 结构体默认值一致
+        return {
+          language: 'zh', keySound: true, brightness: 80, screenSleep: 60,
+          // 联网开关:与 include/settings.h 的默认值一致
+          wifiEnabled: true, mqttEnabled: false, ntpEnabled: true, otaEnabled: true,
+          keepOnPrinting: true, encoderReversed: false,
+          pirStart: 25, pirStop: 50,
+          lightOnPrinting: true, lightOffAfterPrinting: true,
+          beepOnStart: true, beepOnStop: true,
+          heaterCurrent: 6, heaterFan: 100, heaterProtection: 80,
+          // 0=日间 1=夜间 2=自动;时刻为当日 0 点起的分钟数
+          theme: 0, dayStart: 360, nightStart: 1080,
+          // 手动校时结果(epoch 秒),真机写入 RTC + NVS,这里仅存数值
+          clockEpoch: 0,
+          touchCalibrated: false
+        };
+      }
+
+      /* ---------------- 模拟时钟 ----------------
+       * 真机:settimeofday 写入 RTC,NTP 同步后以 NTP 为准,否则沿用
+       * manualClockEpoch。这里同构:clockEpoch 为基准秒,clockSetAt 为
+       * 设置时刻的本地毫秒,之后按真实时间自走。
+       * ------------------------------------------ */
+      var clockSetAtMs = 0;
+      function simNow() {
+        if (S.st.clockEpoch > 0)
+          return S.st.clockEpoch * 1000 + (Date.now() - clockSetAtMs);
+        return Date.now();
+      }
+      function setSimNow(ms) {
+        S.st.clockEpoch = Math.floor(ms / 1000);
+        clockSetAtMs = Date.now();
+      }
+      // 生效配色:theme 0/1 直接采用,2=自动按时刻落在日间区间与否判定。
+      // 真机在无有效时间时才回退夜间;预览里时钟始终可用(见 simNow),故直接按屏上
+      // 显示的时刻判定,这样“自动”按钮与两个时刻项都能立即看到效果。
+      function resolveTheme() {
+        if (S.st.theme !== 2) return S.st.theme === 0 ? 'day' : 'night';
+        var d = new Date(simNow());
+        var minutes = d.getHours() * 60 + d.getMinutes();
+        var day = S.st.dayStart, night = S.st.nightStart;
+        var isDay = day <= night ? (minutes >= day && minutes < night)
+          : (minutes >= day || minutes < night);
+        return isDay ? 'day' : 'night';
+      }
+
+      /* ---------------- 模拟器状态 ---------------- */
+      var S = {
+        screen: 'main',            // main | material | system | calib | fault
+        mainFocus: 1,              // MainFocus::CurrentMaterial
+        materialIndex: 0,
+        materials: defaultMaterials(),
+        st: defaultSettings(),
+        ui: {
+          autoExhaust: true, autoTemperature: true, postPrintExhaust: true,
+          systemEnabled: true, preheat: false, light: false, manualExhaust: false
+        },
+        pirMotion: false,
+        hasTouch: false,
+        netConnected: true,        // STA 是否已联网(顶栏日期/WiFi 图标着色)
+        // 耗材设置页
+        matField: 0, matDirty: false,
+        // 系统设置页
+        sysField: 0, sysEditing: false, sysDirty: false, sysSubField: 0,
+        // 触摸校准
+        calibStep: 0,
+        // 故障演示的传感器有效位
+        faultSensors: [true, false, true]
+      };
+
+      try {
+        var saved = JSON.parse(localStorage.getItem('chamber-ui-sim-v1') || 'null');
+        if (saved && saved.st) {
+          // 旧版本存档缺新字段,以默认值补齐,避免 undefined 参与运算
+          var base = defaultSettings();
+          for (var k in base) if (!(k in saved.st)) saved.st[k] = base[k];
+          S.st = saved.st;
+          S.materials = saved.materials || defaultMaterials();
+        }
+      } catch (e) { /* 忽略损坏的本地数据 */ }
+      clockSetAtMs = Date.now(); // 本地存储里的 clockEpoch 作基准,从当下继续走
+
+      function persist() {
+        try {
+          localStorage.setItem('chamber-ui-sim-v1',
+            JSON.stringify({ st: S.st, materials: S.materials }));
+        } catch (e) { /* 隐私模式等场景忽略 */ }
+      }
+      function factoryReset() {
+        S.st = defaultSettings();
+        S.materials = defaultMaterials();
+        localStorage.removeItem('chamber-ui-sim-v1');
+      }
+
+      /* ---------------- 系统设置字段元数据(顺序 = SystemSettingField 枚举) ----------------
+       * desc = 屏下说明区展示的条目含义;range = 取值范围/步长,由真机设定推导。
+       * ---------------------------------------------------------------- */
+      var F = [
+        {
+          zh: '系统语言', en: 'LANGUAGE', type: 'lang',
+          desc: '切换界面语言,目前支持中文和英文。',
+          range: '中文 / English'
+        },
+        {
+          zh: 'WiFi联网', en: 'WIFI', type: 'bool', key: 'wifiEnabled',
+          desc: '关闭后设备断开网络,Web 与 MQTT 均不可用,需重启才能恢复远程访问。',
+          range: '开 / 关'
+        },
+        {
+          zh: 'MQTT上报', en: 'MQTT', type: 'bool', key: 'mqttEnabled',
+          desc: '打开后向配置的 MQTT broker 上报状态;关闭则停止上报。',
+          range: '开 / 关'
+        },
+        {
+          zh: 'NTP校时', en: 'NTP', type: 'bool', key: 'ntpEnabled',
+          desc: '打开后自动联网校时;关闭则沿用上次时钟,可手动校时。',
+          range: '开 / 关'
+        },
+        {
+          zh: 'OTA升级', en: 'OTA', type: 'bool', key: 'otaEnabled',
+          desc: '打开后允许通过 ArduinoOTA 无线烧录固件;关闭则停止监听。',
+          range: '开 / 关'
+        },
+        {
+          zh: '按键声音', en: 'KEY SOUND', type: 'bool', key: 'keySound',
+          desc: '打开或关闭编码器操作时的蜂鸣提示音。',
+          range: '开 / 关'
+        },
+        {
+          zh: '屏幕亮度', en: 'BRIGHTNESS', type: 'num', key: 'brightness', step: 5, min: 1, max: 100, unit: '%',
+          desc: '调节屏幕背光亮度。',
+          range: '1 ~ 100 %,步长 5'
+        },
+        {
+          zh: '屏幕休眠时间', en: 'SCREEN SLEEP', type: 'num', key: 'screenSleep', step: 15, min: 0, max: 3600, unit: 's',
+          desc: '设置多少秒无操作后熄屏。仅关闭屏幕,不影响系统运行。',
+          range: '0 ~ 3600 s,步长 15;0 = 不休眠'
+        },
+        {
+          zh: '打印时保持屏幕开启', en: 'KEEP ON PRINTING', type: 'bool', key: 'keepOnPrinting',
+          desc: '3D 打印机工作时保持屏幕常亮,不进入休眠。',
+          range: '开 / 关'
+        },
+        {
+          zh: 'EC11编码器方向', en: 'ENCODER DIRECTION', type: 'enc',
+          desc: '选择编码器方向。正向型号选“正向”,反向型号选“反向”,否则旋转方向会与实际相反。',
+          range: '正向 / 反向'
+        },
+        {
+          zh: 'PIR启动延时', en: 'PIR START DELAY', type: 'num', key: 'pirStart', step: 1, min: 1, max: 300, unit: 's',
+          desc: 'PIR 检测打印机运动持续 n 秒,则开启系统内的仓温控制功能。',
+          range: '1 ~ 300 s,步长 1'
+        },
+        {
+          zh: 'PIR关闭延时', en: 'PIR STOP DELAY', type: 'num', key: 'pirStop', step: 5, min: 10, max: 900, unit: 's',
+          desc: 'PIR 在 n 秒内未检测到运动,则判定打印停止,关闭仓温控制。默认 50 s;多色打印换色久,建议 90 s。',
+          range: '10 ~ 900 s,步长 5'
+        },
+        {
+          zh: '启动后自动开灯', en: 'LIGHT ON START', type: 'bool', key: 'lightOnPrinting',
+          desc: '检测到 3D 打印机开始工作后,自动打开 LED 灯光。',
+          range: '开 / 关'
+        },
+        {
+          zh: '关闭后自动关灯', en: 'LIGHT OFF STOP', type: 'bool', key: 'lightOffAfterPrinting',
+          desc: '检测到 3D 打印机停止工作后,自动关闭 LED 灯光。',
+          range: '开 / 关'
+        },
+        {
+          zh: '启动后蜂鸣提示', en: 'BEEP ON START', type: 'bool', key: 'beepOnStart',
+          desc: '检测到 3D 打印机开始工作后,蜂鸣提示。',
+          range: '开 / 关'
+        },
+        {
+          zh: '关闭后蜂鸣提示', en: 'BEEP ON STOP', type: 'bool', key: 'beepOnStop',
+          desc: '检测到 3D 打印机停止工作后,蜂鸣提示。',
+          range: '开 / 关'
+        },
+        {
+          zh: '发热板限流', en: 'HEATER CURRENT', type: 'num', key: 'heaterCurrent', step: 1, min: 1, max: 12, unit: 'A',
+          desc: '设置发热板最大工作电流。',
+          range: '1 ~ 12 A,步长 1'
+        },
+        {
+          zh: '发热板风扇风速', en: 'HEATER FAN', type: 'num', key: 'heaterFan', step: 5, min: 20, max: 100, unit: '%',
+          desc: '设置发热板风扇的工作风速。',
+          range: '20 ~ 100 %,步长 5'
+        },
+        {
+          zh: '发热板温度保护', en: 'HEATER PROTECTION', type: 'num', key: 'heaterProtection', step: 1, min: 40, max: 180, unit: '℃',
+          desc: '设置发热板最大温度,超过该温度后暂停加热。',
+          range: '40 ~ 180 C,步长 1'
+        },
+        {
+          zh: '屏幕配色', en: 'THEME', type: 'theme',
+          desc: '切换屏幕配色。选“自动”时按下方日间/夜间开始时刻自动切换。',
+          range: '日间 / 夜间 / 自动'
+        },
+        {
+          zh: '日间开始时刻', en: 'DAY START', type: 'time', key: 'dayStart', step: 15, min: 0, max: 1425,
+          desc: '“自动”配色下,到达该时刻切换到日间配色。',
+          range: '00:00 ~ 23:45,步长 15 min'
+        },
+        {
+          zh: '夜间开始时刻', en: 'NIGHT START', type: 'time', key: 'nightStart', step: 15, min: 0, max: 1425,
+          desc: '“自动”配色下,到达该时刻切换到夜间配色。',
+          range: '00:00 ~ 23:45,步长 15 min'
+        },
+        {
+          zh: '日期', en: 'DATE', type: 'clock', segs: 3,
+          desc: '手动校准年月日。旋转改当前段,单击切到下一段,末段后再单击退出编辑。',
+          range: '年 / 月 / 日,三段编辑'
+        },
+        {
+          zh: '时间', en: 'TIME', type: 'clock', segs: 2,
+          desc: '手动校准时分秒。旋转改当前段,单击切到下一段,末段后再单击退出编辑。',
+          range: '时 / 分,两段编辑'
+        },
+        {
+          zh: '触摸屏校准', en: 'TOUCH CALIBRATION', type: 'touch',
+          desc: '校准触摸屏。需先接入触摸屏,按提示两次采点完成,长按编码器可取消。',
+          range: '不支持 / 未校准 / 已校准'
+        },
+        {
+          zh: '恢复出厂配置', en: 'FACTORY RESET', type: 'reset',
+          desc: '清除所有自定义的参数与数据,恢复默认值。需二次确认后执行。',
+          range: '执行 / 确认?'
+        },
+        {
+          zh: '固件版本', en: 'FIRMWARE VERSION', type: 'version',
+          desc: '只读显示当前固件版本号,不可修改。',
+          range: '只读'
+        },
+        {
+          zh: '芯片ID', en: 'CHIP ID', type: 'chipid',
+          desc: '只读显示本机唯一芯片 ID,由芯片 eFuse MAC 生成,逐台不同、不会重复。',
+          range: '只读'
+        }
+      ];
+      var VERSION = '1.0.0';
+      // 与真机 network.chipId() 同格式:CH- + 12 位十六进制
+      var CHIP_ID = 'CH-1A2B3C4D5E6F';
+
+      function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+      function L(zh, en) { return '<text class="zh">' + zh + '</text><text class="en">' + en + '</text>'; }
+      // 双语 MR/ML 文本:text-anchor 由外层 tspan 不便,直接给两元素并附带属性
+      function txt(x, y, anchor, cls, zh, en, extra) {
+        extra = extra || '';
+        return '<text x="' + x + '" y="' + y + '" text-anchor="' + anchor + '" font-size="13" class="' + cls + ' zh" ' + extra + '>' + zh + '</text>' +
+          '<text x="' + x + '" y="' + y + '" text-anchor="' + anchor + '" font-size="13" class="' + cls + ' en" ' + extra + '>' + en + '</text>';
+      }
+
+      /* ---------------- EC11 动作(对齐 UiModel::apply) ---------------- */
+      function rotateDir(d) {
+        // 编码器反向设置在 main.cpp 事件层取反,对所有页面生效
+        if (S.st.encoderReversed) d = -d;
+        beep();
+        if (S.screen === 'main') {
+          S.mainFocus = (S.mainFocus + d + 10) % 10;
+        } else if (S.screen === 'material') {
+          adjustProfile(d);
+        } else if (S.screen === 'system') {
+          if (S.sysEditing) {
+            adjustSetting(F[S.sysField], d);
+          } else {
+            S.sysField = (S.sysField + d + F.length) % F.length;
+            S.sysSubField = 0; // 换项后子段回到第一段
+          }
+        }
+      }
+
+      function clickEncoder() {
+        beep();
+        if (S.screen === 'calib') {
+          // drawTouchCalibration:单击采点,两步完成
+          if (S.calibStep === 0) { S.calibStep = 1; }
+          else { S.st.touchCalibrated = true; S.sysDirty = true; S.screen = 'system'; S.calibStep = 0; }
+          return;
+        }
+        if (S.screen === 'main') {
+          var acts = ['prevMat', 'openMat', 'nextMat', 'ae', 'at', 'pe', 'sys', 'pre', 'light', 'openSys'];
+          doMainAction(acts[S.mainFocus]);
+        } else if (S.screen === 'material') {
+          S.matField = (S.matField + 1) % 6;          // 单击下一项
+        } else if (S.screen === 'system') {
+          var i = S.sysField, fld = F[i];
+          if (fld.type === 'touch') {
+            if (S.hasTouch) { S.screen = 'calib'; S.calibStep = 0; }
+            // 未接触摸屏:单击无反应,显示“不支持”
+          } else if (fld.type === 'reset') {
+            if (S.sysEditing) { factoryReset(); S.sysEditing = false; }
+            else { S.sysEditing = true; }             // 再次单击才执行,防止误触
+          } else if (fld.type === 'version' || fld.type === 'chipid') {
+            // 只读
+          } else if (fld.type === 'clock') {
+            // 日期(3 段)/时间(2 段):单击进入并逐段推进,末段后退出编辑
+            if (!S.sysEditing) { S.sysEditing = true; S.sysSubField = 0; }
+            else if (++S.sysSubField >= fld.segs) { S.sysEditing = false; S.sysSubField = 0; }
+          } else if (fld.type === 'num' || fld.type === 'time') {
+            // 固件把 DayStart/NightStart 与其它数值项同等对待:单击进出编辑态,旋转才改值
+            S.sysEditing = !S.sysEditing;
+          } else {
+            adjustSetting(fld, 1);                    // 开关/语言/方向/配色:单击直接切换
+          }
+        }
+      }
+
+      function doubleClickEncoder() {
+        beep();
+        if (S.screen === 'material') {
+          S.matField = (S.matField + 5) % 6;          // 双击上一项
+        } else if (S.screen === 'system') {
+          S.sysField = (S.sysField + F.length - 1) % F.length;
+          S.sysSubField = 0;
+        } else if (S.screen === 'main') {
+          S.ui.manualExhaust = !S.ui.manualExhaust;   // 双击强排
+        }
+      }
+
+      function longPressEncoder() {
+        beep();
+        if (S.screen === 'calib') { S.screen = 'system'; S.calibStep = 0; return; } // 长按取消校准
+        if (S.screen === 'material') {
+          S.screen = 'main';
+          if (S.matDirty) persist();
+          S.matDirty = false;
+        } else if (S.screen === 'system') {
+          S.screen = 'main';
+          S.sysEditing = false;
+          S.sysSubField = 0;
+          if (S.sysDirty) persist();
+          S.sysDirty = false;
+        } else if (S.screen === 'main') {
+          toggleSystem();                            // 长按 = 系统启停
+        }
+      }
+
+      function adjustSetting(f, d) {
+        switch (f.type) {
+          case 'bool': S.st[f.key] = !S.st[f.key]; break;
+          case 'lang':
+            S.st.language = S.st.language === 'zh' ? 'en' : 'zh';
+            break;
+          case 'enc': S.st.encoderReversed = !S.st.encoderReversed; break;
+          case 'num':
+            S.st[f.key] = clamp(S.st[f.key] + d * f.step, f.min, f.max);
+            break;
+          case 'theme':
+            // 0=日间 1=夜间 2=自动,循环切换
+            S.st.theme = (S.st.theme + 3 + d) % 3;
+            break;
+          case 'time':
+            S.st[f.key] = clamp(S.st[f.key] + d * f.step, f.min, f.max);
+            break;
+          case 'clock': adjustClock(f, d); return; // 改的是系统时钟,不走 sysDirty 之外的逻辑
+        }
+        S.sysDirty = true;
+      }
+
+      /* 对齐 UiModel::adjustClock:以当前时钟为基准改写单个子段后回写。
+         真机基准是 time(nullptr)(未同步时才退到 manualClockEpoch/常量),预览里
+         simNow() 始终有效,故直接用它,保证“改的那一段”和屏上显示的是同一时刻。 */
+      function adjustClock(f, d) {
+        var t = new Date(simNow());
+        var sub = S.sysSubField;
+        if (f.segs === 3) {
+          if (sub === 0) t.setFullYear(t.getFullYear() + d);
+          else if (sub === 1) t.setMonth((t.getMonth() + d + 12) % 12);
+          else {
+            // 日:按当月天数循环,避免出现 2 月 31 日这类无效值
+            var limit = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+            var day = t.getDate() + d;
+            t.setDate(day < 1 ? limit : (day > limit ? 1 : day));
+          }
+        } else {
+          if (sub === 0) t.setHours((t.getHours() + d + 24) % 24);
+          else t.setMinutes((t.getMinutes() + d + 60) % 60);
+        }
+        setSimNow(t.getTime());
+        S.sysDirty = true;
+      }
+
+      function adjustProfile(d) {
+        var p = S.materials[S.materialIndex];
+        switch (S.matField) {
+          case 0: p.minC = clamp(p.minC + d, 0, p.maxC - 5); break;
+          case 1: p.maxC = clamp(p.maxC + d, p.minC + 5, 100); break;
+          case 2: p.fanMin = clamp(p.fanMin + d, 0, p.fanMax); break;
+          case 3: p.fanMax = clamp(p.fanMax + d, p.fanMin, 100); break;
+          case 4: p.postFan = clamp(p.postFan + d * 5, 0, 100); break;
+          case 5: p.postSec = clamp(p.postSec + d * 30, 0, 1800); break;
+        }
+        S.matDirty = true;
+      }
+
+      function toggleSystem() {
+        S.ui.systemEnabled = !S.ui.systemEnabled;
+        if (!S.ui.systemEnabled) S.ui.preheat = false;
+      }
+      function doMainAction(a) {
+        switch (a) {
+          case 'prevMat': S.materialIndex = (S.materialIndex + 11) % 12; break;
+          case 'nextMat': S.materialIndex = (S.materialIndex + 1) % 12; break;
+          case 'openMat': S.screen = 'material'; S.matField = 0; break;
+          case 'ae': S.ui.autoExhaust = !S.ui.autoExhaust; break;
+          case 'at': S.ui.autoTemperature = !S.ui.autoTemperature; break;
+          case 'pe': S.ui.postPrintExhaust = !S.ui.postPrintExhaust; break;
+          case 'sys': toggleSystem(); break;
+          case 'pre':
+            S.ui.preheat = !S.ui.preheat;
+            if (S.ui.preheat && !S.ui.systemEnabled) S.ui.systemEnabled = true;
+            break;
+          case 'light': S.ui.light = !S.ui.light; break;
+          case 'openSys':
+            S.screen = 'system'; S.sysEditing = false; S.sysField = 0; break;
+        }
+      }
+
+      /* ---------------- 按键音(对齐 startBuzzer(35),受“按键声音”开关控制) ---------------- */
+      var audioCtx = null;
+      function beep() {
+        if (!S.st.keySound) return;
+        try {
+          audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+          var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+          o.frequency.value = 2400; o.type = 'square';
+          g.gain.value = 0.03;
+          o.connect(g); g.connect(audioCtx.destination);
+          o.start();
+          g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.035);
+          o.stop(audioCtx.currentTime + 0.04);
+        } catch (e) { /* 无音频设备时静默 */ }
+      }
+
+      /* ================= 渲染(坐标与 tft_ui.cpp drawFrame 一致) ================= */
+      var ICONS = {
+        defs:
+          '<defs>' +
+          '<symbol id="i-fan" viewBox="0 0 24 22"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="11" r="8.5"/><path d="M15 10.5 L19.5 15 M12.5 14 L7.5 17 M9 10.5 L4.5 7 M11.5 7 L16 4.5"/></g><circle cx="12" cy="11" r="2" fill="currentColor"/></symbol>' +
+          '<symbol id="i-hfan" viewBox="0 0 24 22"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="10" r="8"/><path d="M15 9.5 L19 13.5 M12.5 13 L8 15.5 M9 9.5 L5 6.5 M11.5 6.5 L15.5 4"/></g><circle cx="12" cy="10" r="2" fill="currentColor"/><path d="M4 20h5 M15 20h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="gc-warn"/></symbol>' +
+          '<symbol id="i-chip" viewBox="0 0 24 22"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="5" y="4" width="14" height="14" rx="1.5"/><rect x="9" y="8" width="6" height="6"/><path d="M1 7h4M1 11h4M1 15h4M19 7h4M19 11h4M19 15h4M7 1v3M12 1v3M17 1v3M7 18v3M12 18v3M17 18v3"/></g></symbol>' +
+          '<symbol id="i-drop" viewBox="0 0 24 22"><path d="M12 1.5 C12 1.5 5 10.5 5 14.5 a7 7 0 0 0 14 0 C19 10.5 12 1.5 12 1.5 Z" fill="currentColor"/></symbol>' +
+          '<symbol id="i-house" viewBox="0 0 24 22"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 L12 2 L21 9.5"/><rect x="5.5" y="9.5" width="13" height="9.5"/><path d="M12 19 V13.5"/></g></symbol>' +
+          '<symbol id="i-board" viewBox="0 0 24 22"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="3"/><path d="M6 14 L9.5 8 L12.5 14 L15.5 8 L18.5 13"/></g></symbol>' +
+          '<symbol id="i-bolt" viewBox="0 0 24 22"><path d="M13 1 L4 13 H11 L10 21 L20 9 H13 Z" fill="currentColor"/></symbol>' +
+          '<symbol id="i-gauge" viewBox="0 0 24 22"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 12 L16.5 7"/><path d="M6 16.5 H18"/></g><circle cx="12" cy="12" r="1.8" fill="currentColor"/></symbol>' +
+          '<symbol id="b-power" viewBox="0 0 24 22"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3 V10.5"/><path d="M7.2 5.2 A8 8 0 1 0 16.8 5.2"/></g></symbol>' +
+          '<symbol id="b-play" viewBox="0 0 24 22"><path d="M7 2.5 L20 11 L7 19.5 Z" fill="currentColor"/></symbol>' +
+          '<symbol id="b-flame" viewBox="0 0 24 22"><path d="M12 1.5 C12 7 6 8.5 6 14 a6 6 0 0 0 12 0 C18 9.5 14 8 12 1.5 Z" fill="currentColor"/><circle cx="12.5" cy="14.5" r="2.6" fill="var(--panel-alt)"/></symbol>' +
+          '<symbol id="b-bulb" viewBox="0 0 24 22"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="9" r="7"/><path d="M8.5 17h7M9.5 20h5"/></g></symbol>' +
+          '<symbol id="b-gear" viewBox="0 0 24 22"><g fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="11" r="8.5"/><circle cx="12" cy="11" r="3.2"/><path d="M12 0.5v3M12 18.5v3M1.5 11h3M19.5 11h3M4.6 3.6l2.1 2.1M17.3 16.3l2.1 2.1M19.4 3.6l-2.1 2.1M6.7 16.3l-2.1 2.1" stroke-linecap="round"/></g></symbol>' +
+          '</defs>'
+      };
+
+      function toggle(x, y, on, color) {
+        return '<g transform="translate(' + x + ',' + y + ')">' +
+          '<rect width="48" height="22" rx="11" fill="' + (on ? color : 'var(--border)') + '"/>' +
+          '<circle cx="' + (on ? 37 : 11) + '" cy="11" r="9" fill="' + (on ? 'var(--text)' : 'var(--muted)') + '"/></g>';
+      }
+
+      function renderMain() {
+        var zh = S.st.language === 'zh';
+        var p = S.materials[S.materialIndex];
+        var prev = S.materials[(S.materialIndex + 11) % 12];
+        var next = S.materials[(S.materialIndex + 1) % 12];
+        var u = S.ui;
+        var h = '';
+        h += '<rect width="480" height="320" class="fill-bg"/>';
+        h += '<rect x="4" y="4" width="292" height="238" rx="12" class="fill-panel" stroke="var(--border)"/>';
+        // 行分隔统一为暗色细线,与行文字左缘对齐内嵌
+        h += '<line x1="16" y1="60" x2="290" y2="60" stroke="var(--border)"/>';
+        h += '<line x1="16" y1="120" x2="290" y2="120" stroke="var(--border)"/>';
+        h += '<line x1="16" y1="180" x2="290" y2="180" stroke="var(--border)"/>';
+        h += '<line x1="16" y1="239" x2="290" y2="239" stroke="var(--border)"/>';
+        // 每行左侧识别色条:排风(强调青)/打印仓温(黄)/打印结束(青)
+        var rowAccents = ['var(--accent)', 'var(--g-yellow)', 'var(--g-cyan)'];
+        for (var ra = 0; ra < 3; ra++)
+          h += '<rect x="8" y="' + (62 + ra * 60 + 9) + '" width="3" height="38" rx="1" style="fill:' + rowAccents[ra] + '"/>';
+
+        // 材料轮播:焦点 0/1/2 影响颜色
+        var pc = S.mainFocus === 0 ? 'w' : 'm';
+        var mc = S.mainFocus === 1 ? 'w' : 'a';
+        var nc = S.mainFocus === 2 ? 'w' : 'm';
+        h += '<text x="35" y="27" text-anchor="middle" font-size="12" class="' + pc + '">' + prev.name + '</text>';
+        h += '<circle cx="82" cy="23" r="13" fill="none" stroke="var(--' + (S.mainFocus === 0 ? 'warn' : 'border') + ')" stroke-width="1.4"/>';
+        h += '<text x="82" y="27.5" text-anchor="middle" font-size="13" class="' + pc + '">&lt;</text>';
+        h += '<text x="145" y="26" text-anchor="middle" font-size="15" font-weight="600" class="' + mc + '">' + p.name + '</text>';
+        if (S.mainFocus === 1) h += '<rect x="122" y="32" width="46" height="2" class="stroke-warn" style="fill:var(--warn)"/>';
+        h += '<circle cx="207" cy="23" r="13" fill="none" stroke="var(--' + (S.mainFocus === 2 ? 'warn' : 'border') + ')" stroke-width="1.4"/>';
+        h += '<text x="207" y="27.5" text-anchor="middle" font-size="13" class="' + nc + '">&gt;</text>';
+        h += '<text x="260" y="27" text-anchor="middle" font-size="12" class="' + nc + '">' + next.name + '</text>';
+        // 状态行:左侧状态色点 + 状态文字(按 stateAccent 着色),其后 WiFi 图标;
+        // 日期居中、时间靠右,颜色随联网状态(联网绿/断网灰)。
+        var stateZh, stateEn, stateColor;
+        if (u.manualExhaust) { stateZh = '强制排气'; stateEn = 'MANUAL PURGE'; stateColor = 'var(--g-cyan)'; }
+        else if (!u.systemEnabled) { stateZh = '待机'; stateEn = 'IDLE'; stateColor = 'var(--good)'; }
+        else if (u.preheat) { stateZh = '预热'; stateEn = 'PREHEAT'; stateColor = 'var(--preheat)'; }
+        else if (S.pirMotion) { stateZh = '打印'; stateEn = 'PRINT'; stateColor = 'var(--text)'; }
+        else { stateZh = '检测中'; stateEn = 'DETECT'; stateColor = 'var(--warn)'; }
+        var stateText = zh ? stateZh : stateEn;
+        h += '<circle cx="15" cy="46" r="4" style="fill:' + stateColor + '"/>';
+        h += '<text x="24" y="50" text-anchor="start" font-size="11" class="zh" style="fill:' + stateColor + '">' + stateZh + '</text>';
+        h += '<text x="24" y="50" text-anchor="start" font-size="11" class="en" style="fill:' + stateColor + '">' + stateEn + '</text>';
+        // WiFi 扇形信号图标(状态文字之后):联网绿,断网灰并加红斜杠
+        var sw = 0;
+        for (var ci = 0; ci < stateText.length; ci++) sw += stateText.charCodeAt(ci) > 127 ? 11 : 6.2;
+        var wx = 24 + sw + 12, wy = 46, wc = S.netConnected ? 'var(--good)' : 'var(--muted)';
+        h += '<path d="M' + (wx - 8) + ' ' + (wy + 1) + ' a8 8 0 0 1 16 0" fill="none" stroke="' + wc + '" stroke-width="2.4"/>';
+        h += '<path d="M' + (wx - 4.5) + ' ' + (wy + 1) + ' a4.5 4.5 0 0 1 9 0" fill="none" stroke="' + wc + '" stroke-width="2.4"/>';
+        h += '<circle cx="' + wx + '" cy="' + (wy + 1) + '" r="2.2" style="fill:' + wc + '"/>';
+        if (!S.netConnected) {
+          h += '<line x1="' + (wx - 7) + '" y1="' + (wy - 7) + '" x2="' + (wx + 7) + '" y2="' + (wy + 5) + '" stroke="var(--g-red)" stroke-width="1.6"/>';
+          h += '<line x1="' + (wx - 6) + '" y1="' + (wy - 7) + '" x2="' + (wx + 8) + '" y2="' + (wy + 5) + '" stroke="var(--g-red)" stroke-width="1.6"/>';
+        }
+        var clockColor = S.netConnected ? 'var(--good)' : 'var(--muted)';
+        h += '<text x="150" y="50" text-anchor="middle" font-size="11" style="fill:' + clockColor + '">' + clockText.slice(0, 10) + '</text>';
+        h += '<text x="290" y="50" text-anchor="end" font-size="11" style="fill:' + clockColor + '">' + clockText.slice(11) + '</text>';
+
+        // 三个自动开关行,焦点 3/4/5
+        var rows = [
+          {
+            zh: '排气风扇', en: 'EXHAUST FAN', subZh: '自动控制', subEn: 'AUTO CONTROL', on: u.autoExhaust, color: 'var(--g-cyan)',
+            v1: zh ? '最低 ' + p.fanMin + '%' : 'MIN ' + p.fanMin + '%', v2: zh ? '最高 ' + p.fanMax + '%' : 'MAX ' + p.fanMax + '%'
+          },
+          {
+            zh: '打印仓温', en: 'CHAMBER TEMP', subZh: '自动控制', subEn: 'AUTO CONTROL', on: u.autoTemperature, color: 'var(--g-cyan)',
+            v1: zh ? '最低 ' + p.minC + '℃' : 'MIN ' + p.minC + '℃', v2: zh ? '最高 ' + p.maxC + '℃' : 'MAX ' + p.maxC + '℃'
+          },
+          {
+            zh: '打印结束', en: 'PRINT FINISH', subZh: '开启排气', subEn: 'POST EXHAUST', on: u.postPrintExhaust, color: 'var(--g-cyan)',
+            v1: zh ? '风速 ' + p.postFan + '%' : 'FAN ' + p.postFan + '%', v2: zh ? '时间 ' + p.postSec + 's' : 'TIME ' + p.postSec + 's'
+          }
+        ];
+        for (var r = 0; r < 3; r++) {
+          var y = 62 + r * 60, row = rows[r], focused = S.mainFocus === 3 + r;
+          if (focused) h += '<rect x="7" y="' + y + '" width="286" height="56" rx="4" fill="none" class="stroke-warn"/>';
+          h += '<text x="12" y="' + (y + 14) + '" font-size="13" class="t zh">' + row.zh + '</text>';
+          h += '<text x="12" y="' + (y + 14) + '" font-size="13" class="t en">' + row.en + '</text>';
+          h += '<text x="12" y="' + (y + 38) + '" font-size="10" class="m zh">' + row.subZh + '</text>';
+          h += '<text x="12" y="' + (y + 38) + '" font-size="10" class="m en">' + row.subEn + '</text>';
+          h += toggle(145, y + 18, row.on, row.color);
+          h += '<text x="288" y="' + (y + 14) + '" text-anchor="end" font-size="11" class="m">' + row.v1 + '</text>';
+          h += '<text x="288" y="' + (y + 38) + '" text-anchor="end" font-size="11" class="m">' + row.v2 + '</text>';
+        }
+
+        // 2x4 仪表(族色小图标 + 状态色量程条 + 主文字色读数;单位并入名称行)
+        var enabled = u.systemEnabled;
+        var gauges = [
+          { icon: 'i-fan', color: 'var(--g-red)', nameZh: '排风', nameEn: 'EXHAUST', val: u.manualExhaust ? 100 : (u.autoExhaust && enabled ? 65 : 0), unit: '%', dec: 0, pct: true },
+          { icon: 'i-chip', color: 'var(--good)', nameZh: '主板', nameEn: 'MCU', val: 38, unit: '℃', dec: 0, pct: false },
+          { icon: 'i-drop', color: 'var(--g-yellow)', nameZh: '湿度', nameEn: 'HUMID', val: 42, unit: '%', dec: 0, pct: true },
+          { icon: 'i-house', color: 'var(--warn)', nameZh: '仓温', nameEn: 'CHAMBER', val: enabled ? 45 : 28, unit: '℃', dec: 0, pct: false },
+          { icon: 'i-hfan', color: 'var(--g-magenta)', nameZh: '热风', nameEn: 'HOT FAN', val: enabled ? S.st.heaterFan : 0, unit: '%', dec: 0, pct: true },
+          { icon: 'i-board', color: S.st.heaterProtection <= 62 ? 'var(--g-red)' : 'var(--warn)', nameZh: '热板', nameEn: 'HEATER', val: enabled ? 62 : 25, unit: '℃', dec: 0, pct: false },
+          { icon: 'i-bolt', color: 'var(--g-cyan)', nameZh: '电压', nameEn: 'VOLTAGE', val: 24.1, unit: 'V', dec: 1, pct: false },
+          { icon: 'i-gauge', color: 'var(--good)', nameZh: '电流', nameEn: 'CURRENT', val: enabled ? 3.2 : 0, unit: 'A', dec: 1, pct: false }
+        ];
+        for (var i = 0; i < 8; i++) {
+          var gx = 300 + (i & 1) * 89, gy = 4 + (i >> 1) * 60, gm = gauges[i];
+          h += '<rect x="' + gx + '" y="' + gy + '" width="87" height="56" rx="9" class="fill-panel" stroke="var(--border)"/>';
+          h += '<circle cx="' + (gx + 15) + '" cy="' + (gy + 15) + '" r="11" style="fill:var(--panel-alt)"/>';
+          h += '<use href="#' + gm.icon + '" x="' + (gx + 3) + '" y="' + (gy + 4) + '" width="24" height="22" style="color:' + gm.color + '"/>';
+          // 底部量程条:底槽 + 族色填充(百分比型按实时值,其余画满宽)
+          h += '<rect x="' + (gx + 3) + '" y="' + (gy + 50) + '" width="81" height="4" rx="2" style="fill:var(--panel-alt)"/>';
+          var fw = gm.pct ? Math.max(0, Math.min(100, gm.val)) * 0.81 : 81;
+          if (fw > 0) h += '<rect x="' + (gx + 3) + '" y="' + (gy + 50) + '" width="' + fw.toFixed(1) + '" height="4" rx="2" style="fill:' + gm.color + '"/>';
+          // 读数:统一主文字色,仅热板超限转红;温度≥100 取整
+          var vv = gm.dec ? (gm.val >= 100 ? String(Math.round(gm.val)) : gm.val.toFixed(1)) : String(Math.round(gm.val));
+          var vc = (i === 5 && gm.val >= S.st.heaterProtection) ? 'var(--g-red)' : 'var(--text)';
+          h += '<text x="' + (gx + 83) + '" y="' + (gy + 21) + '" text-anchor="end" font-size="18" font-weight="600" style="fill:' + vc + '">' + vv + '</text>';
+          var capZh = gm.nameZh + ' ' + gm.unit, capEn = gm.nameEn + ' ' + gm.unit;
+          h += '<text x="' + (gx + 43) + '" y="' + (gy + 44) + '" text-anchor="middle" font-size="10" class="m zh">' + capZh + '</text>';
+          h += '<text x="' + (gx + 43) + '" y="' + (gy + 44) + '" text-anchor="middle" font-size="10" class="m en">' + capEn + '</text>';
+        }
+
+        // 底部五键
+        var active = [S.pirMotion, u.systemEnabled, u.preheat, u.light, false];
+        var focusBtn = { 6: 1, 7: 2, 8: 3, 9: 4 }[S.mainFocus] || -1;
+        var labels = [
+          zh ? (S.pirMotion ? '检测到' : '未检测') : (S.pirMotion ? 'MOTION' : 'NO MOTION'),
+          zh ? (u.systemEnabled ? '工作中' : '已停止') : (u.systemEnabled ? 'WORKING' : 'STOPPED'),
+          zh ? '提前预热' : 'PREHEAT',
+          zh ? (u.light ? '灯光开启' : '灯光关闭') : (u.light ? 'LIGHT ON' : 'LIGHT OFF'),
+          zh ? '系统设置' : 'SETTINGS'
+        ];
+        var icons = ['b-power', 'b-play', 'b-flame', 'b-bulb', 'b-gear'];
+        for (var b = 0; b < 5; b++) {
+          var bx = 4 + b * 95, on = active[b], focused = focusBtn === b;
+          // 激活态:底色不变,描边/图标/文字/底部小色条转黄(与固件一致)
+          h += '<rect x="' + bx + '" y="248" width="91" height="68" rx="10" style="fill:var(--panel-alt)" stroke="' +
+            (focused ? 'var(--text)' : (on ? 'var(--g-yellow)' : 'var(--border)')) + '"/>';
+          if (focused) h += '<rect x="' + (bx + 2) + '" y="250" width="87" height="64" rx="8" fill="none" class="stroke-warn"/>';
+          h += '<use href="#' + icons[b] + '" x="' + (bx + 34) + '" y="258" width="22" height="20" style="color:' + (on ? 'var(--g-yellow)' : 'var(--text)') + '"/>';
+          if (on) h += '<rect x="' + (bx + 24) + '" y="309" width="43" height="3" rx="1" style="fill:var(--g-yellow)"/>';
+          h += '<text x="' + (bx + 45) + '" y="304" text-anchor="middle" font-size="10" style="fill:' + (on ? 'var(--g-yellow)' : 'var(--text)') + '">' + labels[b] + '</text>';
+        }
+        return h;
+      }
+
+      function renderMaterial() {
+        var zh = S.st.language === 'zh';
+        var p = S.materials[S.materialIndex];
+        var labelsZh = ['最低温度', '最高温度', '最低风速', '最高风速', '排气风速', '排气时间'];
+        var labelsEn = ['MIN TEMP', 'MAX TEMP', 'MIN FAN', 'MAX FAN', 'POST FAN', 'POST TIME'];
+        var vals = [p.minC, p.maxC, p.fanMin, p.fanMax, p.postFan, p.postSec];
+        var units = ['℃', '℃', '%', '%', '%', 's'];
+        var h = '<rect width="480" height="320" class="fill-bg"/>';
+        h += '<rect x="0" y="0" width="480" height="32" class="fill-alt"/>';
+        h += '<text x="10" y="21" font-size="13" class="t zh">耗材设置</text>';
+        h += '<text x="10" y="21" font-size="13" class="t en">MATERIAL SETTINGS</text>';
+        h += '<text x="468" y="21" text-anchor="end" font-size="12" class="' + (S.matDirty ? 't' : 'a') + '">' + (S.matDirty ? '*' : p.name) + '</text>';
+        for (var i = 0; i < 6; i++) {
+          var y = 37 + i * 39, sel = i === S.matField;
+          h += '<rect x="20" y="' + y + '" width="440" height="34" rx="5" fill="' + (sel ? 'var(--active)' : 'var(--panel)') + '" stroke="' + (sel ? 'var(--accent)' : 'var(--border)') + '"/>';
+          h += '<text x="34" y="' + (y + 17) + '" font-size="13" class="' + (sel ? 't' : 'm') + ' zh">' + labelsZh[i] + '</text>';
+          h += '<text x="34" y="' + (y + 17) + '" font-size="13" class="' + (sel ? 't' : 'm') + ' en">' + labelsEn[i] + '</text>';
+          h += '<text x="442" y="' + (y + 17) + '" text-anchor="end" font-size="13" class="' + (sel ? 'a' : 't') + '">' + vals[i] + units[i] + '</text>';
+        }
+        h += '<text x="240" y="286" text-anchor="middle" font-size="11" class="m zh">旋转修改　单击下一项　长按保存返回</text>';
+        h += '<text x="240" y="286" text-anchor="middle" font-size="11" class="m en">TURN: EDIT  CLICK: NEXT  HOLD: SAVE/BACK</text>';
+        return h;
+      }
+
+      function settingValue(f) {
+        var zh = S.st.language === 'zh';
+        switch (f.type) {
+          case 'lang': return zh ? '中文' : 'EN';
+          case 'bool': return S.st[f.key] ? (zh ? '开' : 'ON') : (zh ? '关' : 'OFF');
+          case 'num': return S.st[f.key] + f.unit;
+          case 'time': return hhmm(S.st[f.key]);
+          case 'enc': return S.st.encoderReversed ? (zh ? '反向' : 'REVERSE') : (zh ? '正向' : 'NORMAL');
+          case 'theme': return themeName(S.st.theme, zh);
+          case 'clock': return clockField(f);
+          case 'touch':
+            if (!S.hasTouch) return zh ? '不支持' : 'N/A';
+            return S.st.touchCalibrated ? (zh ? '已校准' : 'READY') : (zh ? '未校准' : 'NOT SET');
+          case 'reset': return S.sysEditing ? (zh ? '确认?' : 'CONFIRM?') : (zh ? '执行' : 'RUN');
+          case 'version': return VERSION;
+          case 'chipid': return CHIP_ID;
+        }
+        return '';
+      }
+
+      function hhmm(minutes) {
+        function p(n) { return (n < 10 ? '0' : '') + n; }
+        return p(Math.floor(minutes / 60)) + ':' + p(minutes % 60);
+      }
+      function themeName(v, zh) {
+        return v === 0 ? (zh ? '日间' : 'DAY') : (v === 1 ? (zh ? '夜间' : 'NIGHT') : (zh ? '自动' : 'AUTO'));
+      }
+      // 编辑态用方括号标出当前子段,与固件 formatClockField 的标记方式一致
+      function clockField(f) {
+        var d = new Date(simNow());
+        function p(n) { return (n < 10 ? '0' : '') + n; }
+        var seg = S.sysSubField, on = S.sysEditing;
+        if (f.segs === 3) {
+          var y = String(d.getFullYear()), m = p(d.getMonth() + 1), dd = p(d.getDate());
+          if (on && seg === 0) y = '[' + y + ']';
+          else if (on && seg === 1) m = '[' + m + ']';
+          else if (on && seg === 2) dd = '[' + dd + ']';
+          return y + '-' + m + '-' + dd;
+        }
+        var hh = p(d.getHours()), mm = p(d.getMinutes()), ss = p(d.getSeconds());
+        if (on && seg === 0) hh = '[' + hh + ']';
+        else if (on && seg === 1) mm = '[' + mm + ']';
+        return hh + ':' + mm + ':' + ss;
+      }
+
+      function renderSystem() {
+        var zh = S.st.language === 'zh';
+        var h = '<rect width="480" height="320" class="fill-bg"/>';
+        h += '<rect x="0" y="0" width="480" height="32" class="fill-alt"/>';
+        h += '<text x="10" y="21" font-size="13" class="t zh">系统设置</text>';
+        h += '<text x="10" y="21" font-size="13" class="t en">SYSTEM SETTINGS</text>';
+        h += '<text x="468" y="21" text-anchor="end" font-size="11" class="a">' + (S.sysField + 1) + '/' + F.length + (S.sysDirty ? ' *' : '') + '</text>';
+
+        // 滚动窗口:选中项保持在 5 行内;first 上限为 F.length-5,否则末项永远不可见
+        var first = S.sysField >= 2 ? S.sysField - 2 : 0;
+        if (first > F.length - 5) first = F.length - 5;
+        for (var row = 0; row < 5; row++) {
+          var item = first + row, y = 40 + row * 46, f = F[item], activeRow = item === S.sysField;
+          h += '<rect x="14" y="' + y + '" width="452" height="39" rx="5" fill="' + (activeRow ? 'var(--active)' : 'var(--panel)') + '" stroke="' + (activeRow ? 'var(--accent)' : 'var(--border)') + '"/>';
+          h += '<text x="27" y="' + (y + 20) + '" font-size="13" class="' + (activeRow ? 't' : 'm') + ' zh">' + f.zh + '</text>';
+          h += '<text x="27" y="' + (y + 20) + '" font-size="13" class="' + (activeRow ? 't' : 'm') + ' en">' + f.en + '</text>';
+          h += '<text x="450" y="' + (y + 20) + '" text-anchor="end" font-size="13" class="' + (activeRow ? 'a' : 't') + '">' + settingValue(f) + '</text>';
+        }
+        if (S.sysEditing) {
+          h += '<text x="240" y="290" text-anchor="middle" font-size="11" class="m zh">旋转修改　单击完成</text>';
+          h += '<text x="240" y="290" text-anchor="middle" font-size="11" class="m en">TURN TO EDIT  CLICK DONE</text>';
+        } else {
+          h += '<text x="240" y="290" text-anchor="middle" font-size="11" class="m zh">旋转选择　单击编辑　长按保存返回</text>';
+          h += '<text x="240" y="290" text-anchor="middle" font-size="11" class="m en">TURN SELECT  CLICK EDIT  HOLD SAVE</text>';
+        }
+        return h;
+      }
+
+      function renderCalib() {
+        var firstStep = S.calibStep === 0;
+        var cx = firstStep ? 28 : 452, cy = firstStep ? 28 : 292;
+        var h = '<rect width="480" height="320" class="fill-bg"/>';
+        h += '<line x1="' + (cx - 14) + '" y1="' + cy + '" x2="' + (cx + 15) + '" y2="' + cy + '" class="stroke-accent" stroke-width="2"/>';
+        h += '<line x1="' + cx + '" y1="' + (cy - 14) + '" x2="' + cx + '" y2="' + (cy + 15) + '" class="stroke-accent" stroke-width="2"/>';
+        h += '<circle cx="' + cx + '" cy="' + cy + '" r="9" fill="none" class="stroke-text" stroke-width="1.5"/>';
+        var msgZh = firstStep ? '按住左上角十字并单击编码器' : '按住右下角十字并单击编码器';
+        var msgEn = firstStep ? 'HOLD TOP-LEFT + CLICK ENCODER' : 'HOLD BOTTOM-RIGHT + CLICK ENCODER';
+        h += '<text x="240" y="150" text-anchor="middle" font-size="13" class="t zh">' + msgZh + '</text>';
+        h += '<text x="240" y="150" text-anchor="middle" font-size="13" class="t en">' + msgEn + '</text>';
+        h += '<text x="240" y="184" text-anchor="middle" font-size="11" class="m zh">长按编码器取消</text>';
+        h += '<text x="240" y="184" text-anchor="middle" font-size="11" class="m en">HOLD ENCODER TO CANCEL</text>';
+        return h;
+      }
+
+      function renderFault() {
+        var h = '<rect width="480" height="320" class="fill-bg"/>';
+        h += '<rect x="0" y="0" width="480" height="30" style="fill:var(--maroon)"/>';
+        h += '<path d="M240 48 L196 124 L284 124 Z" style="fill:var(--g-red)"/>';
+        h += '<circle cx="240" cy="107" r="5" style="fill:var(--text)"/>';
+        h += '<rect x="236.5" y="70" width="7" height="27" rx="3" style="fill:var(--text)"/>';
+        h += '<text x="240" y="15" text-anchor="middle" font-size="11" style="fill:var(--text)">' + clockText + '</text>';
+        h += '<text x="240" y="157" text-anchor="middle" font-size="20" font-weight="600" class="t zh">传感器错误</text>';
+        h += '<text x="240" y="157" text-anchor="middle" font-size="20" font-weight="600" class="t en">SENSOR FAULT</text>';
+        h += '<text x="240" y="188" text-anchor="middle" font-size="12" class="w zh">系统已停止</text>';
+        h += '<text x="240" y="188" text-anchor="middle" font-size="12" class="w en">SYSTEM STOPPED</text>';
+        h += '<text x="240" y="211" text-anchor="middle" font-size="11" class="m zh">请检查</text>';
+        h += '<text x="240" y="211" text-anchor="middle" font-size="11" class="m en">CHECK SENSORS</text>';
+        var names = ['AHT20', 'NTC', 'INA226'], xs = [72, 208, 344];
+        for (var i = 0; i < 3; i++) {
+          var c = S.faultSensors[i] ? 'var(--good)' : 'var(--g-red)';
+          h += '<circle cx="' + (xs[i] + 0) + '" cy="250" r="5" style="fill:' + c + '"/>';
+          h += '<text x="' + (xs[i] + 12) + '" y="254" font-size="11" style="fill:' + c + '">' + names[i] + '</text>';
+        }
+        return h;
+      }
+
+      var clockText = '--:--:--';
+      function updateClock() {
+        var d = new Date(simNow());
+        function p(n) { return (n < 10 ? '0' : '') + n; }
+        clockText = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+          ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+      }
+
+      var screenEl = document.getElementById('screen');
+      // 只重画屏幕内容。秒级刷新走这里,避免连带重建屏下说明区。
+      function renderScreen() {
+        updateClock();
+        var inner = ICONS.defs;
+        if (S.screen === 'fault') inner += renderFault();
+        else if (S.screen === 'calib') inner += renderCalib();
+        else if (S.screen === 'material') inner += renderMaterial();
+        else if (S.screen === 'system') inner += renderSystem();
+        else inner += renderMain();
+        screenEl.innerHTML = inner;
+      }
+
+      function render() {
+        renderScreen();
+        var doc = document.querySelector('.doc');
+        doc.setAttribute('data-lang', S.st.language);
+        doc.setAttribute('data-theme', resolveTheme()); // 主题由“屏幕配色”决定,自动模式按时刻判定
+        document.getElementById('legend-title').textContent =
+          (S.st.language === 'zh' ? '系统设置 · ' : 'SYSTEM SETTINGS · ') + F.length +
+          (S.st.language === 'zh' ? ' 项条目说明' : ' ITEMS');
+        document.getElementById('legend-tip').textContent = S.st.language === 'zh'
+          ? '真机每屏只显示 5 行,靠旋转滚动查看全部 ' + F.length + ' 项。下表把全部条目一次列全,并实时高亮屏内当前选中项;点击任一条目可直接把屏内光标跳到该项。'
+          : 'The device shows 5 rows at a time; rotate to scroll through all ' + F.length +
+          ' items. The table lists every item and highlights the current on-screen cursor; click any row to jump the cursor there.';
+        renderLegend();
+        updateCaption();
+        syncQuickButtons(); // 屏内改了“屏幕配色”等项时,顶部快捷按钮的选中态同步跟上
+      }
+
+      /* 屏下条目说明区:与屏内光标双向联动(高亮 + 点击跳转) */
+      var legendEl = document.getElementById('legend-list');
+      function renderLegend() {
+        var zh = S.st.language === 'zh';
+        legendEl.innerHTML = F.map(function (f, i) {
+          var on = S.screen === 'system' && i === S.sysField;
+          return '<li class="' + (on ? 'on' : '') + '" data-item="' + i + '">' +
+            '<span class="no">' + (i + 1) + '</span>' +
+            '<span class="body">' +
+            '<span class="head">' +
+            '<span class="name">' + (zh ? f.zh : f.en) + '</span>' +
+            '<span class="val">' + settingValue(f) + '</span>' +
+            '</span>' +
+            '<span class="desc">' + f.desc + '</span>' +
+            '<span class="meta">范围:' + f.range + '</span>' +
+            '</span></li>';
+        }).join('');
+      }
+
+      legendEl.addEventListener('click', function (e) {
+        var li = e.target.closest ? e.target.closest('li[data-item]') : null;
+        if (!li) return;
+        // 真机没有“直接跳项”,这里仅为方便查看:跳到系统设置页并定位光标
+        S.screen = 'system';
+        S.sysField = parseInt(li.getAttribute('data-item'), 10);
+        S.sysEditing = false;
+        render();
+      });
+
+      function updateCaption() {
+        var zh = S.st.language === 'zh';
+        var names = ['主界面', '耗材设置', '系统设置', '触摸校准', '故障告警'];
+        var namesEn = ['MAIN', 'MATERIAL', 'SYSTEM', 'CALIBRATION', 'FAULT'];
+        var idx = { main: 0, material: 1, system: 2, calib: 3, fault: 4 }[S.screen];
+        var extra = '';
+        if (S.screen === 'system') {
+          var editable = ['num', 'time', 'clock', 'theme'].indexOf(F[S.sysField].type) >= 0;
+          extra = (zh ? '　第 ' : ' item ') + (S.sysField + 1) + '/' + F.length +
+            (S.sysEditing && editable ? (zh ? ' ·编辑中' : ' EDITING') : '');
+        }
+        document.getElementById('cap-state').textContent = (zh ? names[idx] : namesEn[idx]) + extra;
+        document.getElementById('cap-mode').textContent =
+          (zh ? '中文' : 'English') + ' · ' + (document.querySelector('.doc').getAttribute('data-theme') === 'day' ? (zh ? '日间' : 'DAY') : (zh ? '夜间' : 'NIGHT'));
+      }
+
+      /* ---------------- 绑定控件 ---------------- */
+      function bind(id, fn) { document.getElementById(id).addEventListener('click', function (e) { fn(); e.currentTarget.blur(); render(); }); }
+      bind('btn-left', function () { rotateDir(-1); });
+      bind('btn-right', function () { rotateDir(1); });
+      bind('btn-click', clickEncoder);
+      bind('btn-dbl', doubleClickEncoder);
+      bind('btn-long', longPressEncoder);
+
+      document.addEventListener('keydown', function (e) {
+        if (e.target.tagName === 'BUTTON') return;
+        if (e.key === 'ArrowLeft') { rotateDir(-1); render(); e.preventDefault(); }
+        else if (e.key === 'ArrowRight') { rotateDir(1); render(); e.preventDefault(); }
+        else if (e.key === 'Enter') { clickEncoder(); render(); e.preventDefault(); }
+        else if (e.key === 'd' || e.key === 'D') { doubleClickEncoder(); render(); }
+        else if (e.key === 'l' || e.key === 'L') { longPressEncoder(); render(); }
+      });
+
+      document.querySelectorAll('[data-quick]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var kind = btn.getAttribute('data-quick'), val = btn.getAttribute('data-val');
+          if (kind === 'lang') {
+            S.st.language = val; S.sysDirty = S.screen === 'system' ? true : S.sysDirty;
+          } else if (kind === 'theme') {
+            // 与真机一致:快捷按钮等价于把“屏幕配色”设为 日间/夜间/自动
+            S.st.theme = val === 'day' ? 0 : (val === 'night' ? 1 : 2);
+            S.sysDirty = S.screen === 'system' ? true : S.sysDirty;
+          } else if (kind === 'pir') {
+            S.pirMotion = val === '1';
+          } else if (kind === 'touch') {
+            S.hasTouch = val === '1';
+            if (!S.hasTouch && S.screen === 'calib') S.screen = 'system';
+          } else if (kind === 'net') {
+            S.netConnected = val === '1';
+          } else if (kind === 'fault') {
+            S.screen = S.screen === 'fault' ? 'main' : 'fault';
+            btn.textContent = S.screen === 'fault' ? '退出故障页' : '传感器故障页';
+          } else if (kind === 'reset') {
+            factoryReset();
+            S.screen = 'main'; S.mainFocus = 1; S.materialIndex = 0;
+            S.ui = {
+              autoExhaust: true, autoTemperature: true, postPrintExhaust: true,
+              systemEnabled: true, preheat: false, light: false, manualExhaust: false
+            };
+            S.matDirty = S.sysDirty = S.sysEditing = false; S.calibStep = 0;
+            S.pirMotion = false; S.hasTouch = false; S.netConnected = true;   // 演示输入一并归位
+            document.querySelector('[data-quick="fault"]').textContent = '传感器故障页';
+          }
+          syncQuickButtons();
+          render();
+        });
+      });
+
+      function syncQuickButtons() {
+        var q = function (k, v) {
+          document.querySelectorAll('[data-quick="' + k + '"]').forEach(function (b) {
+            b.setAttribute('aria-pressed', b.getAttribute('data-val') === String(v) ? 'true' : 'false');
+          });
+        };
+        q('lang', S.st.language);
+        // 快捷按钮 data-val 是 day/night/auto,而 S.st.theme 是 0/1/2,按映射比较
+        q('theme', S.st.theme === 0 ? 'day' : (S.st.theme === 1 ? 'night' : 'auto'));
+        q('pir', S.pirMotion ? 1 : 0);
+        q('touch', S.hasTouch ? 1 : 0);
+        q('net', S.netConnected ? 1 : 0);
+      }
+
+      syncQuickButtons();
+      render();
+      setInterval(function () { if (S.screen === 'main' || S.screen === 'fault') renderScreen(); }, 1000);
+    })();
+  </script>
+</body>
+
+</html>

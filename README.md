@@ -27,6 +27,7 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 - [字库生成](#字库生成)
 - [系统设置说明](#系统设置说明)
 - [编译与烧录](#编译与烧录)
+- [测试与校验](#测试与校验)
 - [重要硬件核对](#重要硬件核对)
 - [待验证项清单](#待验证项清单)
 - [常见问题](#常见问题)
@@ -34,7 +35,7 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 
 ## 详细文档
 
-见 [docs/](docs/README.md)：[硬件接线](docs/hardware.md) · [编译烧录](docs/build-and-flash.md) · [联网功能](docs/networking.md) · [系统设置](docs/settings.md) · [第三方软件声明](THIRD_PARTY_NOTICES.md)。
+见 [docs/](docs/README.md)：[硬件接线](docs/hardware.md) · [编译烧录](docs/build-and-flash.md) · [联网功能](docs/networking.md) · [系统设置](docs/settings.md) · [温控与功率安全](docs/control.md) · [开发与测试](docs/development.md) · [第三方软件声明](THIRD_PARTY_NOTICES.md)。
 
 ## 工程目录结构
 
@@ -44,6 +45,7 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 ├─ README.md                 本文件
 ├─ LICENSE                   CC BY-NC-SA 4.0 官方法律文本全文
 ├─ .gitignore                忽略 .pio 与 .vscode 本地文件
+├─ .github/workflows/ci.yml  CI：固件编译 / 主机端单测 / 文档与产物一致性
 ├─ THIRD_PARTY_NOTICES.md    第三方依赖许可证声明
 ├─ docs/                     详细文档
 │  ├─ README.md              文档索引
@@ -51,22 +53,25 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 │  ├─ build-and-flash.md     编译与烧录细节
 │  ├─ networking.md          WiFi / Web 管理页 / REST / MQTT / NTP / OTA
 │  ├─ control.md             双 PID 协同、过流软降、斜率限制与安全停机
-│  └─ settings.md            28 项系统设置逐项说明
+│  ├─ settings.md            28 项系统设置逐项说明
+│  └─ development.md         纯逻辑分层、主机端单测、CI、工具脚本与固件发布
 ├─ firmware/
-│  └─ firmware.bin           与当前源码对应的预编译应用镜像（约 1.2 MB，1231056 字节）
+│  ├─ firmware.bin           预编译应用镜像（纯 app 分区镜像，只能写入 0x10000）
+│  └─ BUILD.txt              该镜像的构建台账：源码提交、体积、SHA-256、构建时间
 ├─ include/                  接口与常量（头文件）
 │  ├─ version.h              固件版本宏 FW_VERSION（当前 1.0.0）
 │  ├─ pins.h                 全部 GPIO 映射与外设开关宏（唯一引脚来源）
 │  ├─ controller.h           状态枚举、MaterialProfile、ChamberController 接口
 │  ├─ settings.h             SystemSettings 结构与默认值
-│  ├─ ui_model.h             UiAction / MainFocus / SystemSettingField 枚举、UiSnapshot 快照（194 行）
-│  ├─ tft_ui.h               TftUi 显示接口（15 行）
+│  ├─ ui_model.h             UiAction / MainFocus / SystemSettingField 枚举、UiSnapshot 快照（230 行）
+│  ├─ pure_logic.h           不依赖 Arduino 的纯逻辑：芯片 ID、主题解析、时刻钳制（主机端可单测）
+│  ├─ tft_ui.h               TftUi 显示接口（31 行）
 │  ├─ network.h              NetworkManager 接口 / NetState
 │  ├─ web_page.h             内置 Web 管理页 HTML
 │  ├─ wifi_portal_page.h     WiFi 配网门户定制页 HTML
-│  ├─ ina226_sensor.h        INA226 采样接口（16 行）
-│  ├─ font_cn16.h            16 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 336 KB）
-│  └─ font_cn26.h            26 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 805 KB）
+│  ├─ ina226_sensor.h        INA226 采样接口（17 行）
+│  ├─ font_cn16.h            16 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 331 KB）
+│  └─ font_cn26.h            26 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 793 KB）
 ├─ src/                      实现
 │  ├─ main.cpp               启动、外设初始化、50 ms 控制节拍、输入分发
 │  ├─ controller.cpp         状态机、12 种耗材预设、双 PID、安全联锁
@@ -75,6 +80,8 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 │  ├─ tft_ui.cpp             TFT_eSPI 渲染：主界面 / 设置页 / 故障页 / 触摸校准
 │  ├─ network.cpp            WiFiManager 配网、Web 管理页/REST :80、MQTT、NTP、OTA
 │  └─ ina226_sensor.cpp      INA226 I²C 采样实现
+├─ test/
+│  └─ test_pure_logic/       纯逻辑单元测试（Unity，跑在主机端，不需设备）
 ├─ wifi-setup-preview.html   WiFi 配网门户的浏览器预览稿（实验室蓝浅色）
 ├─ printer-hmi-ios-prototype.html  iOS 风格主屏高保真原型（当前主屏设计语言来源）
 ├─ printer-hmi-redesign.html 主屏深色 HMI 改版设计稿（未采用，留档）
@@ -82,6 +89,10 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 ├─ hmi-palette-board.html    HMI 调色板对照板
 └─ tools/
    ├─ genvlw.py               从系统 TTF/TTC 抽取汉字生成 VLW 字库
+   ├─ run_host_tests.py       跑主机端单测（Windows 上自动补 MinGW 路径）
+   ├─ publish_firmware.py     构建产物 → firmware/，并写下构建台账
+   ├─ doc_check.py            校验文档数字与固件台账，由 CI 拦截漂移
+   ├─ serial_regression.py    读串口周期上报并按区间断言
    ├─ ui_preview.html         可操作的真机界面模拟器
    ├─ web_management_preview.html  内置 Web 管理页的浏览器预览稿（实验室蓝浅色）
    └─ preview_cn.png          字库生成预览图
@@ -384,6 +395,7 @@ python3 tools/genvlw.py --font /path/to/chinese-font.ttf --preview
 | 25 | 触摸屏校准 | — | 不支持 / 未校准 / 已校准 | — |
 | 26 | 恢复出厂配置 | — | 执行 / 确认? | — |
 | 27 | 固件版本 | 1.0.0 | 只读 | — |
+| 28 | 芯片ID | — | 只读（`CH-` + 12 位十六进制） | — |
 
 说明：设置项总数由 `SystemSettingField::Count` 哨兵推导，页码与滚动窗口动态计算，增删条目无需改渲染代码；「自动」配色按日间/夜间两个时刻在跨零点场景下取区间补集，无有效时间时按夜间渲染。
 
@@ -397,7 +409,20 @@ pio device monitor -b 115200
 
 ### 烧录预编译固件
 
-仓库中的 `firmware/firmware.bin` 是与当前源码对应的应用镜像（约 1.2 MB）。以下命令把 `COM3` 换成实际串口。
+仓库中的 `firmware/firmware.bin` 是**某一次构建的快照**，不是"永远等于当前源码"。它对应哪个源码提交、体积与 SHA-256 是多少，以同目录的 `BUILD.txt` 为准：
+
+```bash
+python tools/publish_firmware.py --check   # 打印台账并核对镜像本体
+```
+
+要得到与**你本地源码**严格对应的镜像，先构建再发布（两步，别手工 `cp`）：
+
+```bash
+pio run
+python tools/publish_firmware.py
+```
+
+以下命令把 `COM3` 换成实际串口。
 
 两条命令的公共前缀与参数：
 
@@ -453,6 +478,28 @@ Get-ChildItem "$env:USERPROFILE\.platformio\packages\framework-arduinoespressif3
 > `firmware.bin` 是纯应用镜像，只能写入 `0x10000`。烧到 `0x0` 会覆盖 bootloader，设备将无法启动。
 
 首次上电若设备进入 `FilamentChamber-Setup` 配置热点，说明烧录成功；配网后访问 `http://chamber.local/` 打开管理页，并可查看本机独立 OTA 密码继续无线升级。
+
+## 测试与校验
+
+三件事都能在本地用一条命令跑完，`.github/workflows/ci.yml` 里的三组作业与之一一对应。
+
+| 目的 | 命令 | 需要设备 |
+| --- | --- | --- |
+| 纯逻辑单元测试 | `pio test -e native`（Windows 上改用 `python tools/run_host_tests.py`） | 否 |
+| 文档与固件台账一致性 | `python tools/doc_check.py` | 否 |
+| 开机与读数回归 | `python tools/serial_regression.py --port COM4 --seconds 30` | 是 |
+
+Windows 上第一次跑主机端单测前，若机器上没有 MinGW/GCC，先装一次 PlatformIO 自带的那份（只装一次，之后 `run_host_tests.py` 会自己找到它）：
+
+```powershell
+pio pkg install --global --tool platformio/toolchain-gccmingw32
+```
+
+**为什么要主机端单测。** 芯片 ID 混洗（同时就是 OTA 密码）、蓝白主题的日/夜解析、日/夜时刻钳制，这三段逻辑此前只能靠烧录后肉眼确认。它们已抽到 `include/pure_logic.h`（不依赖 Arduino），由 `test/test_pure_logic` 在桌面端覆盖 —— 固件与测试跑的是同一份代码，不是复制出来的第二份实现。
+
+**为什么要校验文档。** README 里写着行数、字库体积、设置项数，这些数字没有任何机制守着，必然跑偏（曾出现 `ui_model.h` 标 194 行、实际 230 行，内联设置表漏掉第 28 项）。`doc_check.py` 把这些数字连同 `firmware/BUILD.txt` 台账一起变成断言；加 `--strict` 可让告警也导致失败。
+
+**为什么要串口回归。** 整机没有测试夹具时，"烧录后盯日志"是唯一手段，也就没人愿意反复做。脚本把开机标记、`chamber=` 周期上报条数、温湿度合理区间、传感器在线状态变成可复现的判据，并支持 `--log` 复核别人抓好的日志。
 
 ## 重要硬件核对
 

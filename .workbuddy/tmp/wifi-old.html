@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#08100d">
+  <title>耗材仓 WiFi 配置</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #08100d;
+      --panel: #13201b;
+      --input: #09130f;
+      --line: #294137;
+      --line-focus: #00d9ef;
+      --text: #eef8f3;
+      --muted: #91a59b;
+      --button: #245b65;
+      --button-hover: #2f7280;
+      --good: #4ace4a;
+      --warning: #ffa600;
+      --bad: #ff6464;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 18px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+
+    main { width: min(100%, 560px); margin: 0 auto; }
+
+    .panel {
+      margin-bottom: 14px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+    }
+
+    h1 { margin: 0 0 5px; font-size: 1.45rem; font-weight: 650; }
+    h2 { margin: 0; font-size: 1rem; font-weight: 650; color: var(--line-focus); }
+    p { margin: 0; color: var(--muted); }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 50px;
+      border-left: 5px solid var(--line-focus);
+    }
+
+    .status[data-kind="busy"] { border-left-color: var(--warning); }
+    .status[data-kind="success"] { border-left-color: var(--good); }
+    .status[data-kind="error"] { border-left-color: var(--bad); }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: currentColor;
+      color: var(--line-focus);
+    }
+
+    .status[data-kind="busy"] .dot { color: var(--warning); }
+    .status[data-kind="success"] .dot { color: var(--good); }
+    .status[data-kind="error"] .dot { color: var(--bad); }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .networks { display: grid; gap: 8px; }
+
+    .network {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      width: 100%;
+      min-height: 58px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--input);
+      color: var(--text);
+      text-align: left;
+      font: inherit;
+    }
+
+    .network:hover, .network[aria-pressed="true"] { border-color: var(--line-focus); }
+    .network[aria-pressed="true"] { background: #102724; }
+    .network-name { overflow: hidden; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .network-meta { margin-top: 3px; color: var(--muted); font-size: .88rem; }
+    .signal { align-self: center; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    label { display: block; margin: 12px 0 5px; color: #c9d7d0; font-weight: 650; }
+
+    input {
+      width: 100%;
+      min-height: 44px;
+      padding: 10px 11px;
+      border: 1px solid #36574a;
+      border-radius: 8px;
+      background: var(--input);
+      color: var(--text);
+      font: inherit;
+    }
+
+    input:focus { border-color: var(--line-focus); outline: 2px solid rgb(0 217 239 / 25%); }
+
+    .password-wrap { position: relative; }
+    .password-wrap input { padding-right: 72px; }
+
+    .show-password {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      width: auto;
+      min-height: 34px;
+      padding: 6px 10px;
+      border: 0;
+      border-radius: 6px;
+      background: #1c3028;
+      color: var(--text);
+      font: inherit;
+    }
+
+    .help { margin-top: 6px; font-size: .9rem; }
+
+    button { cursor: pointer; }
+
+    .action {
+      min-height: 44px;
+      padding: 9px 14px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--button);
+      color: white;
+      font: inherit;
+      font-weight: 650;
+    }
+
+    .action:hover { background: var(--button-hover); }
+    .action:disabled { cursor: wait; opacity: .55; }
+    .action.primary { width: 100%; margin-top: 16px; }
+    .action.secondary { min-height: 38px; padding: 7px 11px; }
+
+    .empty { padding: 18px; color: var(--muted); text-align: center; }
+
+    @media (max-width: 420px) {
+      body { padding: 10px; }
+      .panel { padding: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="panel">
+      <h1>耗材仓网络配置</h1>
+      <p>连接 2.4 GHz WiFi，设备不支持 5 GHz</p>
+    </header>
+
+    <section class="panel status" id="status" data-kind="idle" role="status" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span>
+      <div>
+        <strong id="status-title">等待配置</strong>
+        <p id="status-detail">请选择附近网络，或手动输入 WiFi 名称。</p>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="nearby-title">
+      <div class="section-head">
+        <h2 id="nearby-title">附近 WiFi</h2>
+        <button class="action secondary" id="scan" type="button">重新扫描</button>
+      </div>
+      <div class="networks" id="networks"></div>
+    </section>
+
+    <form class="panel" id="wifi-form">
+      <h2>手动输入</h2>
+
+      <label for="ssid">WiFi 名称（SSID）</label>
+      <input id="ssid" name="ssid" maxlength="32" autocomplete="off" autocapitalize="none" required>
+      <p class="help">可以从上方列表选择，也可以输入隐藏网络名称。</p>
+
+      <label for="password">WiFi 密码</label>
+      <div class="password-wrap">
+        <input id="password" name="password" type="password" maxlength="64" autocomplete="new-password">
+        <button class="show-password" id="show-password" type="button" aria-pressed="false">显示</button>
+      </div>
+      <p class="help">开放网络可以不填写密码；已保存密码不会在此处回显。</p>
+
+      <button class="action primary" id="connect" type="submit">保存并连接</button>
+    </form>
+  </main>
+
+  <script>
+    const demoNetworks = [
+      { ssid: "HomeWiFi", signal: 92, security: "WPA2/WPA3" },
+      { ssid: "Printer-Room", signal: 76, security: "WPA2" },
+      { ssid: "Workshop-IoT", signal: 58, security: "WPA2" },
+      { ssid: "Guest", signal: 34, security: "开放网络" }
+    ];
+
+    const networks = document.getElementById("networks");
+    const ssid = document.getElementById("ssid");
+    const password = document.getElementById("password");
+    const showPassword = document.getElementById("show-password");
+    const scan = document.getElementById("scan");
+    const form = document.getElementById("wifi-form");
+    const connect = document.getElementById("connect");
+    const status = document.getElementById("status");
+    const statusTitle = document.getElementById("status-title");
+    const statusDetail = document.getElementById("status-detail");
+
+    function setStatus(kind, title, detail) {
+      status.dataset.kind = kind;
+      statusTitle.textContent = title;
+      statusDetail.textContent = detail;
+    }
+
+    function selectNetwork(button, network) {
+      document.querySelectorAll(".network").forEach((item) => item.setAttribute("aria-pressed", "false"));
+      button.setAttribute("aria-pressed", "true");
+      ssid.value = network.ssid;
+      password.disabled = network.security === "开放网络";
+      if (password.disabled) password.value = "";
+      setStatus("idle", "已选择网络", `${network.ssid} · 信号 ${network.signal}% · ${network.security}`);
+      if (!password.disabled) password.focus();
+    }
+
+    function renderNetworks(items) {
+      networks.replaceChildren();
+      items.forEach((network) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "network";
+        button.setAttribute("aria-pressed", "false");
+        button.innerHTML = `<span><span class="network-name"></span><span class="network-meta"></span></span><span class="signal"></span>`;
+        button.querySelector(".network-name").textContent = network.ssid;
+        button.querySelector(".network-meta").textContent = network.security;
+        button.querySelector(".signal").textContent = `${network.signal}%`;
+        button.addEventListener("click", () => selectNetwork(button, network));
+        networks.appendChild(button);
+      });
+    }
+
+    showPassword.addEventListener("click", () => {
+      const visible = password.type === "text";
+      password.type = visible ? "password" : "text";
+      showPassword.textContent = visible ? "显示" : "隐藏";
+      showPassword.setAttribute("aria-pressed", String(!visible));
+    });
+
+    scan.addEventListener("click", () => {
+      scan.disabled = true;
+      networks.innerHTML = '<div class="empty">正在扫描附近 WiFi…</div>';
+      setStatus("busy", "正在扫描", "请稍候，设备正在搜索 2.4 GHz 网络。");
+      window.setTimeout(() => {
+        renderNetworks(demoNetworks);
+        scan.disabled = false;
+        setStatus("idle", "扫描完成", `发现 ${demoNetworks.length} 个网络。`);
+      }, 900);
+    });
+
+    ssid.addEventListener("input", () => {
+      password.disabled = false;
+      document.querySelectorAll(".network").forEach((item) => item.setAttribute("aria-pressed", "false"));
+    });
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const selectedSsid = ssid.value.trim();
+      if (!selectedSsid) {
+        setStatus("error", "无法连接", "请输入或选择 WiFi 名称。");
+        ssid.focus();
+        return;
+      }
+
+      connect.disabled = true;
+      connect.textContent = "正在连接…";
+      setStatus("busy", "正在保存并连接", `正在尝试连接 ${selectedSsid}。`);
+
+      window.setTimeout(() => {
+        connect.disabled = false;
+        connect.textContent = "保存并连接";
+        if (!password.disabled && password.value === "wrong") {
+          setStatus("error", "连接失败", "密码错误或认证失败，请重新输入。");
+          password.focus();
+        } else {
+          setStatus("success", "连接成功", `${selectedSsid} · 设备地址 192.168.1.50`);
+        }
+      }, 1300);
+    });
+
+    renderNetworks(demoNetworks);
+  </script>
+</body>
+</html>

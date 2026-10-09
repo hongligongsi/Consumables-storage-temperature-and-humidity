@@ -4,6 +4,7 @@
 //  - NVS 键名为短字符串(节省空间),与结构体字段名不要求一致;
 //  - load() 在键不存在时直接采用 SystemSettings 的默认值,首次上电即默认配置。
 #include "settings.h"
+#include "pure_logic.h"
 #include <Preferences.h>
 
 namespace {
@@ -44,10 +45,11 @@ void sanitize(SystemSettings &s) {
   s.staticSubnet[sizeof(s.staticSubnet) - 1] = '\0';
   s.staticDns1[sizeof(s.staticDns1) - 1] = '\0';
   s.staticDns2[sizeof(s.staticDns2) - 1] = '\0';
-  // 日夜配色与时间:theme 限 0-2,时刻限 0-1425(23:45,与 15 分钟步长对齐)
+  // 日夜配色与时间:theme 限 0-2,时刻限 0-1425(23:45,与 15 分钟步长对齐)。
+  // 时刻上限取自 pure_logic.h,与主题解析共用同一个常量,避免两处写死后跑偏。
   s.theme = constrain(s.theme, 0, 2);
-  s.dayStartMinutes = min<uint16_t>(s.dayStartMinutes, 1425);
-  s.nightStartMinutes = min<uint16_t>(s.nightStartMinutes, 1425);
+  s.dayStartMinutes = pure::clampMinutesOfDay(s.dayStartMinutes);
+  s.nightStartMinutes = pure::clampMinutesOfDay(s.nightStartMinutes);
 }
 } // namespace
 
