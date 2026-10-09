@@ -3,11 +3,11 @@
 env = esp32-s3-n16r8
 version = 1.0.0
 platform = espressif32@6.7.0
-commit = b703c3f948f4246ce96cc9ae7f0a371882d6c1c1
-commit_short = b703c3f
-commit_date = 2026-09-30
-source_dirty = true
-source_dirty_files = M platformio.ini M src/main.cpp M src/network.cpp M src/settings.cpp ?? include/pure_logic.h
+commit = e30ef7062ea66b70fb57e83fc9adff71c9c57185
+commit_short = e30ef70
+commit_date = 2026-10-09
+source_dirty = false
+source_dirty_files = -
 build_time = 2026-10-09 14:06:49
 size = 1288240
 sha256 = 3f99caae860fda45ccd4150c5ba79549afc14e112bbf5097963ff7a4c8a04910
