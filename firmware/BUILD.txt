@@ -3,14 +3,14 @@
 env = esp32-s3-n16r8
 version = 1.0.0
 platform = espressif32@6.7.0
-commit = 031d6918fce09af73cd3f7e281c57cc07790669e
-commit_short = 031d691
+commit = 775c938c050df2364f60d74c1caf60d705017941
+commit_short = 775c938
 commit_date = 2026-10-09
 source_dirty = false
 source_dirty_files = -
-build_time = 2026-10-09 16:08:35
-size = 1322592
-sha256 = 4373e0f92b966ab682a97a1d4983ad0b1caebebae47a78b45c8d5bd003f6023a
+build_time = 2026-10-09 20:27:40
+size = 1338016
+sha256 = 77498824e79eb1fac22040f8fadcd103e4be9fa83d49704898d6ba9efeeff05b
 bootloader_size = 15104
 partitions_size = 3072
 
