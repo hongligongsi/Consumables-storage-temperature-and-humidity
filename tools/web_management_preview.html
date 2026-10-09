@@ -156,6 +156,9 @@ progress::-webkit-progress-value{background:linear-gradient(90deg,#60A5FA,var(--
         <select id="language"><option value="zh">中文</option><option value="en">English</option></select>
         <label for="brightness">屏幕亮度 <b id="brightnessVal">--</b></label>
         <input id="brightness" type="range" min="1" max="100" step="5" oninput="briVal()">
+        <label for="rgbMaxBrightness">RGB最大亮度 <b id="rgbBriVal">--</b></label>
+        <input id="rgbMaxBrightness" type="range" min="1" max="100" step="5" oninput="rgbBriVal()">
+        <label class="check" style="margin-top:10px"><input id="rgbFollowScreenSleep" type="checkbox">RGB跟随屏幕休眠</label>
       </div>
       <div>
         <label for="heaterBoardLimitC">热板限温（℃）</label>
@@ -219,7 +222,7 @@ progress::-webkit-progress-value{background:linear-gradient(90deg,#60A5FA,var(--
 </section>
 </main>
 <script>/* mock:离线预览用,真机页面无此段 */
-window.fetch=function(u){var s=String(u);var d;if(s.indexOf('/api/settings')>=0){d={ntpEnabled:1,staticIpEnabled:0,mqttEnabled:1,otaEnabled:1,timezone:'CST-8',ntpServer1:'ntp.aliyun.com',ntpServer2:'pool.ntp.org',staticIp:'192.168.1.50',staticGateway:'192.168.1.1',staticSubnet:'255.255.255.0',staticDns1:'223.5.5.5',staticDns2:'8.8.8.8',mqttBroker:'192.168.1.10',mqttPort:1883,mqttTopicPrefix:'chamber',otaPassword:'CH-A1B2C3D45E6F',wifiEnabled:true,brightness:80,language:'zh',heaterMaxCurrentA:6,heaterFanPercent:100,heaterBoardLimitC:80}}else if(s.indexOf('/api/state')>=0){d={firmware:'1.0.0',material:'PLA',materialIndex:0,state:'Printing',chamberC:43.6,heaterBoardC:41.2,humidity:38.2,targetCMin:40,targetCMax:45,manualExhaust:false,currentA:1.25,voltageV:24.0,mcuC:38.5,exhaustPercent:60,heatPercent:0,heaterFan:0,light:true,systemEnabled:true,pirMotion:false,time:'14:23:05',ip:'192.168.1.50',net:'online',ssid:'Home-WiFi',rssi:-58,uptimeSeconds:12540,disconnectCount:1,lastDisconnectReason:'BEACON_TIMEOUT',lastDisconnectReasonCode:200,otaActivity:'idle',otaProgress:0,otaFailed:false}}else{d={}};return Promise.resolve({ok:true,status:200,text:function(){return Promise.resolve(JSON.stringify(d))}})};
+window.fetch=function(u){var s=String(u);var d;if(s.indexOf('/api/settings')>=0){d={ntpEnabled:1,staticIpEnabled:0,mqttEnabled:1,otaEnabled:1,timezone:'CST-8',ntpServer1:'ntp.aliyun.com',ntpServer2:'pool.ntp.org',staticIp:'192.168.1.50',staticGateway:'192.168.1.1',staticSubnet:'255.255.255.0',staticDns1:'223.5.5.5',staticDns2:'8.8.8.8',mqttBroker:'192.168.1.10',mqttPort:1883,mqttTopicPrefix:'chamber',otaPassword:'CH-A1B2C3D45E6F',wifiEnabled:true,brightness:80,rgbMaxBrightness:100,rgbFollowScreenSleep:false,language:'zh',heaterMaxCurrentA:6,heaterFanPercent:100,heaterBoardLimitC:80}}else if(s.indexOf('/api/state')>=0){d={firmware:'1.0.0',material:'PLA',materialIndex:0,state:'Printing',chamberC:43.6,heaterBoardC:41.2,humidity:38.2,targetCMin:40,targetCMax:45,manualExhaust:false,currentA:1.25,voltageV:24.0,mcuC:38.5,exhaustPercent:60,heatPercent:0,heaterFan:0,light:true,systemEnabled:true,pirMotion:false,time:'14:23:05',ip:'192.168.1.50',net:'online',ssid:'Home-WiFi',rssi:-58,uptimeSeconds:12540,disconnectCount:1,lastDisconnectReason:'BEACON_TIMEOUT',lastDisconnectReasonCode:200,otaActivity:'idle',otaProgress:0,otaFailed:false}}else{d={}};return Promise.resolve({ok:true,status:200,text:function(){return Promise.resolve(JSON.stringify(d))}})};
 const $=id=>document.getElementById(id), msg=(s,bad=false)=>{const e=$('msg');e.textContent=s;e.style.color=bad?'var(--danger)':'var(--ok)'};
 async function api(url,opt){const r=await fetch(url,opt);const t=await r.text();if(!r.ok)throw Error(t||('HTTP '+r.status));return t?JSON.parse(t):{}}
 function body(o){return new URLSearchParams(Object.entries(o).map(([k,v])=>[k,String(v)]))}
@@ -227,14 +230,17 @@ async function loadSettings(){const s=await api('/api/settings');for(const k of 
 /* 设备与显示:亮度/热风为滑条,限温/限流为数字框;WiFi 模块只读展示 */
 $('language').value=s.language==='en'?'en':'zh';
 $('brightness').value=s.brightness??80;
+$('rgbMaxBrightness').value=s.rgbMaxBrightness??100;
+$('rgbFollowScreenSleep').checked=!!s.rgbFollowScreenSleep;
 $('heaterFanPercent').value=s.heaterFanPercent??100;
 $('heaterBoardLimitC').value=s.heaterBoardLimitC??80;
 $('heaterMaxCurrentA').value=s.heaterMaxCurrentA??6;
-briVal();fanVal();
+briVal();fanVal();rgbBriVal();
 $('wifiEnabled').textContent=s.wifiEnabled?'已启用':'已关闭'}
 function briVal(){$('brightnessVal').textContent=$('brightness').value+' %'}
 function fanVal(){$('heaterFanVal').textContent=$('heaterFanPercent').value+' %'}
-function saveDevice(){post({language:$('language').value,brightness:$('brightness').value,heaterBoardLimitC:$('heaterBoardLimitC').value,heaterMaxCurrentA:$('heaterMaxCurrentA').value,heaterFanPercent:$('heaterFanPercent').value})}
+function rgbBriVal(){$('rgbBriVal').textContent=$('rgbMaxBrightness').value+' %'}
+function saveDevice(){post({language:$('language').value,brightness:$('brightness').value,rgbMaxBrightness:$('rgbMaxBrightness').value,rgbFollowScreenSleep:$('rgbFollowScreenSleep').checked?1:0,heaterBoardLimitC:$('heaterBoardLimitC').value,heaterMaxCurrentA:$('heaterMaxCurrentA').value,heaterFanPercent:$('heaterFanPercent').value})}
 async function uploadFw(){const f=$('otaFile').files[0];if(!f){msg('请先选择 .bin 固件文件',true);return}if(!confirm('确定将 '+f.name+' 升级到设备？'))return;const xhr=new XMLHttpRequest();xhr.open('POST','/api/update',true);const stat=$('otaStat'),bar=$('otaBar');bar.value=0;stat.textContent='正在上传并写入 Flash…';xhr.upload.onprogress=e=>{if(e.lengthComputable){bar.value=Math.round(e.loaded/e.total*100);stat.textContent='上传 '+Math.round(e.loaded/e.total*100)+'% / 写入中…'}};xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===200&&d.ok){stat.textContent='升级成功，设备正在重启…';bar.value=100;setTimeout(()=>location.reload(),4000)}else{stat.textContent='升级失败：'+(d.err||('HTTP '+xhr.status));bar.value=0;msg('OTA 失败',true)}}catch(e){stat.textContent='升级完成，设备可能正在重启…'}};xhr.onerror=()=>{stat.textContent='网络错误，请重试';msg('OTA 请求失败',true)};xhr.send();}
 /* 六态状态机英文键 -> 中文文案 + 胶囊配色(g 绿/y 黄/b 蓝/r 红/灰) */
 const STATE_MAP={idle:['待机',''],detecting:['检测中','y'],preheat:['预热中','y'],printing:['打印中','g'],cooling:['冷却中','b'],fault:['故障','r']};

@@ -542,6 +542,12 @@ MQTT 侧失败时 `connect failed rc=N` 的 N 就是 CONNACK/PubSubClient 错误
 里可查，恢复出厂设置会连记录一起清掉。串口 `[FAULT] F-0x lock restored …`
 就是这条路径的日志。
 
+**开机直接进注册页（旋转选字符、单击确认、长按跳过）**
+→ 设备未注册：NVS 里没有与本机芯片 ID 派生码匹配的 `regCode`。注册码是一机
+一码（FNV-1a-64(chipId+盐) 低 32 位，算法与厂商端 Python 参考实现见
+[settings.md](settings.md) 的「注册码」一节）。输入正确码即注册；**长按编码
+器可跳过**，功能不受限、下次上电再提示。恢复出厂不会清除已写入的注册码。
+
 **CI 显示 cancelled**
 → 同一分支有新推送顶掉了旧运行，正常现象，看最新那次即可。
 

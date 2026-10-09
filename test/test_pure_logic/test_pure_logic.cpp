@@ -9,6 +9,7 @@
 #include <unity.h>
 
 #include <algorithm>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -193,6 +194,47 @@ void test_rssi_bars_monotonic(void) {
   }
 }
 
+// ------------------------------ 注册码派生 ------------------------------
+
+// 固定向量:由厂商端 Python 参考实现预计算(同一 FNV-1a(64) + 固定盐,
+// 见 docs/settings.md)。盐或算法一旦改动,存量设备的注册码会全部失效,
+// 必须显式确认。
+void test_reg_code_known_vectors(void) {
+  char buf[pure::kRegCodeBufferSize];
+
+  pure::regCodeFromChipId("CH-1A2B3C4D5E6F", buf);
+  TEST_ASSERT_EQUAL_STRING("02812C46", buf);
+
+  pure::regCodeFromChipId("CH-000000000000", buf);
+  TEST_ASSERT_EQUAL_STRING("59BB71B4", buf);
+
+  pure::regCodeFromChipId("CH-FFFFFFFFFFFF", buf);
+  TEST_ASSERT_EQUAL_STRING("25D03EB4", buf);
+}
+
+// 结构性质:输出恒为 8 位大写十六进制(屏上键盘只有 0-9/A-F 十六个键,
+// 若某天算法产出其它字符,注册页将永远无法输入)。
+void test_reg_code_shape(void) {
+  for (uint64_t mac = 0; mac < 256; ++mac) {
+    char chip[pure::kChipIdBufferSize];
+    char code[pure::kRegCodeBufferSize];
+    pure::formatChipId(mac, chip, sizeof(chip));
+    pure::regCodeFromChipId(chip, code);
+    TEST_ASSERT_EQUAL_size_t(pure::kRegCodeLength, strlen(code));
+    for (size_t i = 0; code[i]; ++i)
+      TEST_ASSERT_TRUE((code[i] >= '0' && code[i] <= '9') ||
+                       (code[i] >= 'A' && code[i] <= 'F'));
+  }
+}
+
+// 空指针防御:chipId 为 nullptr 不崩溃(视为只对盐哈希),out 为 nullptr 直接返回。
+void test_reg_code_null_safety(void) {
+  char code[pure::kRegCodeBufferSize] = "zzzzzzzz";
+  pure::regCodeFromChipId(nullptr, code);
+  TEST_ASSERT_EQUAL_size_t(pure::kRegCodeLength, strlen(code));
+  pure::regCodeFromChipId("CH-1A2B3C4D5E6F", nullptr); // 不得崩溃
+}
+
 // ------------------------------ 入口 ------------------------------
 
 int main(int, char **) {
@@ -211,5 +253,8 @@ int main(int, char **) {
   RUN_TEST(test_rssi_bars_thresholds);
   RUN_TEST(test_rssi_unknown_is_zero_bars);
   RUN_TEST(test_rssi_bars_monotonic);
+  RUN_TEST(test_reg_code_known_vectors);
+  RUN_TEST(test_reg_code_shape);
+  RUN_TEST(test_reg_code_null_safety);
   return UNITY_END();
 }

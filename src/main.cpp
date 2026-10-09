@@ -34,7 +34,8 @@ constexpr bool HEATER_ENABLED = false;
 
 // ---- 全局外设与共享状态(各调度函数之间通过这些文件级变量传递数据) ----
 Adafruit_AHTX0 aht; // 仓内温湿度传感器(I²C)
-Adafruit_NeoPixel rgb(1, Pin::RGB, NEO_GRB + NEO_KHZ800); // 状态 RGB 灯
+Adafruit_NeoPixel rgb(4, Pin::RGB, NEO_GRB + NEO_KHZ800); // 状态 RGB 灯带
+                                                          // (GPIO18 单线 DIN 串 4 颗,同显一色)
 bool ahtAvailable = false;                                // AHT20 是否在线
 float chamberTemp = NAN, humidity = NAN; // AHT20 仓温(℃)与湿度(%RH)
 float heaterBoardTemp = NAN;             // NTC 参数确认后启用
@@ -67,6 +68,16 @@ bool automaticLight = false; // 打印联动自动开关的灯(区别于手动�
 ChamberState previousControlState = ChamberState::Idle; // 上周期状态(边沿检测)
 bool touchCalibrationActive = false;                    // 触摸校准流程进行中
 uint8_t touchCalibrationStep = 0;                       // 校准第几步(0=第一点)
+// ---- 注册码流程(模态,与触摸校准同构:输入在 dispatchUiAction 截获) ----
+bool registrationActive = false; // 注册页接管整屏中
+uint8_t regPos = 0;              // 当前输入位(0..7)
+char regBuf[9] = "00000000";     // 8 位候选码,初值全 0
+uint8_t regResult = 0;           // 0=输入中 1=校验通过 2=校验失败
+// 注册态缓存:-1=未比对 0=未注册 1=已注册;注册成功时置 1。
+int8_t registeredCache = -1;
+// 注册流程两个助手定义在 dispatchUiAction 之前,这里先声明给 setup 用。
+bool registrationValid();
+void startRegistration();
 uint16_t touchFirstX = 0, touchFirstY = 0; // 校准第一点(左上)原始 ADC 值
 
 // 读电阻触摸屏的一个轴(原始 ADC 值)。四线电阻屏的做法:给该轴的两根
@@ -168,21 +179,38 @@ float readNtcCelsius(int pin, float seriesOhm = 10000.0f,
 }
 
 // 设置状态灯颜色;与上次相同时跳过 show(),省一次单线协议传输。
+// 「RGB最大亮度」在这里做全局缩放:对四颗统一生效,且缩放进缓存比对,
+// 设置一改动即使颜色不变也会重新发一帧。颜色值直接读 settings(内存唯一份),
+// 不用像背光那样走 applyRuntimeSettings 二次下发。
 void setRgb(uint8_t r, uint8_t g, uint8_t b) {
+  const uint16_t k = settings.rgbMaxBrightness; // 1-100,settings 层已钳制
+  r = static_cast<uint8_t>((static_cast<uint16_t>(r) * k) / 100);
+  g = static_cast<uint8_t>((static_cast<uint16_t>(g) * k) / 100);
+  b = static_cast<uint8_t>((static_cast<uint16_t>(b) * k) / 100);
   static uint32_t previous = UINT32_MAX;
   const uint32_t color =
       (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
   if (color == previous)
     return;
   previous = color;
-  rgb.setPixelColor(0, rgb.Color(r, g, b));
+  for (uint8_t i = 0; i < rgb.numPixels(); ++i)
+    rgb.setPixelColor(i, rgb.Color(r, g, b));
   rgb.show();
 }
+
+// 屏幕休眠判定,定义在本文件后面(loop 之前),这里先声明。
+bool screenIsSleeping(uint32_t now);
 
 // 按状态机/执行器输出选择状态灯颜色与闪烁节奏:故障快闪红、加热慢闪橙、
 // 手动强排快闪青、排气慢闪琥珀、热风扇转紫色、打印蓝、预热紫、人感橙、
 // 空闲绿色。优先级从上到下,故障最高。
 void updateStatusRgb(const Readings &in, const Outputs &out) {
+  // 「RGB跟随屏幕休眠」:熄屏时灯也熄灭,唤醒恢复。与背光共用同一个判定,
+  // setRgb 的颜色缓存保证熄屏帧只发送一次,唤醒时颜色变化自然重发。
+  if (settings.rgbFollowScreenSleep && screenIsSleeping(millis())) {
+    setRgb(0, 0, 0);
+    return;
+  }
   const bool slowOn = ((millis() / 450) & 1U) == 0; // 慢闪节拍(约 2.2Hz 切换)
   const bool fastOn = ((millis() / 180) & 1U) == 0; // 快闪节拍(故障/强排)
   if (out.state == ChamberState::Fault)
@@ -429,6 +457,38 @@ void setup() {
                 settings,
                 faultRecord); // 联网:WiFi 配网门户 + Web/MQTT/NTP/OTA
                               // (faultRecord 供 /api/state 回传故障记忆)
+  // ---- 注册码:未注册先弹注册页(提示但不限制 —— 长按编码器即可跳过,
+  // 下次上电再提示;已注册的设备这里静默通过)。----
+  if (!registrationValid())
+    startRegistration();
+}
+
+// 本机是否已注册:NVS 存储码与 chipId 派生码(pure::regCodeFromChipId,算法与
+// 盐在 pure_logic.h,厂商端用同一实现离线生成)逐位比对。结果缓存,注册成功
+// 时置 1;NVS 读失败一律按未注册处理 —— 宁可多弹一次注册页,不能误判已注册。
+bool registrationValid() {
+  if (registeredCache < 0) {
+    char stored[24];
+    char expected[pure::kRegCodeBufferSize];
+    const String chip = network.chipId();
+    pure::regCodeFromChipId(chip.c_str(), expected);
+    registeredCache = (settingsStore.loadRegistration(stored, sizeof(stored)) &&
+                       strncmp(stored, expected, pure::kRegCodeLength) == 0)
+                          ? 1
+                          : 0;
+  }
+  return registeredCache == 1;
+}
+
+// 拉起注册页:输入区归零、结果清空。上电未注册时由 setup 调用,设置页
+// "注册码"项进入时由 dispatchUiAction 的边沿请求调用。
+void startRegistration() {
+  registrationActive = true;
+  regPos = 0;
+  memset(regBuf, '0', 8);
+  regBuf[8] = '\0';
+  regResult = 0;
+  Serial.println("[REG] registration page opened");
 }
 
 // 所有输入来源(编码器/触摸/串口)的统一出口。校准流程中先截获按键采集
@@ -467,6 +527,50 @@ void dispatchUiAction(UiAction action) {
     }
     return;
   }
+  // ---- 注册码流程:全模态接管输入(与触摸校准同构) ----
+  // 旋转在当前位循环 0-9/A-F;单击确认进位,8 位齐即校验;
+  // 结果态下单击分别进系统(成功)/清零重输(失败);长按随时跳过/退出。
+  if (registrationActive) {
+    static const char kRegChars[] = "0123456789ABCDEF";
+    if (action == UiAction::FocusNext || action == UiAction::FocusPrevious) {
+      if (!regResult) { // 结果态下字符已定,旋转不再改动
+        const int d = action == UiAction::FocusNext ? 1 : -1;
+        const char *cur = strchr(kRegChars, regBuf[regPos]);
+        int idx = cur ? static_cast<int>(cur - kRegChars) : 0;
+        idx = (idx + 16 + d) % 16;
+        regBuf[regPos] = kRegChars[idx];
+      }
+    } else if (action == UiAction::EncoderClick) {
+      if (regResult == 1) {
+        registrationActive = false; // 注册成功 → 进系统
+      } else if (regResult == 2) {
+        regResult = 0; // 失败 → 清零重输
+        regPos = 0;
+        memset(regBuf, '0', 8);
+      } else if (++regPos >= 8) {
+        char expected[pure::kRegCodeBufferSize];
+        const String chip = network.chipId();
+        pure::regCodeFromChipId(chip.c_str(), expected);
+        if (strncmp(regBuf, expected, pure::kRegCodeLength) == 0) {
+          const bool saved = settingsStore.saveRegistration(regBuf);
+          registeredCache = 1;
+          regResult = 1;
+          Serial.printf("[REG] registered OK, NVS %s\n",
+                        saved ? "saved" : "SAVE FAILED");
+        } else {
+          regResult = 2;
+          Serial.println("[REG] code mismatch");
+        }
+      }
+    } else if (action == UiAction::EncoderLongPress) {
+      // 跳过/退出:未注册不写入,下次上电还会再提示(提示但不限制)。
+      registrationActive = false;
+      Serial.println("[REG] skipped");
+    }
+    if (settings.keySound)
+      startBuzzer(35);
+    return;
+  }
   ui.apply(action, controller);
   // 故障页长按编码器 → UiModel 只置一个边沿标志,真正的复位动作在这里执行:
   // 状态机归 controller 所有,输入回调不该直接改它。clearFault() 会清故障码
@@ -493,6 +597,9 @@ void dispatchUiAction(UiAction action) {
     touchCalibrationStep = 0;
     Serial.println("Touch calibration: hold top-left, click EC11; then "
                    "bottom-right, click EC11");
+  }
+  if (ui.takeRegistrationRequest()) {
+    startRegistration();
   }
   if (ui.takeFactoryResetRequest()) {
     const bool reset = settingsStore.reset();
@@ -787,6 +894,12 @@ void loop() {
     UiSnapshot screen = ui.snapshot(controller, in, latestOutputs);
     screen.touchCalibrationActive = touchCalibrationActive;
     screen.touchCalibrationStep = touchCalibrationStep;
+    // 注册码页:模态状态全在本文件,搬进快照供 drawRegistration 渲染。
+    screen.registrationActive = registrationActive;
+    screen.registered = registrationValid();
+    screen.regPos = regPos;
+    memcpy(screen.regBuf, regBuf, sizeof(screen.regBuf));
+    screen.regResult = regResult;
     screen.humidity = ahtOk ? humidity : NAN;
     // 日期时间与生效配色由 main.cpp 填充:ui_model 不反向依赖 network.h。
     // 时钟优先 NTP,断网/未同步时回退上次手动校时值(main.cpp 的 currentEpoch)。

@@ -164,6 +164,9 @@ progress::-webkit-progress-value{background:linear-gradient(90deg,#60A5FA,var(--
         <select id="language"><option value="zh">中文</option><option value="en">English</option></select>
         <label for="brightness">屏幕亮度 <b id="brightnessVal">--</b></label>
         <input id="brightness" type="range" min="1" max="100" step="5" oninput="briVal()">
+        <label for="rgbMaxBrightness">RGB最大亮度 <b id="rgbBriVal">--</b></label>
+        <input id="rgbMaxBrightness" type="range" min="1" max="100" step="5" oninput="rgbBriVal()">
+        <label class="check" style="margin-top:10px"><input id="rgbFollowScreenSleep" type="checkbox">RGB跟随屏幕休眠</label>
       </div>
       <div>
         <label for="heaterBoardLimitC">热板限温（℃）</label>
@@ -234,14 +237,17 @@ async function loadSettings(){const s=await api('/api/settings');for(const k of 
 /* 设备与显示:亮度/热风为滑条,限温/限流为数字框;WiFi 模块只读展示 */
 $('language').value=s.language==='en'?'en':'zh';
 $('brightness').value=s.brightness??80;
+$('rgbMaxBrightness').value=s.rgbMaxBrightness??100;
+$('rgbFollowScreenSleep').checked=!!s.rgbFollowScreenSleep;
 $('heaterFanPercent').value=s.heaterFanPercent??100;
 $('heaterBoardLimitC').value=s.heaterBoardLimitC??80;
 $('heaterMaxCurrentA').value=s.heaterMaxCurrentA??6;
-briVal();fanVal();
+briVal();fanVal();rgbBriVal();
 $('wifiEnabled').textContent=s.wifiEnabled?'已启用':'已关闭'}
 function briVal(){$('brightnessVal').textContent=$('brightness').value+' %'}
 function fanVal(){$('heaterFanVal').textContent=$('heaterFanPercent').value+' %'}
-function saveDevice(){post({language:$('language').value,brightness:$('brightness').value,heaterBoardLimitC:$('heaterBoardLimitC').value,heaterMaxCurrentA:$('heaterMaxCurrentA').value,heaterFanPercent:$('heaterFanPercent').value})}
+function rgbBriVal(){$('rgbBriVal').textContent=$('rgbMaxBrightness').value+' %'}
+function saveDevice(){post({language:$('language').value,brightness:$('brightness').value,rgbMaxBrightness:$('rgbMaxBrightness').value,rgbFollowScreenSleep:$('rgbFollowScreenSleep').checked?1:0,heaterBoardLimitC:$('heaterBoardLimitC').value,heaterMaxCurrentA:$('heaterMaxCurrentA').value,heaterFanPercent:$('heaterFanPercent').value})}
 async function uploadFw(){const f=$('otaFile').files[0];if(!f){msg('请先选择 .bin 固件文件',true);return}if(!confirm('确定将 '+f.name+' 升级到设备？'))return;const xhr=new XMLHttpRequest();xhr.open('POST','/api/update',true);const stat=$('otaStat'),bar=$('otaBar');bar.value=0;stat.textContent='正在上传并写入 Flash…';xhr.upload.onprogress=e=>{if(e.lengthComputable){bar.value=Math.round(e.loaded/e.total*100);stat.textContent='上传 '+Math.round(e.loaded/e.total*100)+'% / 写入中…'}};xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===200&&d.ok){stat.textContent='升级成功，设备正在重启…';bar.value=100;setTimeout(()=>location.reload(),4000)}else{stat.textContent='升级失败：'+(d.err||('HTTP '+xhr.status));bar.value=0;msg('OTA 失败',true)}}catch(e){stat.textContent='升级完成，设备可能正在重启…'}};xhr.onerror=()=>{stat.textContent='网络错误，请重试';msg('OTA 请求失败',true)};xhr.send();}
 /* 六态状态机英文键 -> 中文文案 + 胶囊配色(g 绿/y 黄/b 蓝/r 红/灰) */
 const STATE_MAP={idle:['待机',''],detecting:['检测中','y'],preheat:['预热中','y'],printing:['打印中','g'],cooling:['冷却中','b'],fault:['故障','r']};

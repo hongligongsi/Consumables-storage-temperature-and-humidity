@@ -919,15 +919,28 @@ void NetworkManager::startWebServer() {
     long heaterCurrent = settings_.heaterMaxCurrentA;
     long heaterFan = settings_.heaterFanPercent;
     long heaterLimit = settings_.heaterBoardLimitC;
+    long rgbBrightness = settings_.rgbMaxBrightness;
     readInt("brightness", 1, 100, brightness);
     readInt("heaterMaxCurrentA", 1, 12, heaterCurrent);
     readInt("heaterFanPercent", 20, 100, heaterFan);
     readInt("heaterBoardLimitC", 40, 180, heaterLimit);
+    readInt("rgbMaxBrightness", 1, 100, rgbBrightness);
     if (!error.length()) {
       candidate.brightness = static_cast<uint8_t>(brightness);
       candidate.heaterMaxCurrentA = static_cast<uint8_t>(heaterCurrent);
       candidate.heaterFanPercent = static_cast<uint8_t>(heaterFan);
       candidate.heaterBoardLimitC = static_cast<uint16_t>(heaterLimit);
+      candidate.rgbMaxBrightness = static_cast<uint8_t>(rgbBrightness);
+    }
+    // RGB 跟随屏幕休眠:布尔以 "1"/"0" 或 "true"/"false" 传入,缺省保持原值。
+    if (g_server.hasArg("rgbFollowScreenSleep") && !error.length()) {
+      const String value = g_server.arg("rgbFollowScreenSleep");
+      if (value == "1" || value == "true")
+        candidate.rgbFollowScreenSleep = true;
+      else if (value == "0" || value == "false")
+        candidate.rgbFollowScreenSleep = false;
+      else
+        error = "rgbFollowScreenSleep must be 0/1";
     }
 
     if (!error.length() && candidate.mqttEnabled && !candidate.mqttBroker[0])
@@ -1410,6 +1423,11 @@ String NetworkManager::buildSettingsJson() const {
   json += String(settings_.heaterBoardLimitC);
   json += F(",\"brightness\":");
   json += String(settings_.brightness);
+  json += F(",\"rgbMaxBrightness\":");
+  json += String(settings_.rgbMaxBrightness);
+  json += settings_.rgbFollowScreenSleep
+              ? F(",\"rgbFollowScreenSleep\":true")
+              : F(",\"rgbFollowScreenSleep\":false");
   addString("language", settings_.language == Language::English ? "en" : "zh");
   json += '}';
   return json;

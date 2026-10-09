@@ -128,7 +128,8 @@ ESP-ROM/IDF 日志。
   "staticSubnet": "255.255.255.0", "staticDns1": "223.5.5.5",
   "staticDns2": "1.1.1.1", "otaPassword": "CH-XXXXXXXXXXXX",
   "heaterMaxCurrentA": 6, "heaterFanPercent": 100, "heaterBoardLimitC": 80,
-  "brightness": 80, "language": "zh"
+  "brightness": 80, "rgbMaxBrightness": 100, "rgbFollowScreenSleep": false,
+  "language": "zh"
 }
 ```
 
@@ -145,6 +146,11 @@ ESP-ROM/IDF 日志。
 | `mqttTopicPrefix` | 最长 23 字符 |
 | `ntpEnabled` / `otaEnabled` | 同上布尔写法 |
 | `language` | `zh`、`cn` 或 `en` |
+| `brightness` / `rgbMaxBrightness` | 1–100（RGB 最大亮度对 4 颗状态灯统一缩放） |
+| `rgbFollowScreenSleep` | `1`/`0` 或 `true`/`false`（屏幕休眠时 RGB 同步熄灭） |
+| `heaterMaxCurrentA` | 1–12 A |
+| `heaterFanPercent` | 20–100 % |
+| `heaterBoardLimitC` | 40–180 ℃ |
 | `timezone` | POSIX TZ，如中国 `CST-8`、UTC `UTC0` |
 | `ntpServer1` / `ntpServer2` | NTP 主机名 |
 | `staticIpEnabled` | 是否使用静态 IPv4 |

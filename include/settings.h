@@ -10,6 +10,9 @@ struct SystemSettings {
   uint8_t brightness = 80;          // 1..100 %
   uint16_t screenSleepSeconds = 60; // 0 = never sleep
   bool keepScreenOnPrinting = true;
+  uint8_t rgbMaxBrightness = 100; // RGB 状态灯带(4 颗串联)最大亮度 1-100%,
+                                  // 对四颗统一缩放
+  bool rgbFollowScreenSleep = false; // 开启后屏幕休眠时 RGB 灯也关闭,唤醒恢复
   bool encoderReversed = false;
   uint16_t pirStartSeconds = 25;
   uint16_t pirStopSeconds = 50;
@@ -76,5 +79,10 @@ public:
   // 故障记忆读写:load 在键不存在时返回全零默认(从未锁过故障)。
   FaultRecord loadFaultRecord();
   bool saveFaultRecord(const FaultRecord &record);
+  // 注册码读写:独立于 SystemSettings,恢复出厂时**刻意保留**(reset 的键
+  // 清单不含 "regCode")。设备是否已注册由调用方用 pure::regCodeFromChipId
+  // 与存储值比对得出,这里只管存取。load 无记录返回 false 且 out[0]='\0'。
+  bool loadRegistration(char *out, size_t cap);
+  bool saveRegistration(const char *code);
   bool reset();
 };

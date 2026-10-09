@@ -46,6 +46,13 @@ void UiModel::adjustSystemSetting(int direction,
     s.screenSleepSeconds =
         constrain((int)s.screenSleepSeconds + d * 15, 0, 3600);
     break;
+  case SystemSettingField::RgbBrightness:
+    // RGB 亮度只改设置值,实际缩放在 main.cpp 的 setRgb() 里做(下一帧生效)。
+    s.rgbMaxBrightness = constrain((int)s.rgbMaxBrightness + d * 5, 1, 100);
+    break;
+  case SystemSettingField::RgbFollowSleep:
+    s.rgbFollowScreenSleep = !s.rgbFollowScreenSleep;
+    break;
   case SystemSettingField::KeepOnPrinting:
     s.keepScreenOnPrinting = !s.keepScreenOnPrinting;
     break;
@@ -99,10 +106,11 @@ void UiModel::adjustSystemSetting(int direction,
   case SystemSettingField::Time:
     adjustClock(false, systemSettingsSubField_, direction);
     return;
-  // 非数值项:触摸校准与恢复出厂由 apply() 通过请求标志处理,版本号只读,Count
-  // 是哨兵。
+  // 非数值项:触摸校准/恢复出厂/注册码由 apply() 通过请求标志处理,版本号只读,
+  // Count 是哨兵。
   case SystemSettingField::TouchCalibration:
   case SystemSettingField::FactoryReset:
+  case SystemSettingField::Registration:
   case SystemSettingField::Version:  // 只读展示,不参与修改,也不置脏。
   case SystemSettingField::ChipId:   // 只读展示,不参与修改,也不置脏。
   case SystemSettingField::Count:
@@ -225,6 +233,10 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
       if (systemSettingField_ == SystemSettingField::TouchCalibration) {
         if (Pin::HAS_TOUCH_PANEL)
           touchCalibrationRequested_ = true;
+      } else if (systemSettingField_ == SystemSettingField::Registration) {
+        // 注册页是模态流程(与触摸校准同构),UiModel 只置边沿标志,
+        // 页面状态与输入接管都在 main.cpp。
+        registrationRequested_ = true;
       } else if (systemSettingField_ == SystemSettingField::FactoryReset) {
         if (systemSettingsEditing_) {
           factoryResetRequested_ = true;
@@ -250,6 +262,7 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
         const bool numeric =
             systemSettingField_ == SystemSettingField::Brightness ||
             systemSettingField_ == SystemSettingField::ScreenSleep ||
+            systemSettingField_ == SystemSettingField::RgbBrightness ||
             systemSettingField_ == SystemSettingField::PirStart ||
             systemSettingField_ == SystemSettingField::PirStop ||
             systemSettingField_ == SystemSettingField::HeaterCurrent ||

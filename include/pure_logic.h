@@ -108,4 +108,31 @@ inline uint8_t rssiBars(int rssi) {
   return 1; // 再弱也给一格:至少能看出"还连着",与全空的断网态区分开
 }
 
+// ------------------------------ 注册码派生 ------------------------------
+// 注册码 = FNV-1a(64 位) 哈希(chipId 字符串 + 固定盐),取低 32 位渲染成
+// 8 位大写十六进制。一机一码:chipId 本身由 eFuse MAC 双射而来,码随 MAC 变。
+// 厂商端用同一算法离线生成(Python 三行,算法与盐见 docs/settings.md);
+// 这是轻量完整性校验,不是密码学保护 —— 目标是防误输与防随手复用。
+constexpr size_t kRegCodeLength = 8; // 8 位十六进制
+constexpr size_t kRegCodeBufferSize = kRegCodeLength + 1;
+
+inline void regCodeFromChipId(const char *chipId, char *out) {
+  if (out == nullptr)
+    return;
+  uint64_t h = 14695981039346656037ULL; // FNV-1a offset basis
+  const char *salt = "FilamentChamber-RG1";
+  if (chipId != nullptr) {
+    for (const char *p = chipId; *p; ++p) {
+      h ^= static_cast<uint8_t>(*p);
+      h *= 1099511628211ULL; // FNV prime
+    }
+  }
+  for (const char *p = salt; *p; ++p) {
+    h ^= static_cast<uint8_t>(*p);
+    h *= 1099511628211ULL;
+  }
+  std::snprintf(out, kRegCodeBufferSize, "%08lX",
+                (unsigned long)(h & 0xFFFFFFFFULL));
+}
+
 } // namespace pure

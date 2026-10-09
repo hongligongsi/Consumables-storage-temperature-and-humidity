@@ -574,6 +574,8 @@
         // 与 include/settings.h 结构体默认值一致
         return {
           language: 'zh', keySound: true, brightness: 80, screenSleep: 60,
+          // RGB 灯带:最大亮度(1-100%,四颗统一缩放)、跟随屏幕休眠
+          rgbBrightness: 100, rgbFollowSleep: false,
           // 联网开关:与 include/settings.h 的默认值一致
           wifiEnabled: true, mqttEnabled: false, ntpEnabled: true, otaEnabled: true,
           keepOnPrinting: true, encoderReversed: false,
@@ -636,6 +638,7 @@
                                    // 阈值与固件 pure::rssiBars() 与网页 setBars 同一套
         ssid: 'HomeWiFi',          // 当前连接的 SSID:设置页 WiFi 项显示网络名
                                    // (未联网时固件显示回退到 开/关,这里用 netConnected 模拟)
+        registered: false,         // 注册状态:设置页"注册码"项的取值(mock)
         // 耗材设置页
         matField: 0, matDirty: false,
         // 系统设置页
@@ -717,6 +720,16 @@
           zh: '屏幕休眠时间', en: 'SCREEN SLEEP', type: 'num', key: 'screenSleep', step: 15, min: 0, max: 3600, unit: 's',
           desc: '设置多少秒无操作后熄屏。仅关闭屏幕,不影响系统运行。',
           range: '0 ~ 3600 s,步长 15;0 = 不休眠'
+        },
+        {
+          zh: 'RGB最大亮度', en: 'RGB BRIGHTNESS', type: 'num', key: 'rgbBrightness', step: 5, min: 1, max: 100, unit: '%',
+          desc: '限制 4 颗 RGB 状态灯的最大亮度,夜间场景可调低。',
+          range: '1 ~ 100 %,步长 5'
+        },
+        {
+          zh: 'RGB跟随屏幕休眠', en: 'RGB SLEEP SYNC', type: 'bool', key: 'rgbFollowSleep',
+          desc: '开启后屏幕休眠时 RGB 灯也关闭,屏幕唤醒时恢复。',
+          range: '开 / 关'
         },
         {
           zh: '打印时保持屏幕开启', en: 'KEEP ON PRINTING', type: 'bool', key: 'keepOnPrinting',
@@ -807,6 +820,11 @@
           zh: '恢复出厂配置', en: 'FACTORY RESET', type: 'reset',
           desc: '清除所有自定义的参数与数据,恢复默认值。需二次确认后执行。',
           range: '执行 / 确认?'
+        },
+        {
+          zh: '注册码', en: 'REGISTRATION', type: 'reg',
+          desc: '设备注册状态;单击进入注册页,旋转选字符、单击确认、长按跳过。真机未注册时上电也会先弹注册页(可跳过)。恢复出厂不会清除注册码。',
+          range: '已注册 / 未注册'
         },
         {
           zh: '固件版本', en: 'FIRMWARE VERSION', type: 'version',
@@ -1234,6 +1252,7 @@
             if (!S.hasTouch) return zh ? '不支持' : 'N/A';
             return S.st.touchCalibrated ? (zh ? '已校准' : 'READY') : (zh ? '未校准' : 'NOT SET');
           case 'reset': return S.sysEditing ? (zh ? '确认?' : 'CONFIRM?') : (zh ? '执行' : 'RUN');
+          case 'reg': return S.registered ? (zh ? '已注册' : 'REGISTERED') : (zh ? '未注册' : 'NOT SET');
           case 'version': return VERSION;
           case 'chipid': return CHIP_ID;
         }

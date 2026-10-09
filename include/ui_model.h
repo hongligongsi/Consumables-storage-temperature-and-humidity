@@ -68,6 +68,8 @@ enum class SystemSettingField : uint8_t {
   KeySound,
   Brightness,
   ScreenSleep,
+  RgbBrightness,  // RGB 灯带最大亮度(1-100%,4 颗统一缩放)
+  RgbFollowSleep, // 屏幕休眠时 RGB 灯也关闭,唤醒恢复
   KeepOnPrinting,
   EncoderDirection,
   PirStart,
@@ -87,6 +89,8 @@ enum class SystemSettingField : uint8_t {
   Time,       // 时间: 时/分 两段编辑
   TouchCalibration,
   FactoryReset,
+  Registration, // 注册码:单击进入注册页(值显示 已注册/未注册),
+                // 注册页由 main.cpp 全模态接管,与触摸校准同构
   Version, // 只读展示固件版本号(值取自 version.h 的 FW_VERSION),不可修改
   ChipId,  // 只读展示本机唯一芯片 ID(值由 main.cpp 从 network 补入),不可修改
   Count
@@ -174,6 +178,12 @@ struct UiSnapshot {
   SystemSettings systemSettings; // 系统设置的可编辑副本(保存时才落 NVS)
   bool touchCalibrationActive;   // 是否处于触摸屏校准流程
   uint8_t touchCalibrationStep;  // 校准当前步骤(第几个校准点)
+  // ---- 注册码页(模态,状态在 main.cpp 持有,这里只搬运给显示层) ----
+  bool registrationActive; // 注册页是否接管整屏(上电未注册或从设置页进入)
+  bool registered;         // 本机是否已注册(设置页"注册码"项的取值)
+  uint8_t regPos;          // 当前输入到第几位(0..7)
+  char regBuf[9];          // 已输入的 8 位候选字符
+  uint8_t regResult;       // 0=输入中 1=校验通过 2=校验失败
 };
 
 // UI 核心状态机:持有焦点、当前页、运行态开关等全部界面状态,并把输入动作
@@ -220,6 +230,12 @@ public:
     touchCalibrationRequested_ = false;
     return requested;
   }
+  // 请求进入注册码页(设置页"注册码"项单击,边沿)。
+  bool takeRegistrationRequest() {
+    const bool requested = registrationRequested_;
+    registrationRequested_ = false;
+    return requested;
+  }
   bool takeFactoryResetRequest() {
     const bool requested = factoryResetRequested_;
     factoryResetRequested_ = false;
@@ -249,6 +265,7 @@ private:
   uint8_t systemSettingsSubField_ = 0; // 日期(3段)/时间(2段)编辑时的当前子段
   bool systemSettingsSaveRequested_ = false; // 请求保存系统设置(边沿)
   bool touchCalibrationRequested_ = false;   // 请求进入触摸校准(边沿)
+  bool registrationRequested_ = false;       // 请求进入注册码页(边沿)
   bool factoryResetRequested_ = false;       // 请求恢复出厂设置(边沿)
   bool faultResetRequested_ = false;         // 请求解除故障锁定(边沿)
   SystemSettingField systemSettingField_ =

@@ -18,6 +18,7 @@ void sanitize(SystemSettings &s) {
   s.brightness = constrain(s.brightness, 1, 100); // 背光 1-100%
   s.screenSleepSeconds =
       min<uint16_t>(s.screenSleepSeconds, 3600); // 休眠最长 1h
+  s.rgbMaxBrightness = constrain(s.rgbMaxBrightness, 1, 100); // RGB 亮度 1-100%
   s.pirStartSeconds =
       constrain(s.pirStartSeconds, 1, 300); // 人感启动延时 1-300s
   s.pirStopSeconds =
@@ -69,6 +70,8 @@ SystemSettings SettingsStore::load() {
   s.brightness = p.getUChar("brightness", s.brightness);
   s.screenSleepSeconds = p.getUShort("screenSleep", s.screenSleepSeconds);
   s.keepScreenOnPrinting = p.getBool("keepOnPrint", s.keepScreenOnPrinting);
+  s.rgbMaxBrightness = p.getUChar("rgbBright", s.rgbMaxBrightness);
+  s.rgbFollowScreenSleep = p.getBool("rgbSleep", s.rgbFollowScreenSleep);
   s.encoderReversed = p.getBool("encoderRev", s.encoderReversed);
   // ---- PIR 人感延时 ----
   s.pirStartSeconds = p.getUShort("pirStart", s.pirStartSeconds);
@@ -140,6 +143,8 @@ bool SettingsStore::save(const SystemSettings &input) {
   PUT_OK(p.putUChar("brightness", s.brightness));
   PUT_OK(p.putUShort("screenSleep", s.screenSleepSeconds));
   PUT_OK(p.putBool("keepOnPrint", s.keepScreenOnPrinting));
+  PUT_OK(p.putUChar("rgbBright", s.rgbMaxBrightness));
+  PUT_OK(p.putBool("rgbSleep", s.rgbFollowScreenSleep));
   PUT_OK(p.putBool("encoderRev", s.encoderReversed));
   PUT_OK(p.putUShort("pirStart", s.pirStartSeconds));
   PUT_OK(p.putUShort("pirStop", s.pirStopSeconds));
@@ -301,6 +306,32 @@ bool SettingsStore::saveFaultRecord(const FaultRecord &record) {
   return ok;
 }
 
+// ---- 注册码持久化 ----
+// 键 "regCode" 不在 reset() 的删除清单里:恢复出厂只清设置与耗材,注册态保留
+// —— 否则用户一次恢复出厂就把设备打回未注册,体验与商用逻辑都不合理。
+bool SettingsStore::loadRegistration(char *out, size_t cap) {
+  if (out == nullptr || cap == 0)
+    return false;
+  out[0] = '\0';
+  Preferences p;
+  if (!p.begin(NAMESPACE_NAME, true))
+    return false;
+  const size_t n = p.getString("regCode", out, cap);
+  p.end();
+  return n > 0;
+}
+
+bool SettingsStore::saveRegistration(const char *code) {
+  if (code == nullptr || code[0] == '\0')
+    return false;
+  Preferences p;
+  if (!p.begin(NAMESPACE_NAME, false))
+    return false;
+  const size_t n = p.putString("regCode", code);
+  p.end();
+  return n == strlen(code);
+}
+
 // 恢复出厂设置:只删除本固件拥有的键(系统设置 + 耗材预设),
 // 之后上层会用 SystemSettings 默认值重新运行。
 bool SettingsStore::reset() {
@@ -310,6 +341,7 @@ bool SettingsStore::reset() {
   // 只删除本固件拥有的配置键；未知键（例如注册码）必须保留。
   const char *keys[] = {
       "english",    "keySound", "brightness", "screenSleep", "keepOnPrint",
+      "rgbBright",  "rgbSleep",
       "encoderRev", "pirStart", "pirStop",    "lightStart",  "lightStop",
       "beepStart",  "beepStop", "heaterMaxA", "heaterFan",   "heaterLimit",
       "touchX0",    "touchX1",  "touchY0",    "touchY1",     "touchCal",

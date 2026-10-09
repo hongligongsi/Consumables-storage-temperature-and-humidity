@@ -551,14 +551,15 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
   static const char *const zh[] = {
       "系统语言",       "WiFi联网",       "MQTT上报",
       "NTP校时",        "OTA升级",        "按键声音",
-      "屏幕亮度",       "屏幕休眠时间",   "打印时保持屏幕开启",
+      "屏幕亮度",       "屏幕休眠时间",   "RGB最大亮度",
+      "RGB跟随屏幕休眠", "打印时保持屏幕开启",
       "编码器方向",     "PIR启动延时",    "PIR关闭延时",
       "启动后自动开灯", "关闭后自动关灯", "启动后蜂鸣提示",
       "关闭后蜂鸣提示", "发热板限流",     "发热板风扇风速",
       "发热板温度保护", "界面主题",       "日间开始时刻",
       "夜间开始时刻",   "日期",           "时间",
-      "触摸屏校准",     "恢复出厂配置",   "固件版本",
-      "芯片ID"};
+      "触摸屏校准",     "恢复出厂配置",   "注册码",
+      "固件版本",       "芯片ID"};
   static const char *const en[] = {"LANGUAGE",
                                    "WIFI",
                                    "MQTT",
@@ -567,6 +568,8 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
                                    "KEY SOUND",
                                    "BRIGHTNESS",
                                    "SCREEN SLEEP",
+                                   "RGB BRIGHTNESS",
+                                   "RGB SLEEP SYNC",
                                    "KEEP ON PRINTING",
                                    "ENCODER DIRECTION",
                                    "PIR START DELAY",
@@ -585,6 +588,7 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
                                    "TIME",
                                    "TOUCH CALIBRATION",
                                    "FACTORY RESET",
+                                   "REGISTRATION",
                                    "FIRMWARE VERSION",
                                    "CHIP ID"};
   const bool chinese = s.language == Language::Chinese;
@@ -672,6 +676,12 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
     case SystemSettingField::ScreenSleep:
       snprintf(value, sizeof(value), "%us", v.screenSleepSeconds);
       break;
+    case SystemSettingField::RgbBrightness:
+      snprintf(value, sizeof(value), "%u%%", v.rgbMaxBrightness);
+      break;
+    case SystemSettingField::RgbFollowSleep:
+      strlcpy(value, v.rgbFollowScreenSleep ? on : off, sizeof(value));
+      break;
     case SystemSettingField::KeepOnPrinting:
       strlcpy(value, v.keepScreenOnPrinting ? on : off, sizeof(value));
       break;
@@ -748,6 +758,13 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
                                       : (chinese ? "执行" : "RUN"),
               sizeof(value));
       break;
+    case SystemSettingField::Registration:
+      // 注册态由 main.cpp 比对 NVS 存储码与 chipId 派生码得出。
+      strlcpy(value,
+              s.registered ? (chinese ? "已注册" : "REGISTERED")
+                           : (chinese ? "未注册" : "NOT SET"),
+              sizeof(value));
+      break;
     case SystemSettingField::Version:
       // 只读显示编译期写入的版本号,源码见 include/version.h。
       strlcpy(value, FW_VERSION, sizeof(value));
@@ -787,6 +804,59 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
           : (chinese ? "旋转选择  单击编辑  长按保存返回"
                      : "TURN SELECT  CLICK EDIT  HOLD SAVE"),
       240, 289);
+  g.unloadFont();
+  g.setTextDatum(TL_DATUM);
+}
+
+// 注册码页(模态):标题 + 本机芯片 ID + 8 位候选字符格 + 校验结果 + 操作提示。
+// 输入状态(已输字符/当前位/结果)全在 main.cpp,这里只按快照渲染。
+void drawRegistration(TFT_eSPI &g, const UiSnapshot &s) {
+  const bool zh = s.language == Language::Chinese;
+  g.fillScreen(BG);
+  g.loadFont(FontCN26);
+  g.setTextDatum(MC_DATUM);
+  g.setTextColor(TEXT, BG);
+  g.drawString(zh ? "注册码输入" : "REGISTRATION", 240, 44);
+  g.unloadFont();
+
+  g.loadFont(FontCN16);
+  g.setTextColor(MUTED, BG);
+  // 芯片 ID 摆在码格上方:厂商按它离线生成一机一码,用户照着屏幕读给厂商。
+  char line[40];
+  snprintf(line, sizeof(line), "%s %s", zh ? "芯片ID:" : "CHIP ID:", s.chipId);
+  g.drawString(line, 240, 86);
+
+  // 8 位字符格:当前位高亮描边,未输入位显示下划线占位。
+  for (uint8_t i = 0; i < 8; ++i) {
+    const int16_t x = 36 + i * 52; // 44px 格宽 + 8px 间隙
+    const bool current = (s.regResult == 0 && i == s.regPos);
+    g.fillRoundRect(x, 116, 44, 56, 6, PANEL);
+    g.drawRoundRect(x, 116, 44, 56, 6, current ? ACCENT : BORDER);
+    char ch[2] = {'_', '\0'};
+    if (i < s.regPos || s.regResult || (s.regResult == 0 && i == s.regPos))
+      ch[0] = s.regBuf[i];
+    g.loadFont(FontCN26);
+    g.setTextColor(current ? ACCENT : TEXT, PANEL);
+    g.drawString(ch, x + 22, 144);
+    g.unloadFont();
+    g.loadFont(FontCN16);
+  }
+
+  // 校验结果:成功绿/失败红,结果态下单击分别进系统或重新输入。
+  if (s.regResult == 1) {
+    g.setTextColor(GOOD, BG);
+    g.drawString(zh ? "注册成功,单击进入系统" : "REGISTERED - CLICK TO START",
+                 240, 208);
+  } else if (s.regResult == 2) {
+    g.setTextColor(G_RED, BG);
+    g.drawString(zh ? "注册码错误,单击重新输入" : "WRONG CODE - CLICK TO RETRY",
+                 240, 208);
+  }
+
+  g.setTextColor(MUTED, BG);
+  g.drawString(zh ? "旋转选字符  单击确认  长按跳过"
+                  : "TURN: CHAR  CLICK: OK  HOLD: SKIP",
+               240, 280);
   g.unloadFont();
   g.setTextDatum(TL_DATUM);
 }
@@ -882,6 +952,11 @@ void drawFrame(TFT_eSPI &g, const UiSnapshot &s) {
   }
   if (s.touchCalibrationActive) {
     drawTouchCalibration(g, s);
+    return;
+  }
+  // 注册页是模态整屏:上电未注册时由 main.cpp 拉起,或从设置页"注册码"项进入。
+  if (s.registrationActive) {
+    drawRegistration(g, s);
     return;
   }
   if (s.materialSettingsOpen) {

@@ -1,6 +1,6 @@
 # 系统设置逐项说明
 
-设置页共 **28 项**，顺序与屏幕显示一致，枚举定义在
+设置页共 **31 项**，顺序与屏幕显示一致，枚举定义在
 [include/ui_model.h](../include/ui_model.h#L47-L79) 的 `SystemSettingField`。
 
 真机每屏只显示 **5 行**，超出部分靠旋转滚动查看。
@@ -46,26 +46,29 @@
 | 6 | 按键声音 | KEY SOUND | 开 / 关 | — |
 | 7 | 屏幕亮度 | BRIGHTNESS | 1–100 % | 5 |
 | 8 | 屏幕休眠时间 | SCREEN SLEEP | 0–3600 s（0 = 不休眠） | 15 |
-| 9 | 打印时保持屏幕开启 | KEEP ON PRINTING | 开 / 关 | — |
-| 10 | 编码器方向 | ENCODER DIRECTION | 正向 / 反向 | — |
-| 11 | PIR启动延时 | PIR START DELAY | 1–300 s | 1 |
-| 12 | PIR关闭延时 | PIR STOP DELAY | 10–900 s | 5 |
-| 13 | 启动后自动开灯 | LIGHT ON START | 开 / 关 | — |
-| 14 | 关闭后自动关灯 | LIGHT OFF STOP | 开 / 关 | — |
-| 15 | 启动后蜂鸣提示 | BEEP ON START | 开 / 关 | — |
-| 16 | 关闭后蜂鸣提示 | BEEP ON STOP | 开 / 关 | — |
-| 17 | 发热板限流 | HEATER CURRENT | 1–12 A | 1 |
-| 18 | 发热板风扇风速 | HEATER FAN | 20–100 % | 5 |
-| 19 | 发热板温度保护 | HEATER PROTECTION | 40–180 °C | 1 |
-| 20 | 界面主题 | THEME | 默认 / IOS / 蓝白 | — |
-| 21 | 日间开始时刻 | DAY START | 00:00–23:45 | 15 min |
-| 22 | 夜间开始时刻 | NIGHT START | 00:00–23:45 | 15 min |
-| 23 | 日期 | DATE | 年 / 月 / 日 三段 | 见下 |
-| 24 | 时间 | TIME | 时 / 分 两段 | 见下 |
-| 25 | 触摸屏校准 | TOUCH CALIBRATION | 不支持 / 未校准 / 已校准 | — |
-| 26 | 恢复出厂配置 | FACTORY RESET | 执行 / 确认? | — |
-| 27 | 固件版本 | FIRMWARE VERSION | 只读 | — |
-| 28 | 芯片ID | CHIP ID | 只读（`CH-` + 12 位十六进制） | — |
+| 9 | RGB最大亮度 | RGB BRIGHTNESS | 1–100 % | 5 |
+| 10 | RGB跟随屏幕休眠 | RGB SLEEP SYNC | 开 / 关 | — |
+| 11 | 打印时保持屏幕开启 | KEEP ON PRINTING | 开 / 关 | — |
+| 12 | 编码器方向 | ENCODER DIRECTION | 正向 / 反向 | — |
+| 13 | PIR启动延时 | PIR START DELAY | 1–300 s | 1 |
+| 14 | PIR关闭延时 | PIR STOP DELAY | 10–900 s | 5 |
+| 15 | 启动后自动开灯 | LIGHT ON START | 开 / 关 | — |
+| 16 | 关闭后自动关灯 | LIGHT OFF STOP | 开 / 关 | — |
+| 17 | 启动后蜂鸣提示 | BEEP ON START | 开 / 关 | — |
+| 18 | 关闭后蜂鸣提示 | BEEP ON STOP | 开 / 关 | — |
+| 19 | 发热板限流 | HEATER CURRENT | 1–12 A | 1 |
+| 20 | 发热板风扇风速 | HEATER FAN | 20–100 % | 5 |
+| 21 | 发热板温度保护 | HEATER PROTECTION | 40–180 °C | 1 |
+| 22 | 界面主题 | THEME | 默认 / IOS / 蓝白 | — |
+| 23 | 日间开始时刻 | DAY START | 00:00–23:45 | 15 min |
+| 24 | 夜间开始时刻 | NIGHT START | 00:00–23:45 | 15 min |
+| 25 | 日期 | DATE | 年 / 月 / 日 三段 | 见下 |
+| 26 | 时间 | TIME | 时 / 分 两段 | 见下 |
+| 27 | 触摸屏校准 | TOUCH CALIBRATION | 不支持 / 未校准 / 已校准 | — |
+| 28 | 恢复出厂配置 | FACTORY RESET | 执行 / 确认? | — |
+| 29 | 注册码 | REGISTRATION | 已注册 / 未注册 | 见下 |
+| 30 | 固件版本 | FIRMWARE VERSION | 只读 | — |
+| 31 | 芯片ID | CHIP ID | 只读（`CH-` + 12 位十六进制） | — |
 
 取值范围由 [src/ui_model.cpp](../src/ui_model.cpp#L8-L99) 的 `adjustSystemSetting`
 限制，并在 [src/settings.cpp](../src/settings.cpp#L6-L25) 的 `sanitize()` 中于载入
@@ -77,6 +80,43 @@
 
 仅关闭背光，**系统继续运行**。设为 0 表示不休眠。若「打印时保持屏幕开启」为开，
 则打印机工作时忽略此项。
+
+### RGB最大亮度 / RGB跟随屏幕休眠
+
+RGB 状态灯带（GPIO18 单线 DIN 串 4 颗 WS2812，四颗同显一种状态色）的两个
+亮度相关项：「RGB最大亮度」对所有状态色统一按比例缩放（1–100 %，夜间场景可调
+低）；「RGB跟随屏幕休眠」开启后，屏幕休眠时 RGB 灯同步熄灭，唤醒即恢复——与
+背光共用同一个休眠判定，状态机照常运行、只是灯不再亮。
+
+### 注册码
+
+设备注册采用**一机一码**：注册码由本机芯片 ID（`CH-` + 12 位十六进制，即
+`NetworkManager::chipId()`，eFuse MAC 双射而来）经固定算法派生，算法在
+`pure::regCodeFromChipId()`（`include/pure_logic.h`）：
+
+```
+h = FNV-1a-64(chipId 字符串 + "FilamentChamber-RG1")
+注册码 = h 低 32 位的 8 位大写十六进制
+```
+
+厂商端可用同一算法离线生成（Python 参考实现）：
+
+```python
+def reg_code(chip_id, salt="FilamentChamber-RG1"):
+    h = 14695981039346656037
+    for c in chip_id + salt:
+        h = ((h ^ ord(c)) * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    return "%08X" % (h & 0xFFFFFFFF)
+```
+
+行为约定：
+
+- **上电未注册** → 先弹注册页：旋转编码器在当前位循环 `0-9`/`A-F`，单击确认
+  进位，8 位输完即校验；**长按编码器跳过**（提示但不限制，功能不受限，下次
+  上电再提示）。校验通过写入 NVS 键 `regCode` 并提示成功；失败提示重输。
+- 设置页本项显示「已注册 / 未注册」，单击可随时重新进入注册页。
+- **恢复出厂不会清除注册码**（`regCode` 不在出厂清除的键清单里）。
+- 这是轻量完整性校验，不是密码学保护；目标是防误输与防随手复用。
 
 ### PIR 启动/关闭延时
 
@@ -177,5 +217,5 @@ python -m http.server 8765 --directory tools
 
 然后访问 http://localhost:8765/ui_preview.html。
 
-真机每屏只显示 5 行，预览页因此在屏下把全部 28 项逐条列出说明与取值范围，并随
+真机每屏只显示 5 行，预览页因此在屏下把全部 31 项逐条列出说明与取值范围，并随
 屏内光标实时高亮。顶部快捷按钮中的「默认/IOS/蓝白」等价于修改「界面主题」。
