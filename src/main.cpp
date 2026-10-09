@@ -68,6 +68,8 @@ bool automaticLight = false; // 打印联动自动开关的灯(区别于手动�
 ChamberState previousControlState = ChamberState::Idle; // 上周期状态(边沿检测)
 bool touchCalibrationActive = false;                    // 触摸校准流程进行中
 uint8_t touchCalibrationStep = 0;                       // 校准第几步(0=第一点)
+bool touchPanelPresent = false; // 运行时探测到的触摸膜存在与否(setup 时判定)
+bool detectTouchPanel(); // 前置声明:定义在 readTouchPoint 一节,setup 要用
 // ---- 注册码流程(模态,与触摸校准同构:输入在 dispatchUiAction 截获) ----
 bool registrationActive = false; // 注册页接管整屏中
 uint8_t regPos = 0;              // 当前输入位(0..7)
@@ -394,6 +396,14 @@ void setup() {
   analogReadResolution(12);
   analogSetPinAttenuation(Pin::ADC_NTC, ADC_11db);
 
+  // 触摸膜运行时探测:编译期开了触摸但实装非触摸屏时,探测不到电阻膜,
+  // 触摸轮询与校准入口整路关闭,杜绝浮空线的幽灵触摸。
+  if (Pin::HAS_TOUCH_PANEL) {
+    touchPanelPresent = detectTouchPanel();
+    Serial.printf("Touch panel: %s\n",
+                  touchPanelPresent ? "detected" : "NOT detected, touch disabled");
+  }
+
   // ---- LEDC 四路 PWM:发热板/排风/背光/热风风扇 ----
   ledcSetup(HOT_PWM_CHANNEL, PWM_FREQ, PWM_BITS);
   ledcAttachPin(Pin::HOT_PWM, HOT_PWM_CHANNEL);
@@ -593,10 +603,14 @@ void dispatchUiAction(UiAction action) {
     Serial.printf("Settings: %s\n", saved ? "saved" : "save failed");
   }
   if (ui.takeTouchCalibrationRequest()) {
-    touchCalibrationActive = true;
-    touchCalibrationStep = 0;
-    Serial.println("Touch calibration: hold top-left, click EC11; then "
-                   "bottom-right, click EC11");
+    if (touchPanelPresent) {
+      touchCalibrationActive = true;
+      touchCalibrationStep = 0;
+      Serial.println("Touch calibration: hold top-left, click EC11; then "
+                     "bottom-right, click EC11");
+    } else {
+      Serial.println("Touch calibration: no panel detected, ignored");
+    }
   }
   if (ui.takeRegistrationRequest()) {
     startRegistration();
@@ -618,6 +632,35 @@ bool screenIsSleeping(uint32_t now) {
                          latestOutputs.state == ChamberState::Printing;
   return settings.screenSleepSeconds > 0 && !keepAwake &&
          now - lastUiActivityMs >= settings.screenSleepSeconds * 1000UL;
+}
+
+// 运行时探测四线电阻触摸屏是否真的接上:分别把 X/Y 两层电阻膜的一端拉低、
+// 另一端开弱上拉去读。膜存在时层电阻(几百欧,远小于 ~45k 上拉)会把读数脚
+// 拉成低电平;没接屏时读数脚被上拉成高。编译期 HAS_TOUCH_PANEL 只表示"这块
+// 板可能带触摸",混用非触摸屏时由这个探测兜底 —— 浮空触摸线产生的随机 ADC
+// 采样偶尔会落在合法区间、被误判成触点(幽灵触摸),探测不到膜就整路关闭。
+bool detectTouchPanel() {
+  auto sheetPresent = [](int drivePin, int sensePin) {
+    pinMode(drivePin, OUTPUT);
+    digitalWrite(drivePin, LOW);
+    pinMode(sensePin, INPUT_PULLUP);
+    delay(1); // 等上拉/层电阻分压稳定
+    uint8_t lowCount = 0;
+    for (uint8_t i = 0; i < 4; ++i) {
+      if (digitalRead(sensePin) == LOW)
+        ++lowCount;
+      delayMicroseconds(200);
+    }
+    return lowCount == 4; // 四次全低才算在,滤掉瞬态干扰
+  };
+  const bool xSheet = sheetPresent(Pin::TFT_XL, Pin::TFT_XR);
+  const bool ySheet = sheetPresent(Pin::TFT_YD, Pin::TFT_YU);
+  // 恢复全输入,与 readTouchAxis 每次测量后的收尾状态一致。
+  pinMode(Pin::TFT_XL, INPUT);
+  pinMode(Pin::TFT_XR, INPUT);
+  pinMode(Pin::TFT_YD, INPUT);
+  pinMode(Pin::TFT_YU, INPUT);
+  return xSheet && ySheet;
 }
 
 // 采样一次触摸并换算成屏幕像素坐标(480x320 横屏,留 28px 边距)。
@@ -650,8 +693,8 @@ void pollTouchUi() {
   static bool held = false;          // 当前手指仍按住,去重连续触发
   static uint8_t releaseSamples = 0; // 连续无触点采样计数(消抖)
   const uint32_t now = millis();
-  if (!Pin::HAS_TOUCH_PANEL || now - lastSampleMs < 35 ||
-      touchCalibrationActive)
+  if (!Pin::HAS_TOUCH_PANEL || !touchPanelPresent ||
+      now - lastSampleMs < 35 || touchCalibrationActive)
     return;
   lastSampleMs = now;
   int16_t x = 0, y = 0;
@@ -894,6 +937,7 @@ void loop() {
     UiSnapshot screen = ui.snapshot(controller, in, latestOutputs);
     screen.touchCalibrationActive = touchCalibrationActive;
     screen.touchCalibrationStep = touchCalibrationStep;
+    screen.touchPresent = touchPanelPresent;
     // 注册码页:模态状态全在本文件,搬进快照供 drawRegistration 渲染。
     screen.registrationActive = registrationActive;
     screen.registered = registrationValid();

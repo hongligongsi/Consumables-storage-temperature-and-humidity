@@ -178,6 +178,7 @@ struct UiSnapshot {
   SystemSettings systemSettings; // 系统设置的可编辑副本(保存时才落 NVS)
   bool touchCalibrationActive;   // 是否处于触摸屏校准流程
   uint8_t touchCalibrationStep;  // 校准当前步骤(第几个校准点)
+  bool touchPresent; // 运行时探测到触摸膜(main.cpp 填充;编译期开关之外的第二道闸)
   // ---- 注册码页(模态,状态在 main.cpp 持有,这里只搬运给显示层) ----
   bool registrationActive; // 注册页是否接管整屏(上电未注册或从设置页进入)
   bool registered;         // 本机是否已注册(设置页"注册码"项的取值)

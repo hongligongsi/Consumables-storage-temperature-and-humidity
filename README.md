@@ -63,7 +63,7 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 │  ├─ pins.h                 全部 GPIO 映射与外设开关宏（唯一引脚来源）
 │  ├─ controller.h           状态枚举、MaterialProfile、ChamberController 接口
 │  ├─ settings.h             SystemSettings 结构与默认值
-│  ├─ ui_model.h             UiAction / MainFocus / SystemSettingField / NetAlert 枚举、UiSnapshot 快照（277 行）
+│  ├─ ui_model.h             UiAction / MainFocus / SystemSettingField / NetAlert 枚举、UiSnapshot 快照（278 行）
 │  ├─ pure_logic.h           不依赖 Arduino 的纯逻辑：芯片 ID、主题解析、时刻钳制、信号格数（主机端可单测）
 │  ├─ tft_ui.h               TftUi 显示接口（31 行）
 │  ├─ network.h              NetworkManager 接口 / NetState
@@ -249,7 +249,7 @@ REST `/api/state` 的 `netAlert` 字段同步上报。连续 10 次同类失败�
 | 数据/命令                | `TFT_DATA_CMD`                            | 13            |                                                       |
 | 片选                   | `TFT_CHIP_SELECT`                         | 14            |                                                       |
 | 背光                   | `TFT_BACKLIGHT`                           | 21            | LEDC 通道 2，5 kHz，10 bit                                |
-| 触摸 YD / XR / YU / XL | `TFT_YD` / `TFT_XR` / `TFT_YU` / `TFT_XL` | 4 / 5 / 6 / 7 | 四线电阻触摸，`HAS_TOUCH_PANEL = false` 时完全停用                |
+| 触摸 YD / XR / YU / XL | `TFT_YD` / `TFT_XR` / `TFT_YU` / `TFT_XL` | 4 / 5 / 6 / 7 | 四线电阻触摸，`HAS_TOUCH_PANEL = false` 时完全停用；为 `true` 时开机再做电阻膜在位探测，探测不到同样停用 |
 | 编码器按键                | `ENCODER_KEY`                             | 15            | 输入上拉，单击 / 双击 / 长按                                     |
 | 编码器 B / A            | `ENCODER_B` / `ENCODER_A`                 | 16 / 17       | 输入上拉，正交解码                                             |
 | 状态灯                  | `RGB`                                     | 18            | 单灯珠 WS2812（GRB，800 kHz）                               |
@@ -410,7 +410,7 @@ MQTT（需先在 Web 接口配置 broker）：
 - 右侧 2×4 仪表依次为：排风、主板（MCU）、湿度、仓温、热风（热板风扇）、热板、电压、电流；热板数值 ≥ 保护温度时该格变红。
 - 底部五格：PIR 状态、系统启停、提前预热、灯光、系统设置。第 1 格只是状态指示，不可聚焦、不可点击（触摸与编码器均跳过）。
 - 编码器手势判定：正交解码累计 ±4 计数触发一次旋转；按键消抖 30 ms，单击/双击判定窗口 350 ms，长按阈值 800 ms。
-- 触摸（`HAS_TOUCH_PANEL = true` 时）：35 ms 采样一次，需连续两帧释放才判定抬手；屏幕休眠时首次触摸只唤醒屏幕；耗材/系统设置页内触摸被禁用，避免误改参数。
+- 触摸（`HAS_TOUCH_PANEL = true` 且开机探测到电阻膜时）：35 ms 采样一次，需连续两帧释放才判定抬手；屏幕休眠时首次触摸只唤醒屏幕；耗材/系统设置页内触摸被禁用，避免误改参数。膜在位探测（`detectTouchPanel`）把每层膜一端拉低、另一端弱上拉读电平，探测不到膜（非触摸屏/排线未接）触摸整路关闭，杜绝浮空线幽灵触摸。
 - 屏幕休眠只关闭背光，系统继续运行；「打印时保持屏幕开启」为开时打印过程中不休眠。
 
 ## 字库生成
@@ -599,7 +599,7 @@ Gerber 飞针网表确认本板上的 ST7796 为 SPI 连接：`RST=GPIO9`、`MIS
 | 3 | 热板 NTC 引脚 | `ADC_NTC = GPIO3` | `include/pins.h` | 对照原理图网络名与 PCB 焊盘 |
 | 4 | INA226 地址与分流 | `0x40`、R15 = 10 mΩ、1 mA/LSB | `src/ina226_sensor.cpp` | 核对实物丝印与分流电阻，必要时调整地址 |
 | 5 | 仓温传感器安装位 | AHT20（I²C） | `src/main.cpp` | 确认位于仓内且具代表性，避开热风直吹 |
-| 6 | 电阻触摸 | `HAS_TOUCH_PANEL = false` | `include/pins.h` | 更换触摸屏后置 `true`，用「触摸屏校准」做两点采点 |
+| 6 | 电阻触摸 | `HAS_TOUCH_PANEL = false` | `include/pins.h` | 更换触摸屏后置 `true`，用「触摸屏校准」做两点采点；置 `true` 后开机自动探测膜在位，探测不到则触摸停用 |
 | 7 | 状态输出负载 | GPIO8 / GPIO47 独立 3.3 V | `include/pins.h` | 外接负载须经光耦或驱动器 |
 | 8 | 排气风扇双路 | `AIR_FAN_DC`(38) + `AIR_FAN_PWM`(39) | `src/main.cpp` | 确认两路接线与风扇调速方式 |
 | 9 | 显示与背光 | ST7796 SPI，480×320，BL=GPIO21 | `platformio.ini`、`include/pins.h` | 花屏/白屏时核对 TFT_eSPI 配置与 `setRotation(1)` |

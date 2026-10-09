@@ -21,6 +21,8 @@
 
 namespace Pin {
 // 无触摸显示屏保持 false;更换为四线电阻触摸版本并完成校准后改为 true。
+// true 只是"允许触摸":setup 还会做电阻膜在位探测(detectTouchPanel),
+// 探测不到膜(混用非触摸屏/排线未接)时触摸整路关闭,防止浮空线幽灵触摸。
 constexpr bool HAS_TOUCH_PANEL = false;
 
 // ---- TFT 屏(ST7796, 480x320, SPI + 可选四线电阻触摸) ----

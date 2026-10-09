@@ -745,8 +745,9 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
                        s.systemSettingsEditing, s.systemSettingsSubField);
       break;
     case SystemSettingField::TouchCalibration:
+      // 编译期无触摸、或运行时探测不到触摸膜(非触摸屏/膜未接),都显示不支持。
       strlcpy(value,
-              !Pin::HAS_TOUCH_PANEL
+              (!Pin::HAS_TOUCH_PANEL || !s.touchPresent)
                   ? (chinese ? "不支持" : "N/A")
                   : (v.touchCalibrated ? (chinese ? "已校准" : "READY")
                                        : (chinese ? "未校准" : "NOT SET")),
