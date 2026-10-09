@@ -3,14 +3,14 @@
 env = esp32-s3-n16r8
 version = 1.0.0
 platform = espressif32@6.7.0
-commit = df1e915036829e630a07db5a15e00ffe6ab537b8
-commit_short = df1e915
+commit = 031d6918fce09af73cd3f7e281c57cc07790669e
+commit_short = 031d691
 commit_date = 2026-10-09
-source_dirty = true
-source_dirty_files = M include/controller.h M include/font_cn16.h M include/font_cn26.h M include/network.h M include/pure_logic.h M include/settings.h M include/ui_model.h M src/controller.cpp M src/main.cpp M src/network.cpp M src/settings.cpp M src/tft_ui.cpp M src/ui_model.cpp
-build_time = 2026-10-09 15:58:26
-size = 1322192
-sha256 = b04722abb3954e5d7d9bc19c9af40eae7d7f46737fac918e461beee0a4c0cb22
+source_dirty = false
+source_dirty_files = -
+build_time = 2026-10-09 16:08:35
+size = 1322592
+sha256 = 4373e0f92b966ab682a97a1d4983ad0b1caebebae47a78b45c8d5bd003f6023a
 bootloader_size = 15104
 partitions_size = 3072
 
