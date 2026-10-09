@@ -3,8 +3,8 @@
 env = esp32-s3-n16r8
 version = 1.0.0
 platform = espressif32@6.7.0
-commit = da7ff6e046ef89caeee83070f925a2c11a44e618
-commit_short = da7ff6e
+commit = 9057a27f6530227babc6f1e4e829d8ef936c4e93
+commit_short = 9057a27
 commit_date = 2026-10-09
 source_dirty = false
 source_dirty_files = -
