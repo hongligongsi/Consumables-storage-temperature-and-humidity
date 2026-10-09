@@ -8,6 +8,20 @@ ESP32-S3 N16R8 智能耗材仓(温湿度 + 加热 + 排风),PlatformIO + TFT_eSP
 - platform 锁 `espressif32@6.7.0`(core 2.x):保留 `ledcSetup`/`ledcAttachPin` 旧 API,升级平台前必须先迁移
 - TFT_eSPI 必须带 `-DUSE_FSPI_PORT`,否则 SPI 寄存器基址算成 0 → StoreProhibited 崩溃
 
+## 工程化与测试(2026-10-09 起)
+- 纯逻辑层 `include/pure_logic.h`:不依赖 Arduino 的纯函数(芯片 ID `formatChipId` / 主题解析
+  `effectiveTheme` / 时刻钳制 `clampMinutesOfDay`),固件与主机端单测共用;
+  **改它必须同步改 `test/test_pure_logic/` 并跑通测试**,否则 CI 红
+- 主机端单测:`python tools/run_host_tests.py`(Windows 自动补 PlatformIO 自带 MinGW 路径)
+  或 `pio test -e native`;`[env:native]` 的 `-std=gnu++11`、`-DUNITY_SUPPORT_64` 不可删
+- 文档/产物校验:`python tools/doc_check.py`(README 树行数体积、设置项数三方一致、固件台账 sha256)
+- 固件发布:改源码后 `pio run && python tools/publish_firmware.py` 刷新 `firmware/firmware.bin`
+  与台账 `BUILD.txt`/`.sha256`,**别手工 cp**
+- 串口回归:`python tools/serial_regression.py --port COM4 --seconds 30`(加 `--require-sensors`
+  才要求 AHT20/INA226 在线,未接传感器的板子会失败属预期)
+- CI `.github/workflows/ci.yml` 三 job:固件编译 / 主机端单测 / 文档一致性
+- 开发文档入口:`docs/development.md`(2026-10-09 新增)
+
 ## ⚠️ 串口日志分流(排障必读,踩过坑)
 `platformio.ini` 的 `-DARDUINO_USB_CDC_ON_BOOT=1` 让 Arduino `Serial` 走 **S3 原生 USB-CDC(板载 USB 口)**;
 FTDI→COM4(UART0) **只剩 ESP-ROM 与 ESP-IDF 日志**(`entry 0x`、`[E][Preferences.cpp]` 等)。
@@ -35,7 +49,13 @@ FTDI→COM4(UART0) **只剩 ESP-ROM 与 ESP-IDF 日志**(`entry 0x`、`[E][Prefe
 - 字号换算脚本 `tools/genvlw.py` 生成 `include/font_cn16.h`/`font_cn26.h`;
   已排除 `web_page.h`/`wifi_portal_page.h`(其中文只由浏览器渲染,纳入只会白占 Flash)
 
-## .workbuddy 入库策略
-`.gitignore` 由整体忽略改为**逐项放行**:`memory/`、`sch3x3/`、`crop_pins.py`、`serial_dump.py`、
-`tmp/palette_calc.py`、`tmp/ui-main-mockup.html` 入库;
-**明确排除** `tmp/chrome-profile/`(含 Cookies/Login Data 等凭据)与 `tmp/*.png`(公开仓库)。
+## .workbuddy 入库策略(2026-10-09 改版)
+`.gitignore` 为**白名单式(只列排除项)**,仅排除:
+- `.pio/` —— 100+ MB 构建缓存,`pio run` 可重建
+- `.workbuddy/tmp/chrome-profile/` 与 `.workbuddy/tmp/cp2/` —— 两份 Chrome 个人档案,
+  含 `Login Data`(已存账号密码)/`Cookies`/`History`,**公开仓库红线,任何情况不得放行**
+- `__pycache__/`、`*.pyc`、`*.tmp`
+其余**全部纳入版本控制**,含 `.github/`、`.trae/`、`.vscode/`(`c_cpp_properties.json`/`launch.json`)
+与 `.workbuddy/` 整棵(记忆日志 / 原理图切片 / 脚本 / `tmp/` 下的设计稿 html 与 png 截图)。
+> 旧策略为「整体忽略 + 逐项放行」,曾明确排除 `tmp/*.png`;用户 2026-10-09 明确要求
+> 「全部文件上传(含 .xxx)」后改为此版。若日后想收紧,只需把 `tmp/*.png` 加回排除项。
