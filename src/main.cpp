@@ -205,7 +205,7 @@ bool screenIsSleeping(uint32_t now);
 
 // 按状态机/执行器输出选择状态灯颜色与闪烁节奏:故障快闪红、加热慢闪橙、
 // 手动强排快闪青、排气慢闪琥珀、热风扇转紫色、打印蓝、预热紫、人感橙、
-// 空闲绿色。优先级从上到下,故障最高。
+// 正常(待机)状态为绿色呼吸灯。优先级从上到下,故障最高。
 void updateStatusRgb(const Readings &in, const Outputs &out) {
   // 「RGB跟随屏幕休眠」:熄屏时灯也熄灭,唤醒恢复。与背光共用同一个判定,
   // setRgb 的颜色缓存保证熄屏帧只发送一次,唤醒时颜色变化自然重发。
@@ -231,8 +231,14 @@ void updateStatusRgb(const Readings &in, const Outputs &out) {
     setRgb(120, 20, 180);
   else if (in.pirMotion || out.state == ChamberState::Detecting)
     setRgb(slowOn ? 220 : 45, slowOn ? 150 : 25, 0);
-  else
-    setRgb(0, 70, 18);
+  else {
+    // 正常(待机)状态:绿色呼吸灯。3s 一个三角波周期,亮度在 15%~100%
+    // 之间往返,渐亮渐暗;每 50ms 控制节拍刷新一帧,颜色缓存不会拦截。
+    const uint16_t phase = millis() % 3000;
+    const uint16_t tri = phase < 1500 ? phase : 3000 - phase; // 0..1500
+    const uint8_t scale = 38 + (uint32_t)tri * (255 - 38) / 1500; // ≈15%..100%
+    setRgb(0, (70 * scale) / 255, (18 * scale) / 255);
+  }
 }
 
 // 发热板功率输出:百分比换算成 LEDC 占空比。HEATER_ENABLED=false 时
