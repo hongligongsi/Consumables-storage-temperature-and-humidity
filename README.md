@@ -70,8 +70,8 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 │  ├─ web_page.h             内置 Web 管理页 HTML
 │  ├─ wifi_portal_page.h     WiFi 配网门户定制页 HTML
 │  ├─ ina226_sensor.h        INA226 采样接口（17 行）
-│  ├─ font_cn16.h            16 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 391 KB）
-│  └─ font_cn26.h            26 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 937 KB）
+│  ├─ font_cn16.h            16 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 399 KB）
+│  └─ font_cn26.h            26 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 957 KB）
 ├─ src/                      实现
 │  ├─ main.cpp               启动、外设初始化、50 ms 控制节拍、输入分发
 │  ├─ controller.cpp         状态机、12 种耗材预设、双 PID、安全联锁
@@ -433,11 +433,11 @@ python3 tools/genvlw.py --font /path/to/chinese-font.ttf --preview
 
 ## 系统设置说明
 
-系统设置共 31 项，顺序与屏幕显示一致，**逐项说明与取值范围见
+系统设置共 31 项，顺序与屏幕显示一致，渲染时按 7 个分区插入标题行（基础 / 显示与声音 / 输入与联动 / 热控 / 外观 / 时钟 / 维护），**逐项说明与取值范围见
 [docs/settings.md](docs/settings.md)**。联网相关的 WiFi / MQTT / NTP / OTA 四项
 开关在长按保存后即时生效，无需重启。
 
-界面布局与中英文、日/夜配色可参考 `tools/ui_preview.html`（浏览器直接打开）。该页是可操作的真机模拟器：真机每屏只显示 5 行，需旋转滚动才能看全 31 项，页内因此把 31 项在屏下逐条列出说明与取值范围，并随屏内光标实时高亮。顶部快捷按钮中的“默认/IOS/蓝白”等价于修改“界面主题”这一项，“信号强度”一组可直接预览 4 格/3 格/2 格/1 格与未联网四种主屏形态。
+界面布局与中英文、日/夜配色可参考 `tools/ui_preview.html`（浏览器直接打开）。该页是可操作的真机模拟器：真机每屏只显示 5 行，需旋转滚动才能看全 31 项（分区标题行同样占一行，但不可聚焦），页内因此把 31 项在屏下按分区逐条列出说明与取值范围，并随屏内光标实时高亮。顶部快捷按钮中的“默认/IOS/蓝白”等价于修改“界面主题”这一项，“信号强度”一组可直接预览 4 格/3 格/2 格/1 格与未联网四种主屏形态。
 
 设置页取值范围与默认值（`src/ui_model.cpp` 限制，`src/settings.cpp` 二次夹取）：
 

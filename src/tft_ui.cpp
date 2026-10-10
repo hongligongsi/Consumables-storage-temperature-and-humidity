@@ -596,10 +596,32 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
   const uint8_t count = static_cast<uint8_t>(SystemSettingField::Count);
   constexpr uint8_t kRows = 5; // 一屏可见 5 行,超出部分靠滚动窗口展示。
   const uint8_t selected = static_cast<uint8_t>(s.systemSettingField);
-  // 滚动窗口:选中项保持在 5 行内,且首行不超过 count-kRows,否则末项永远不可见。
-  uint8_t first = selected >= 2 ? static_cast<uint8_t>(selected - 2) : 0;
-  if (first > count - kRows)
-    first = static_cast<uint8_t>(count - kRows);
+  // 分区标题表:在 first 所指条目之前插入一行标题,31 项归为 7 个分区。
+  // first 是条目下标(SystemSettingField 枚举值),必须随枚举顺序严格递增;
+  // 新增条目时归入合适分区,或在此追加新分区。标题行不可聚焦 —— 导航仍按
+  // 枚举走,这里只做渲染与滚动窗口的行号换算,故不影响任何交互逻辑。
+  struct SettingSection { uint8_t first; const char *zh; const char *en; };
+  static const SettingSection SECTIONS[] = {
+      {0, "基础", "BASIC"},
+      {5, "显示与声音", "DISPLAY & SOUND"},
+      {11, "输入与联动", "INPUT & AUTOMATION"},
+      {18, "热控", "HEATING"},
+      {21, "外观", "APPEARANCE"},
+      {24, "时钟", "CLOCK"},
+      {26, "维护", "MAINTENANCE"},
+  };
+  constexpr uint8_t kSections =
+      static_cast<uint8_t>(sizeof(SECTIONS) / sizeof(SECTIONS[0]));
+  // 虚拟行号 = 条目下标 + 前面已出现的分区标题数;窗口按"标题+条目"的
+  // 总行数收敛,选中行始终落在 5 行可见区内。
+  const uint8_t totalRows = static_cast<uint8_t>(count + kSections);
+  uint8_t selectedRow = selected;
+  for (uint8_t i = 0; i < kSections; ++i)
+    if (selected >= SECTIONS[i].first)
+      ++selectedRow;
+  uint8_t first = selectedRow >= 2 ? static_cast<uint8_t>(selectedRow - 2) : 0;
+  if (first > totalRows - kRows)
+    first = static_cast<uint8_t>(totalRows - kRows);
   const SystemSettings &v = s.systemSettings;
 
   g.fillScreen(BG);
@@ -627,9 +649,26 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
     g.drawString(alert, 258, 16);
   }
 
-  for (uint8_t row = 0; row < 5; ++row) {
-    const uint8_t item = first + row;
-    const int16_t y = 40 + row * 46;
+  // 行遍历:field/sec 双游标在虚拟行号上前进 —— 游标走到分区起点时先出一行
+  // 标题(左侧短色条 + 主题色小字,不画面板底),否则出条目行;窗口
+  // (first..first+4)之外的行只推进游标不绘制。光标永远落在条目行上。
+  uint8_t field = 0, sec = 0;
+  for (uint8_t row = 0; row < totalRows && row < first + kRows; ++row) {
+    if (sec < kSections && field == SECTIONS[sec].first) {
+      if (row >= first) {
+        const int16_t y = 40 + (row - first) * 46;
+        g.fillRoundRect(16, y + 14, 3, 12, 1, ACCENT);
+        g.setTextDatum(ML_DATUM);
+        g.setTextColor(ACCENT, BG);
+        g.drawString(chinese ? SECTIONS[sec].zh : SECTIONS[sec].en, 27, y + 20);
+      }
+      ++sec;
+      continue;
+    }
+    const uint8_t item = field++;
+    if (row < first)
+      continue;
+    const int16_t y = 40 + (row - first) * 46;
     const bool active = item == selected;
     const uint16_t rowBg = active ? ACTIVE : PANEL;
     g.fillRoundRect(14, y, 452, 39, 8, rowBg);

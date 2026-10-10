@@ -289,6 +289,29 @@
       cursor: pointer;
     }
 
+    /* 分区标题行:与屏内设置页的分区一致,只展示不可点击 */
+    .legend li.grp {
+      cursor: default;
+      display: block;
+      grid-column: 1 / -1;
+      padding: 2px 0 0;
+      border: none;
+      background: none;
+      border-radius: 0;
+      font: 600 12px/20px var(--ui-font, system-ui, sans-serif);
+      color: var(--page-muted);
+    }
+
+    .legend li.grp::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 10px;
+      margin: 0 6px 0 0;
+      border-radius: 1px;
+      background: var(--chip-on-border);
+    }
+
     .legend li:hover {
       border-color: var(--chip-on-border);
     }
@@ -583,7 +606,7 @@
           pirStart: 25, pirStop: 50,
           lightOnPrinting: true, lightOffAfterPrinting: true,
           beepOnStart: true, beepOnStop: true,
-          heaterCurrent: 6, heaterFan: 100, heaterProtection: 80,
+          heaterCurrent: 6, heaterFan: 100, heaterProtection: 150,
           // 0=默认(iOS 浅色) 1=IOS(深色 HMI) 2=蓝白;时刻为当日 0 点起的分钟数
           theme: 2, dayStart: 360, nightStart: 1080,
           // 手动校时结果(epoch 秒),真机写入 RTC + NVS,这里仅存数值
@@ -1343,6 +1366,19 @@
         return hh + ':' + mm + ':' + ss;
       }
 
+      // 分区标题表:与固件 drawSystemSettings 的 SECTIONS 逐条对齐
+      // (first = 条目下标,须随 F 数组顺序严格递增)。标题行不可聚焦,
+      // 只影响渲染与滚动窗口的行号换算。
+      var SECTIONS = [
+        { first: 0,  zh: '基础',       en: 'BASIC' },
+        { first: 5,  zh: '显示与声音', en: 'DISPLAY & SOUND' },
+        { first: 11, zh: '输入与联动', en: 'INPUT & AUTOMATION' },
+        { first: 18, zh: '热控',       en: 'HEATING' },
+        { first: 21, zh: '外观',       en: 'APPEARANCE' },
+        { first: 24, zh: '时钟',       en: 'CLOCK' },
+        { first: 26, zh: '维护',       en: 'MAINTENANCE' }
+      ];
+
       function renderSystem() {
         var zh = S.st.language === 'zh';
         var h = '<rect width="480" height="320" class="fill-bg"/>';
@@ -1359,11 +1395,31 @@
           h += '<text x="258" y="21" text-anchor="middle" font-size="11" class="w en">' + stag + sna.en + '</text>';
         }
 
-        // 滚动窗口:选中项保持在 5 行内;first 上限为 F.length-5,否则末项永远不可见
-        var first = S.sysField >= 2 ? S.sysField - 2 : 0;
-        if (first > F.length - 5) first = F.length - 5;
-        for (var row = 0; row < 5; row++) {
-          var item = first + row, y = 40 + row * 46, f = F[item], activeRow = item === S.sysField;
+        // 滚动窗口(虚拟行号 = 条目下标 + 前面的分区标题数):选中行保持在
+        // 5 行可见区内;first 上限为 totalRows-5,否则末项永远不可见。
+        var totalRows = F.length + SECTIONS.length;
+        var selRow = S.sysField;
+        for (var si = 0; si < SECTIONS.length; si++)
+          if (S.sysField >= SECTIONS[si].first) selRow++;
+        var first = selRow >= 2 ? selRow - 2 : 0;
+        if (first > totalRows - 5) first = totalRows - 5;
+        // 行遍历:field/sec 双游标在虚拟行号上前进 —— 走到分区起点先出标题行
+        // (左侧短色条 + 主题色小字,不可聚焦),否则出条目行;窗口外只推进游标。
+        var field = 0, sec = 0;
+        for (var row = 0; row < totalRows && row < first + 5; row++) {
+          var y = 40 + (row - first) * 46;
+          if (sec < SECTIONS.length && field === SECTIONS[sec].first) {
+            if (row >= first) {
+              h += '<rect x="16" y="' + (y + 14) + '" width="3" height="12" rx="1" fill="var(--accent)"/>';
+              h += '<text x="27" y="' + (y + 20) + '" font-size="13" class="a zh">' + SECTIONS[sec].zh + '</text>';
+              h += '<text x="27" y="' + (y + 20) + '" font-size="13" class="a en">' + SECTIONS[sec].en + '</text>';
+            }
+            sec++;
+            continue;
+          }
+          var item = field++;
+          if (row < first) continue;
+          var f = F[item], activeRow = item === S.sysField;
           h += '<rect x="14" y="' + y + '" width="452" height="39" rx="5" fill="' + (activeRow ? 'var(--active)' : 'var(--panel)') + '" stroke="' + (activeRow ? 'var(--accent)' : 'var(--border)') + '"/>';
           h += '<text x="27" y="' + (y + 20) + '" font-size="13" class="' + (activeRow ? 't' : 'm') + ' zh">' + f.zh + '</text>';
           h += '<text x="27" y="' + (y + 20) + '" font-size="13" class="' + (activeRow ? 't' : 'm') + ' en">' + f.en + '</text>';
@@ -1557,9 +1613,15 @@
       var legendEl = document.getElementById('legend-list');
       function renderLegend() {
         var zh = S.st.language === 'zh';
-        legendEl.innerHTML = F.map(function (f, i) {
+        var html = '';
+        F.forEach(function (f, i) {
+          // 走到分区起点时先插入分组标题(与屏内 SECTIONS 同一张表)
+          for (var gi = 0; gi < SECTIONS.length; gi++) {
+            if (SECTIONS[gi].first === i)
+              html += '<li class="grp">' + (zh ? SECTIONS[gi].zh : SECTIONS[gi].en) + '</li>';
+          }
           var on = S.screen === 'system' && i === S.sysField;
-          return '<li class="' + (on ? 'on' : '') + '" data-item="' + i + '">' +
+          html += '<li class="' + (on ? 'on' : '') + '" data-item="' + i + '">' +
             '<span class="no">' + (i + 1) + '</span>' +
             '<span class="body">' +
             '<span class="head">' +
@@ -1569,7 +1631,8 @@
             '<span class="desc">' + f.desc + '</span>' +
             '<span class="meta">范围:' + f.range + '</span>' +
             '</span></li>';
-        }).join('');
+        });
+        legendEl.innerHTML = html;
       }
 
       legendEl.addEventListener('click', function (e) {
@@ -1692,8 +1755,17 @@
       }
 
       syncQuickButtons();
-      // 支持 #reg 锚点:打开链接直接进注册码页(演示/文档截图用)
-      if (location.hash === '#reg') openRegistration();
+      // 支持锚点直达(演示/文档截图用):#reg 注册码页;#system/#material/#calib/#fault
+      // 直接切到对应屏幕,并可用 #system=字段下标 定位光标(如 #system=19)。
+      var anchor = location.hash.slice(1);
+      if (anchor === 'reg') openRegistration();
+      else if (anchor.indexOf('system') === 0) {
+        S.screen = 'system';
+        var sf = parseInt(anchor.split('=')[1], 10);
+        if (!isNaN(sf)) S.sysField = Math.max(0, Math.min(F.length - 1, sf));
+      } else if (anchor === 'material') S.screen = 'material';
+      else if (anchor === 'calib') S.screen = 'calib';
+      else if (anchor === 'fault') S.screen = 'fault';
       render();
       setInterval(function () { if (S.screen === 'main' || S.screen === 'fault') renderScreen(); }, 1000);
     })();
