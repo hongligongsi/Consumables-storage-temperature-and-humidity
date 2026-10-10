@@ -148,3 +148,16 @@ FTDI→COM4(UART0) **只剩 ESP-ROM 与 ESP-IDF 日志**(`entry 0x`、`[E][Prefe
   ≤1 格红、2 格黄、≥3 格绿;断网四格全空 + 红斜杠。底边 56,下方卡片自 y=62 起,别下移
 - UI 布局约定:主屏左侧状态行 y=46,X 方向从 15(状态点)→24(状态文字)→图标,长度按
   `g.textWidth(stateText)` 累加;改文案长度会挤动右侧图标位置
+
+## GitHub Wiki(2026-10-10)
+- 仓库**有 GitHub Wiki**(独立 git 仓库 `<repo>.wiki.git`,分支是 `master` 不是 main),
+  与 README/docs 是**两套文档**,改完代码**两边都要同步** —— 曾漏 18 天没人管
+- 探测/克隆:`git ls-remote git@github.com:hongligongsi/Consumables-storage-temperature-and-humidity.wiki.git`
+  (**HTTPS 到 github.com 被本机代理挡成 502,只有 SSH 与 api.github.com 通**)
+- 本地克隆固定放 `C:\Users\hongliwang\.workbuddy\tmp\wikichk\wiki`(**别放进项目
+  `.workbuddy/`**,白名单式 .gitignore 会把它收进主仓)
+- 页面(6 页):Home / 硬件接线与注意事项 / 编译烧录与预编译固件 / 联网功能 /
+  系统设置逐项说明 / 故障码与网络告警。wiki 内链用 `[[页面名]]`,指向源码用 GitHub 绝对 URL
+- ⚠️ Wiki 曾是**危险信息**:引脚表停在 09-22 那次**被推翻的误改**上(ADC_NTC=39 等),
+  实机运行必然温度 nan。凡涉及引脚/设置项数的描述,同步时务必以 `include/pins.h` 与
+  `docs/` 现状为准,不要照抄旧 wiki
