@@ -87,6 +87,7 @@ enum class SystemSettingField : uint8_t {
   NightStart, // 夜间开始时刻(分钟)
   Date,       // 日期: 年/月/日 三段编辑
   Time,       // 时间: 时/分 两段编辑
+  TouchMode,  // 触摸模式: 单击在 自动/开/关 三态间循环(维护区,紧挨校准)
   TouchCalibration,
   FactoryReset,
   Registration, // 注册码:单击进入注册页(值显示 已注册/未注册),

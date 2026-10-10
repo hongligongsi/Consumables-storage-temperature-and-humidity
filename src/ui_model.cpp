@@ -91,6 +91,12 @@ void UiModel::adjustSystemSetting(int direction,
     // 0=默认 1=IOS 2=蓝白,旋转在三种取值间循环。
     s.theme = static_cast<uint8_t>(((int)s.theme + 3 + d) % 3);
     break;
+  case SystemSettingField::TouchMode:
+    // 触摸模式 0=自动 1=开 2=关,旋转/单击支持双向三态循环。实际是否启用
+    // 由 main.cpp 的 touchEnabledNow() 综合本值与开机膜探测结果决定。
+    s.touchMode =
+        static_cast<uint8_t>((static_cast<int>(s.touchMode) + 3 + d) % 3);
+    break;
   case SystemSettingField::DayStart:
     // 上界取 1425(23:45) 而非 1439,否则末次递增会被夹到 23:59,破坏 15
     // 分钟步长。
@@ -111,8 +117,8 @@ void UiModel::adjustSystemSetting(int direction,
   case SystemSettingField::TouchCalibration:
   case SystemSettingField::FactoryReset:
   case SystemSettingField::Registration:
-  case SystemSettingField::Version:  // 只读展示,不参与修改,也不置脏。
-  case SystemSettingField::ChipId:   // 只读展示,不参与修改,也不置脏。
+  case SystemSettingField::Version: // 只读展示,不参与修改,也不置脏。
+  case SystemSettingField::ChipId:  // 只读展示,不参与修改,也不置脏。
   case SystemSettingField::Count:
     return;
   }
@@ -231,7 +237,10 @@ void UiModel::apply(UiAction action, ChamberController &controller) {
     }
     if (action == UiAction::EncoderClick) {
       if (systemSettingField_ == SystemSettingField::TouchCalibration) {
-        if (Pin::HAS_TOUCH_PANEL)
+        // 触摸被用户设为“关”时不发校准请求;“开/自动”放行,由 main.cpp 再按
+        // 开机电阻膜探测结果兜底(自动档且无膜时拒绝并在串口提示)。
+        if (systemSettings_ && systemSettings_->touchMode !=
+                                   static_cast<uint8_t>(TouchModeSetting::Off))
           touchCalibrationRequested_ = true;
       } else if (systemSettingField_ == SystemSettingField::Registration) {
         // 注册页是模态流程(与触摸校准同构),UiModel 只置边沿标志,

@@ -2,6 +2,17 @@
 #include "controller.h"
 #include <Arduino.h>
 
+// 触摸屏工作模式(系统设置页“触摸模式”项三选一,持久化到 NVS)。
+// 硬件是否具备四线触摸由 pins.h 的 HAS_TOUCH_PANEL 编译开关兜底;这里决定
+// 运行时是否真的启用:
+//   Auto = 开机做电阻膜在位探测,探测到才启用(出厂默认,防浮空幽灵触摸);
+//   On   = 强制启用(用于探测不准/特殊排线,用户自行承担误触风险);
+//   Off  = 强制关闭触摸,只用编码器。
+enum class TouchModeSetting : uint8_t {
+  Auto = 0,
+  On = 1,
+  Off = 2,
+};
 
 // 所有可在“系统设置”页修改的参数；save() 后写入 ESP32 NVS。
 struct SystemSettings {
@@ -10,8 +21,8 @@ struct SystemSettings {
   uint8_t brightness = 80;          // 1..100 %
   uint16_t screenSleepSeconds = 60; // 0 = never sleep
   bool keepScreenOnPrinting = true;
-  uint8_t rgbMaxBrightness = 100; // RGB 状态灯带(4 颗串联)最大亮度 1-100%,
-                                  // 对四颗统一缩放
+  uint8_t rgbMaxBrightness = 100;    // RGB 状态灯带(4 颗串联)最大亮度 1-100%,
+                                     // 对四颗统一缩放
   bool rgbFollowScreenSleep = false; // 开启后屏幕休眠时 RGB 灯也关闭,唤醒恢复
   bool encoderReversed = false;
   uint16_t pirStartSeconds = 25;
@@ -28,6 +39,8 @@ struct SystemSettings {
   uint16_t touchYMin = 300;
   uint16_t touchYMax = 3800;
   bool touchCalibrated = false;
+  uint8_t touchMode =
+      static_cast<uint8_t>(TouchModeSetting::Auto); // 触摸模式 0自动/1开/2关
   // ---- 联网功能 ----
   bool wifiEnabled = true;  // 关闭则完全不初始化 WiFi(离线运行)
   bool mqttEnabled = false; // 是否上报/订阅 MQTT

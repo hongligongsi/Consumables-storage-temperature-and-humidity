@@ -17,7 +17,7 @@ void sanitize(SystemSettings &s) {
   // ---- 界面与人感 ----
   s.brightness = constrain(s.brightness, 1, 100); // 背光 1-100%
   s.screenSleepSeconds =
-      min<uint16_t>(s.screenSleepSeconds, 3600); // 休眠最长 1h
+      min<uint16_t>(s.screenSleepSeconds, 3600);              // 休眠最长 1h
   s.rgbMaxBrightness = constrain(s.rgbMaxBrightness, 1, 100); // RGB 亮度 1-100%
   s.pirStartSeconds =
       constrain(s.pirStartSeconds, 1, 300); // 人感启动延时 1-300s
@@ -33,6 +33,8 @@ void sanitize(SystemSettings &s) {
   s.touchXMax = min<uint16_t>(s.touchXMax, 4095);
   s.touchYMin = min<uint16_t>(s.touchYMin, 4095);
   s.touchYMax = min<uint16_t>(s.touchYMax, 4095);
+  // 触摸模式只允许 0(自动)/1(开)/2(关)三值。
+  s.touchMode = min<uint8_t>(s.touchMode, 2);
   // ---- 联网 ----
   s.mqttPort = constrain(s.mqttPort, 1, 65535); // 端口合法范围
   // 所有字符串字段强制末尾截尾,防止 NVS 读出超长数据时越界。
@@ -91,6 +93,7 @@ SystemSettings SettingsStore::load() {
   s.touchYMin = p.getUShort("touchY0", s.touchYMin);
   s.touchYMax = p.getUShort("touchY1", s.touchYMax);
   s.touchCalibrated = p.getBool("touchCal", s.touchCalibrated);
+  s.touchMode = p.getUChar("touchMd", s.touchMode);
   // 联网功能
   s.wifiEnabled = p.getBool("wifiEn", s.wifiEnabled);
   s.mqttEnabled = p.getBool("mqttEn", s.mqttEnabled);
@@ -160,6 +163,7 @@ bool SettingsStore::save(const SystemSettings &input) {
   PUT_OK(p.putUShort("touchY0", s.touchYMin));
   PUT_OK(p.putUShort("touchY1", s.touchYMax));
   PUT_OK(p.putBool("touchCal", s.touchCalibrated));
+  PUT_OK(p.putUChar("touchMd", s.touchMode));
   // 联网功能
   PUT_OK(p.putBool("wifiEn", s.wifiEnabled));
   PUT_OK(p.putBool("mqttEn", s.mqttEnabled));
@@ -340,17 +344,15 @@ bool SettingsStore::reset() {
     return false;
   // 只删除本固件拥有的配置键；未知键（例如注册码）必须保留。
   const char *keys[] = {
-      "english",    "keySound", "brightness", "screenSleep", "keepOnPrint",
-      "rgbBright",  "rgbSleep",
-      "encoderRev", "pirStart", "pirStop",    "lightStart",  "lightStop",
-      "beepStart",  "beepStop", "heaterMaxA", "heaterFan",   "heaterLimit",
-      "touchX0",    "touchX1",  "touchY0",    "touchY1",     "touchCal",
-      "wifiEn",     "mqttEn",   "mqttBroker", "mqttPort",    "mqttPrefix",
-      "ntpEn",      "otaEn",    "tz",         "ntp1",        "ntp2",
-      "staticEn",   "staticIp", "gateway",    "subnet",      "dns1",
-      "dns2",       "theme",    "dayStart",   "nightStart",  "clockEp",
+      "english", "keySound", "brightness", "screenSleep", "keepOnPrint",
+      "rgbBright", "rgbSleep", "encoderRev", "pirStart", "pirStop",
+      "lightStart", "lightStop", "beepStart", "beepStop", "heaterMaxA",
+      "heaterFan", "heaterLimit", "touchX0", "touchX1", "touchY0", "touchY1",
+      "touchCal", "wifiEn", "mqttEn", "mqttBroker", "mqttPort", "mqttPrefix",
+      "ntpEn", "otaEn", "tz", "ntp1", "ntp2", "staticEn", "staticIp", "gateway",
+      "subnet", "dns1", "dns2", "theme", "dayStart", "nightStart", "clockEp",
       // 故障记忆四键(NVS 故障记忆,见 loadFaultRecord)
-      "faultCode",  "faultLatch", "faultCnt",  "faultEp"};
+      "faultCode", "faultLatch", "faultCnt", "faultEp"};
   bool ok = true;
   // isKey 判定后再 remove,键不存在不算错误。
   for (const char *key : keys)

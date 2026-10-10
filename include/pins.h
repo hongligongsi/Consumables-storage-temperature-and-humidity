@@ -20,10 +20,14 @@
 // (platformio.ini 换 qio_qspi),故可用。若恢复 PSRAM,这三脚必须换。
 
 namespace Pin {
-// 无触摸显示屏保持 false;更换为四线电阻触摸版本并完成校准后改为 true。
-// true 只是"允许触摸":setup 还会做电阻膜在位探测(detectTouchPanel),
-// 探测不到膜(混用非触摸屏/排线未接)时触摸整路关闭,防止浮空线幽灵触摸。
-constexpr bool HAS_TOUCH_PANEL = false;
+// 硬件是否具备四线电阻触摸(默认 true:TFT 排针已引出 X+/X-/Y+/Y- 四线)。
+// 这只是编译期“硬件能力”闸,真正是否启用由系统设置「触摸模式」(开/关/自动)
+// 运行时决定,见 main.cpp 的 touchEnabledNow():
+//   自动(出厂默认)= 开机做电阻膜在位探测(detectTouchPanel),探测不到膜
+//                   (混用纯显示屏/排线未接)时整路关闭,防浮空线幽灵触摸;
+//   开 = 强制启用;关 = 强制关闭只用编码器。
+// 仅当为完全无触摸走线的精简硬件版本编译时才把此常量改为 false。
+constexpr bool HAS_TOUCH_PANEL = true;
 
 // ---- TFT 屏(ST7796, 480x320, SPI + 可选四线电阻触摸) ----
 constexpr int TFT_YD = 4; // 触摸 Y 下

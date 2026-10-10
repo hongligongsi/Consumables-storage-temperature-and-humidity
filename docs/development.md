@@ -565,6 +565,8 @@ MQTT 侧失败时 `connect failed rc=N` 的 N 就是 CONNACK/PubSubClient 错误
   `BoardOverTemp`）—— 这两处曾一起多加了 1，导致码整体错位
 - **网络告警**：W-01…W-04 的主屏日期位与设置页标题栏文案，需构造工况实测
   （W-01/W-02 可改错密码/SSID 复现，W-03/W-04 指向不可达或拒绝匿名的 broker）
-- **触摸校准**：本机为无触摸版本（`Pin::HAS_TOUCH_PANEL = false`），换屏后需在实机两点采点。
-  置 `true` 后若开机串口打 `Touch panel: NOT detected, touch disabled`，说明膜在位探测
-  没过（排线/屏版本问题），触摸会被整路关闭——这是防幽灵触摸的保护，不是 bug
+- **触摸校准**：`Pin::HAS_TOUCH_PANEL = true`（硬件具备四线触摸）；运行时是否启用看
+  设置页「触摸模式」——设「关」时校准项显示「已关闭」；「自动」档若开机串口打
+  `Touch panel: NOT detected, touch disabled`，说明膜在位探测没过（排线/屏版本问题），
+  校准项显示「不支持」，触摸被整路关闭——这是防幽灵触摸的保护，不是 bug，可改「开」
+  强制启用后再采点。改「开」后需在实机完成两点采点。

@@ -611,7 +611,8 @@
           theme: 2, dayStart: 360, nightStart: 1080,
           // 手动校时结果(epoch 秒),真机写入 RTC + NVS,这里仅存数值
           clockEpoch: 0,
-          touchCalibrated: false
+          touchCalibrated: false,
+          touchMode: 0              // 触摸模式 0=自动 1=开 2=关(配合控制面的“触摸屏”硬件开关演示)
         };
       }
 
@@ -659,14 +660,14 @@
         hasTouch: false,
         netConnected: true,        // STA 是否已联网(顶栏日期/WiFi 图标着色)
         rssi: -58,                 // WiFi 信号强度 dBm;未联网时为 0(哨兵)
-                                   // 阈值与固件 pure::rssiBars() 与网页 setBars 同一套
+        // 阈值与固件 pure::rssiBars() 与网页 setBars 同一套
         ssid: 'HomeWiFi',          // 当前连接的 SSID:设置页 WiFi 项显示网络名
-                                   // (未联网时固件显示回退到 开/关,这里用 netConnected 模拟)
+        // (未联网时固件显示回退到 开/关,这里用 netConnected 模拟)
         registered: false,         // 注册状态:设置页"注册码"项的取值(mock)
         // 注册码页(模态,与固件 main.cpp 的 registrationActive 同构):
         // regPos 当前输入位,regBuf 8 位字符,regResult 0=输入中 1=成功 2=失败
         regPos: 0,
-        regBuf: ['0','0','0','0','0','0','0','0'],
+        regBuf: ['0', '0', '0', '0', '0', '0', '0', '0'],
         regResult: 0,
         // 耗材设置页
         matField: 0, matDirty: false,
@@ -841,9 +842,14 @@
           range: '时 / 分,两段编辑'
         },
         {
+          zh: '触摸模式', en: 'TOUCH MODE', type: 'touchmode',
+          desc: '选择触摸屏工作方式:自动(开机检测到触摸膜才启用,纯显示屏自动关闭防误触)/ 开(强制启用)/ 关(只用编码器)。',
+          range: '自动 / 开 / 关'
+        },
+        {
           zh: '触摸屏校准', en: 'TOUCH CALIBRATION', type: 'touch',
-          desc: '校准触摸屏。需先接入触摸屏,按提示两次采点完成,长按编码器可取消。',
-          range: '不支持 / 未校准 / 已校准'
+          desc: '校准触摸屏。触摸模式为“开”,或“自动”且已接入触摸屏时可用;按提示两次采点完成,长按编码器可取消。',
+          range: '已关闭 / 不支持 / 未校准 / 已校准'
         },
         {
           zh: '恢复出厂配置', en: 'FACTORY RESET', type: 'reset',
@@ -901,7 +907,7 @@
         // 与固件 startRegistration() 一致:输入区归零、结果清空
         S.screen = 'reg';
         S.regPos = 0;
-        S.regBuf = ['0','0','0','0','0','0','0','0'];
+        S.regBuf = ['0', '0', '0', '0', '0', '0', '0', '0'];
         S.regResult = 0;
       }
       function rotateDir(d) {
@@ -941,7 +947,7 @@
             S.screen = 'main';
           } else if (S.regResult === 2) {
             S.regPos = 0;
-            S.regBuf = ['0','0','0','0','0','0','0','0'];
+            S.regBuf = ['0', '0', '0', '0', '0', '0', '0', '0'];
             S.regResult = 0;
           } else if (S.regPos < 7) {
             S.regPos++;
@@ -964,8 +970,10 @@
         } else if (S.screen === 'system') {
           var i = S.sysField, fld = F[i];
           if (fld.type === 'touch') {
-            if (S.hasTouch) { S.screen = 'calib'; S.calibStep = 0; }
-            // 未接触摸屏:单击无反应,显示“不支持”
+            // 触摸生效=模式为“开”,或“自动”且控制面已接入触摸屏;否则单击无反应。
+            if (S.st.touchMode === 1 || (S.st.touchMode === 0 && S.hasTouch)) {
+              S.screen = 'calib'; S.calibStep = 0;
+            }
           } else if (fld.type === 'reg') {
             openRegistration();                  // 注册码项:单击进入注册页
           } else if (fld.type === 'reset') {
@@ -1030,6 +1038,10 @@
           case 'theme':
             // 0=默认 1=IOS 2=蓝白,循环切换
             S.st.theme = (S.st.theme + 3 + d) % 3;
+            break;
+          case 'touchmode':
+            // 0=自动 1=开 2=关,三态循环
+            S.st.touchMode = (S.st.touchMode + 3 + d) % 3;
             break;
           case 'time':
             S.st[f.key] = clamp(S.st[f.key] + d * f.step, f.min, f.max);
@@ -1329,9 +1341,15 @@
           case 'time': return hhmm(S.st[f.key]);
           case 'enc': return S.st.encoderReversed ? (zh ? '反向' : 'REVERSE') : (zh ? '正向' : 'NORMAL');
           case 'theme': return themeName(S.st.theme, zh);
+          case 'touchmode':
+            if (S.st.touchMode === 1) return zh ? '开' : 'ON';
+            if (S.st.touchMode === 2) return zh ? '关' : 'OFF';
+            return zh ? '自动' : 'AUTO';
           case 'clock': return clockField(f);
           case 'touch':
-            if (!S.hasTouch) return zh ? '不支持' : 'N/A';
+            // 关=已关闭;自动且没接触摸屏=不支持;生效中才显示校准状态
+            if (S.st.touchMode === 2) return zh ? '已关闭' : 'OFF';
+            if (S.st.touchMode === 0 && !S.hasTouch) return zh ? '不支持' : 'N/A';
             return S.st.touchCalibrated ? (zh ? '已校准' : 'READY') : (zh ? '未校准' : 'NOT SET');
           case 'reset': return S.sysEditing ? (zh ? '确认?' : 'CONFIRM?') : (zh ? '执行' : 'RUN');
           case 'reg': return S.registered ? (zh ? '已注册' : 'REGISTERED') : (zh ? '未注册' : 'NOT SET');
@@ -1370,13 +1388,13 @@
       // (first = 条目下标,须随 F 数组顺序严格递增)。标题行不可聚焦,
       // 只影响渲染与滚动窗口的行号换算。
       var SECTIONS = [
-        { first: 0,  zh: '基础',       en: 'BASIC' },
-        { first: 5,  zh: '显示与声音', en: 'DISPLAY & SOUND' },
+        { first: 0, zh: '基础', en: 'BASIC' },
+        { first: 5, zh: '显示与声音', en: 'DISPLAY & SOUND' },
         { first: 11, zh: '输入与联动', en: 'INPUT & AUTOMATION' },
-        { first: 18, zh: '热控',       en: 'HEATING' },
-        { first: 21, zh: '外观',       en: 'APPEARANCE' },
-        { first: 24, zh: '时钟',       en: 'CLOCK' },
-        { first: 26, zh: '维护',       en: 'MAINTENANCE' }
+        { first: 18, zh: '热控', en: 'HEATING' },
+        { first: 21, zh: '外观', en: 'APPEARANCE' },
+        { first: 24, zh: '时钟', en: 'CLOCK' },
+        { first: 26, zh: '维护', en: 'MAINTENANCE' }
       ];
 
       function renderSystem() {
@@ -1488,87 +1506,99 @@
         return h;
       }
 
-    // 故障页文案表:下标与固件 FaultCode 一一对应(0 为 None 占位)，
-    // 与 src/tft_ui.cpp 的 FAULT_TEXTS 保持同步。
-    // hz/he 是处理建议行,v 是演示用的三行读数。
-    var FAULT_TEXTS = [
-      null,
-      { zh: '仓温传感器掉线', en: 'AHT20 OFFLINE', hz: '检查 I2C 接线与供电', he: 'CHECK I2C WIRING',
-        v: { aht: '--', ntc: '24℃ / 限 150℃', ina: '24.1V 0.00A' } },
-      { zh: '热板传感器掉线', en: 'NTC OFFLINE', hz: '检查 NTC 两芯接线', he: 'CHECK NTC WIRING',
-        v: { aht: '24.6℃ 41%', ntc: '--', ina: '24.1V 0.00A' } },
-      { zh: '热板超温', en: 'BOARD OVERHEAT', hz: '检查加热板与热风风扇', he: 'CHECK HEATER AND FAN',
-        v: { aht: '24.6℃ 41%', ntc: '92℃ / 限 150℃', ina: '24.1V 5.87A' } },
-      { zh: '仓温超上限', en: 'CHAMBER OVERHEAT', hz: '开门散热并检查排风', he: 'OPEN DOOR AND CHECK FAN',
-        v: { aht: '46.2℃ 38%', ntc: '78℃ / 限 150℃', ina: '24.1V 5.12A' } },
-      { zh: '加热回路过流', en: 'OVER CURRENT', hz: '检查加热板与功率接线', he: 'CHECK HEATER WIRING',
-        v: { aht: '31.5℃ 40%', ntc: '76℃ / 限 150℃', ina: '24.0V 9.30A' } },
-      { zh: '电流采样掉线', en: 'INA226 OFFLINE', hz: '检查 I2C 接线与供电', he: 'CHECK I2C WIRING',
-        v: { aht: '24.6℃ 41%', ntc: '55℃ / 限 150℃', ina: '--' } }
-    ];
-
-    // RSSI(dBm) → 信号格数 0..4。阈值与固件 include/pure_logic.h 的 pure::rssiBars()
-    // 以及内置 Web 管理页(web_page.h 的 setBars)是同一套;三处任一处改动都要同步,
-    // 否则屏上和网页会对同一个网络给出不同结论。0 与正值是"无信号"哨兵。
-    function rssiBars(rssi) {
-      if (!(rssi < 0)) return 0;
-      if (rssi >= -55) return 4;
-      if (rssi >= -65) return 3;
-      if (rssi >= -75) return 2;
-      return 1;
-    }
-
-    // 网络告警文案表:下标与固件 NetAlert 的 W-01..W-04 一一对应(0 为 None),
-    // 与 src/tft_ui.cpp 的 NET_ALERT_TEXTS 保持同步。这是非阻塞提示通道:
-    // 只换掉主屏日期位与设置页标题栏中段,不切页面、不停机。
-    var NET_ALERT_TEXTS = [
-      null,
-      { zh: 'WiFi 认证失败', en: 'WiFi AUTH FAIL' },
-      { zh: '找不到 WiFi', en: 'NO WiFi AP' },
-      { zh: 'MQTT 认证失败', en: 'MQTT AUTH FAIL' },
-      { zh: 'MQTT 连接超时', en: 'MQTT TIMEOUT' }
-    ];
-
-    // 故障页:顶栏给故障码与类别,中部按码给标题与处理建议,再逐行列出
-    // 三颗传感器的在线状态与实测值,底部写明复位方式。
-    function renderFault() {
-      var code = Math.min(Math.max(S.faultCode | 0, 1), 6);
-      var ft = FAULT_TEXTS[code];
-      function pad(n) { return (n < 10 ? '0' : '') + n; }
-      var tag = 'F-' + pad(code) + ' ';
-
-      var h = '<rect width="480" height="320" class="fill-bg"/>';
-      h += '<rect x="0" y="0" width="480" height="30" style="fill:var(--maroon)"/>';
-      h += '<text x="12" y="15" font-size="11" style="fill:#fff" class="zh">' + tag + ft.zh + '</text>';
-      h += '<text x="12" y="15" font-size="11" style="fill:#fff" class="en">' + tag + ft.en + '</text>';
-      h += '<text x="468" y="15" text-anchor="end" font-size="11" style="fill:#fff">' +
-        clockText.slice(11) + '</text>';
-      h += '<path d="M240 44 L198 116 L282 116 Z" style="fill:var(--g-red)"/>';
-      h += '<circle cx="240" cy="100" r="5" style="fill:var(--text)"/>';
-      h += '<rect x="236.5" y="62" width="7" height="26" rx="3" style="fill:var(--text)"/>';
-      h += '<text x="240" y="142" text-anchor="middle" font-size="20" font-weight="600" class="t zh">' + ft.zh + '</text>';
-      h += '<text x="240" y="142" text-anchor="middle" font-size="20" font-weight="600" class="t en">' + ft.en + '</text>';
-      h += '<text x="240" y="172" text-anchor="middle" font-size="12" class="w zh">' + ft.hz + '</text>';
-      h += '<text x="240" y="172" text-anchor="middle" font-size="12" class="w en">' + ft.he + '</text>';
-
-      var rows = [
-        ['AHT20', S.faultSensors[0], ft.v.aht],
-        ['NTC', S.faultSensors[1], ft.v.ntc],
-        ['INA226', S.faultSensors[2], ft.v.ina]
+      // 故障页文案表:下标与固件 FaultCode 一一对应(0 为 None 占位)，
+      // 与 src/tft_ui.cpp 的 FAULT_TEXTS 保持同步。
+      // hz/he 是处理建议行,v 是演示用的三行读数。
+      var FAULT_TEXTS = [
+        null,
+        {
+          zh: '仓温传感器掉线', en: 'AHT20 OFFLINE', hz: '检查 I2C 接线与供电', he: 'CHECK I2C WIRING',
+          v: { aht: '--', ntc: '24℃ / 限 150℃', ina: '24.1V 0.00A' }
+        },
+        {
+          zh: '热板传感器掉线', en: 'NTC OFFLINE', hz: '检查 NTC 两芯接线', he: 'CHECK NTC WIRING',
+          v: { aht: '24.6℃ 41%', ntc: '--', ina: '24.1V 0.00A' }
+        },
+        {
+          zh: '热板超温', en: 'BOARD OVERHEAT', hz: '检查加热板与热风风扇', he: 'CHECK HEATER AND FAN',
+          v: { aht: '24.6℃ 41%', ntc: '92℃ / 限 150℃', ina: '24.1V 5.87A' }
+        },
+        {
+          zh: '仓温超上限', en: 'CHAMBER OVERHEAT', hz: '开门散热并检查排风', he: 'OPEN DOOR AND CHECK FAN',
+          v: { aht: '46.2℃ 38%', ntc: '78℃ / 限 150℃', ina: '24.1V 5.12A' }
+        },
+        {
+          zh: '加热回路过流', en: 'OVER CURRENT', hz: '检查加热板与功率接线', he: 'CHECK HEATER WIRING',
+          v: { aht: '31.5℃ 40%', ntc: '76℃ / 限 150℃', ina: '24.0V 9.30A' }
+        },
+        {
+          zh: '电流采样掉线', en: 'INA226 OFFLINE', hz: '检查 I2C 接线与供电', he: 'CHECK I2C WIRING',
+          v: { aht: '24.6℃ 41%', ntc: '55℃ / 限 150℃', ina: '--' }
+        }
       ];
-      for (var i = 0; i < 3; i++) {
-        var y = 208 + i * 28;
-        var valid = rows[i][1];
-        var c = valid ? 'var(--good)' : 'var(--g-red)';
-        h += '<circle cx="112" cy="' + (y - 4) + '" r="5" style="fill:' + c + '"/>';
-        h += '<text x="128" y="' + y + '" font-size="11" style="fill:var(--text)">' + rows[i][0] + '</text>';
-        h += '<text x="368" y="' + y + '" text-anchor="end" font-size="11" style="fill:' +
-          (valid ? 'var(--muted)' : 'var(--g-red)') + '">' + rows[i][2] + '</text>';
+
+      // RSSI(dBm) → 信号格数 0..4。阈值与固件 include/pure_logic.h 的 pure::rssiBars()
+      // 以及内置 Web 管理页(web_page.h 的 setBars)是同一套;三处任一处改动都要同步,
+      // 否则屏上和网页会对同一个网络给出不同结论。0 与正值是"无信号"哨兵。
+      function rssiBars(rssi) {
+        if (!(rssi < 0)) return 0;
+        if (rssi >= -55) return 4;
+        if (rssi >= -65) return 3;
+        if (rssi >= -75) return 2;
+        return 1;
       }
-      h += '<text x="240" y="296" text-anchor="middle" font-size="11" class="m zh">长按编码器键复位</text>';
-      h += '<text x="240" y="296" text-anchor="middle" font-size="11" class="m en">HOLD ENCODER KEY TO RESET</text>';
-      return h;
-    }
+
+      // 网络告警文案表:下标与固件 NetAlert 的 W-01..W-04 一一对应(0 为 None),
+      // 与 src/tft_ui.cpp 的 NET_ALERT_TEXTS 保持同步。这是非阻塞提示通道:
+      // 只换掉主屏日期位与设置页标题栏中段,不切页面、不停机。
+      var NET_ALERT_TEXTS = [
+        null,
+        { zh: 'WiFi 认证失败', en: 'WiFi AUTH FAIL' },
+        { zh: '找不到 WiFi', en: 'NO WiFi AP' },
+        { zh: 'MQTT 认证失败', en: 'MQTT AUTH FAIL' },
+        { zh: 'MQTT 连接超时', en: 'MQTT TIMEOUT' }
+      ];
+
+      // 故障页:顶栏给故障码与类别,中部按码给标题与处理建议,再逐行列出
+      // 三颗传感器的在线状态与实测值,底部写明复位方式。
+      function renderFault() {
+        var code = Math.min(Math.max(S.faultCode | 0, 1), 6);
+        var ft = FAULT_TEXTS[code];
+        function pad(n) { return (n < 10 ? '0' : '') + n; }
+        var tag = 'F-' + pad(code) + ' ';
+
+        var h = '<rect width="480" height="320" class="fill-bg"/>';
+        h += '<rect x="0" y="0" width="480" height="30" style="fill:var(--maroon)"/>';
+        h += '<text x="12" y="15" font-size="11" style="fill:#fff" class="zh">' + tag + ft.zh + '</text>';
+        h += '<text x="12" y="15" font-size="11" style="fill:#fff" class="en">' + tag + ft.en + '</text>';
+        h += '<text x="468" y="15" text-anchor="end" font-size="11" style="fill:#fff">' +
+          clockText.slice(11) + '</text>';
+        h += '<path d="M240 44 L198 116 L282 116 Z" style="fill:var(--g-red)"/>';
+        h += '<circle cx="240" cy="100" r="5" style="fill:var(--text)"/>';
+        h += '<rect x="236.5" y="62" width="7" height="26" rx="3" style="fill:var(--text)"/>';
+        h += '<text x="240" y="142" text-anchor="middle" font-size="20" font-weight="600" class="t zh">' + ft.zh + '</text>';
+        h += '<text x="240" y="142" text-anchor="middle" font-size="20" font-weight="600" class="t en">' + ft.en + '</text>';
+        h += '<text x="240" y="172" text-anchor="middle" font-size="12" class="w zh">' + ft.hz + '</text>';
+        h += '<text x="240" y="172" text-anchor="middle" font-size="12" class="w en">' + ft.he + '</text>';
+
+        var rows = [
+          ['AHT20', S.faultSensors[0], ft.v.aht],
+          ['NTC', S.faultSensors[1], ft.v.ntc],
+          ['INA226', S.faultSensors[2], ft.v.ina]
+        ];
+        for (var i = 0; i < 3; i++) {
+          var y = 208 + i * 28;
+          var valid = rows[i][1];
+          var c = valid ? 'var(--good)' : 'var(--g-red)';
+          h += '<circle cx="112" cy="' + (y - 4) + '" r="5" style="fill:' + c + '"/>';
+          h += '<text x="128" y="' + y + '" font-size="11" style="fill:var(--text)">' + rows[i][0] + '</text>';
+          h += '<text x="368" y="' + y + '" text-anchor="end" font-size="11" style="fill:' +
+            (valid ? 'var(--muted)' : 'var(--g-red)') + '">' + rows[i][2] + '</text>';
+        }
+        h += '<text x="240" y="296" text-anchor="middle" font-size="11" class="m zh">长按编码器键复位</text>';
+        h += '<text x="240" y="296" text-anchor="middle" font-size="11" class="m en">HOLD ENCODER KEY TO RESET</text>';
+        return h;
+      }
 
       var clockText = '--:--:--';
       function updateClock() {
@@ -1652,7 +1682,7 @@
         var idx = { main: 0, material: 1, system: 2, calib: 3, fault: 4, reg: 5 }[S.screen];
         var extra = '';
         if (S.screen === 'system') {
-          var editable = ['num', 'time', 'clock', 'theme'].indexOf(F[S.sysField].type) >= 0;
+          var editable = ['num', 'time', 'clock', 'theme', 'touchmode'].indexOf(F[S.sysField].type) >= 0;
           extra = (zh ? '　第 ' : ' item ') + (S.sysField + 1) + '/' + F.length +
             (S.sysEditing && editable ? (zh ? ' ·编辑中' : ' EDITING') : '');
         }
@@ -1661,8 +1691,8 @@
         var th = document.querySelector('.doc').getAttribute('data-theme');
         var thName = th === 'ios' ? (zh ? '默认' : 'DEFAULT')
           : th === 'hmi' ? 'IOS'
-          : th === 'day' ? (zh ? '蓝白·日间' : 'BLUE·DAY')
-          : (zh ? '蓝白·夜间' : 'BLUE·NIGHT');
+            : th === 'day' ? (zh ? '蓝白·日间' : 'BLUE·DAY')
+              : (zh ? '蓝白·夜间' : 'BLUE·NIGHT');
         document.getElementById('cap-mode').textContent = (zh ? '中文' : 'English') + ' · ' + thName;
       }
 

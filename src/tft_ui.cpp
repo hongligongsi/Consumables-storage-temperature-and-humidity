@@ -6,10 +6,10 @@
 // 页面分发见 drawFrame:故障页/触摸校准/耗材设置/系统设置/主屏仪表盘。
 #include "tft_ui.h"
 
-#include "pure_logic.h" // rssiBars():信号格阈值(与 Web 管理页同一套)
 #include "font_cn16.h"
 #include "font_cn26.h"
 #include "pins.h"
+#include "pure_logic.h" // rssiBars():信号格阈值(与 Web 管理页同一套)
 #include "version.h"
 #include <TFT_eSPI.h>
 #include <freertos/FreeRTOS.h>
@@ -331,14 +331,17 @@ struct FaultText {
 
 const FaultText FAULT_TEXTS[] = {
     {"系统故障", "SYSTEM FAULT", "请检查设备", "CHECK DEVICE"},
-    {"仓温传感器掉线", "AHT20 OFFLINE", "检查 I2C 接线与供电", "CHECK I2C WIRING"},
+    {"仓温传感器掉线", "AHT20 OFFLINE", "检查 I2C 接线与供电",
+     "CHECK I2C WIRING"},
     {"热板传感器掉线", "NTC OFFLINE", "检查 NTC 两芯接线", "CHECK NTC WIRING"},
-    {"热板超温", "BOARD OVERHEAT", "检查加热板与热风风扇", "CHECK HEATER AND FAN"},
+    {"热板超温", "BOARD OVERHEAT", "检查加热板与热风风扇",
+     "CHECK HEATER AND FAN"},
     {"仓温超上限", "CHAMBER OVERHEAT", "开门散热并检查排风",
      "OPEN DOOR AND CHECK FAN"},
     {"加热回路过流", "OVER CURRENT", "检查加热板与功率接线",
      "CHECK HEATER WIRING"},
-    {"电流采样掉线", "INA226 OFFLINE", "检查 I2C 接线与供电", "CHECK I2C WIRING"},
+    {"电流采样掉线", "INA226 OFFLINE", "检查 I2C 接线与供电",
+     "CHECK I2C WIRING"},
 };
 static_assert(sizeof(FAULT_TEXTS) / sizeof(FAULT_TEXTS[0]) ==
                   static_cast<size_t>(FaultCode::Count),
@@ -356,10 +359,10 @@ struct NetAlertText {
 
 const NetAlertText NET_ALERT_TEXTS[] = {
     {"", ""},
-    {"WiFi 认证失败", "WiFi AUTH FAIL"},   // W-01 密码错/加密方式不匹配
-    {"找不到 WiFi", "NO WiFi AP"},        // W-02 SSID 错或超出覆盖范围
-    {"MQTT 认证失败", "MQTT AUTH FAIL"},   // W-03 broker 拒绝匿名或凭据错
-    {"MQTT 连接超时", "MQTT TIMEOUT"},     // W-04 地址/端口/网络不通
+    {"WiFi 认证失败", "WiFi AUTH FAIL"}, // W-01 密码错/加密方式不匹配
+    {"找不到 WiFi", "NO WiFi AP"},       // W-02 SSID 错或超出覆盖范围
+    {"MQTT 认证失败", "MQTT AUTH FAIL"}, // W-03 broker 拒绝匿名或凭据错
+    {"MQTT 连接超时", "MQTT TIMEOUT"},   // W-04 地址/端口/网络不通
 };
 static_assert(sizeof(NET_ALERT_TEXTS) / sizeof(NET_ALERT_TEXTS[0]) ==
                   static_cast<size_t>(NetAlert::Count),
@@ -548,18 +551,38 @@ void formatClockField(char *out, size_t size, const char *clock, bool dateRow,
 // 标签数组下标必须与 SystemSettingField 枚举一一对应。
 void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
   // 条目文案按 SystemSettingField 的下标索引取值,顺序必须与枚举保持一致。
-  static const char *const zh[] = {
-      "系统语言",       "WiFi联网",       "MQTT上报",
-      "NTP校时",        "OTA升级",        "按键声音",
-      "屏幕亮度",       "屏幕休眠时间",   "RGB最大亮度",
-      "RGB跟随屏幕休眠", "打印时保持屏幕开启",
-      "编码器方向",     "PIR启动延时",    "PIR关闭延时",
-      "启动后自动开灯", "关闭后自动关灯", "启动后蜂鸣提示",
-      "关闭后蜂鸣提示", "发热板限流",     "发热板风扇风速",
-      "发热板温度保护", "界面主题",       "日间开始时刻",
-      "夜间开始时刻",   "日期",           "时间",
-      "触摸屏校准",     "恢复出厂配置",   "注册码",
-      "固件版本",       "芯片ID"};
+  static const char *const zh[] = {"系统语言",
+                                   "WiFi联网",
+                                   "MQTT上报",
+                                   "NTP校时",
+                                   "OTA升级",
+                                   "按键声音",
+                                   "屏幕亮度",
+                                   "屏幕休眠时间",
+                                   "RGB最大亮度",
+                                   "RGB跟随屏幕休眠",
+                                   "打印时保持屏幕开启",
+                                   "编码器方向",
+                                   "PIR启动延时",
+                                   "PIR关闭延时",
+                                   "启动后自动开灯",
+                                   "关闭后自动关灯",
+                                   "启动后蜂鸣提示",
+                                   "关闭后蜂鸣提示",
+                                   "发热板限流",
+                                   "发热板风扇风速",
+                                   "发热板温度保护",
+                                   "界面主题",
+                                   "日间开始时刻",
+                                   "夜间开始时刻",
+                                   "日期",
+                                   "时间",
+                                   "触摸模式",
+                                   "触摸屏校准",
+                                   "恢复出厂配置",
+                                   "注册码",
+                                   "固件版本",
+                                   "芯片ID"};
   static const char *const en[] = {"LANGUAGE",
                                    "WIFI",
                                    "MQTT",
@@ -586,6 +609,7 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
                                    "NIGHT START",
                                    "DATE",
                                    "TIME",
+                                   "TOUCH MODE",
                                    "TOUCH CALIBRATION",
                                    "FACTORY RESET",
                                    "REGISTRATION",
@@ -596,11 +620,15 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
   const uint8_t count = static_cast<uint8_t>(SystemSettingField::Count);
   constexpr uint8_t kRows = 5; // 一屏可见 5 行,超出部分靠滚动窗口展示。
   const uint8_t selected = static_cast<uint8_t>(s.systemSettingField);
-  // 分区标题表:在 first 所指条目之前插入一行标题,31 项归为 7 个分区。
+  // 分区标题表:在 first 所指条目之前插入一行标题,32 项归为 7 个分区。
   // first 是条目下标(SystemSettingField 枚举值),必须随枚举顺序严格递增;
   // 新增条目时归入合适分区,或在此追加新分区。标题行不可聚焦 —— 导航仍按
   // 枚举走,这里只做渲染与滚动窗口的行号换算,故不影响任何交互逻辑。
-  struct SettingSection { uint8_t first; const char *zh; const char *en; };
+  struct SettingSection {
+    uint8_t first;
+    const char *zh;
+    const char *en;
+  };
   static const SettingSection SECTIONS[] = {
       {0, "基础", "BASIC"},
       {5, "显示与声音", "DISPLAY & SOUND"},
@@ -761,9 +789,9 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
       // 存储原始值:0=默认 1=IOS 2=蓝白(蓝白按日/夜开始时刻自动切换,
       // 渲染生效值在快照 theme 里由 main.cpp 解析,这里只显示选项名)
       strlcpy(value,
-              v.theme == 0 ? (chinese ? "默认" : "DEFAULT")
-                           : (v.theme == 1 ? "IOS"
-                                           : (chinese ? "蓝白" : "BLUE-WHITE")),
+              v.theme == 0
+                  ? (chinese ? "默认" : "DEFAULT")
+                  : (v.theme == 1 ? "IOS" : (chinese ? "蓝白" : "BLUE-WHITE")),
               sizeof(value));
       break;
     case SystemSettingField::DayStart:
@@ -783,14 +811,29 @@ void drawSystemSettings(TFT_eSPI &g, const UiSnapshot &s) {
       formatClockField(value, sizeof(value), s.clock, false,
                        s.systemSettingsEditing, s.systemSettingsSubField);
       break;
+    case SystemSettingField::TouchMode:
+      // 触摸模式三态:自动(开机探到膜才启用)/ 开 / 关。
+      if (v.touchMode == static_cast<uint8_t>(TouchModeSetting::On))
+        strlcpy(value, on, sizeof(value));
+      else if (v.touchMode == static_cast<uint8_t>(TouchModeSetting::Off))
+        strlcpy(value, off, sizeof(value));
+      else
+        strlcpy(value, chinese ? "自动" : "AUTO", sizeof(value));
+      break;
     case SystemSettingField::TouchCalibration:
-      // 编译期无触摸、或运行时探测不到触摸膜(非触摸屏/膜未接),都显示不支持。
-      strlcpy(value,
-              (!Pin::HAS_TOUCH_PANEL || !s.touchPresent)
-                  ? (chinese ? "不支持" : "N/A")
-                  : (v.touchCalibrated ? (chinese ? "已校准" : "READY")
-                                       : (chinese ? "未校准" : "NOT SET")),
-              sizeof(value));
+      // 能否校准看触摸当前是否生效:用户选“关”→已关闭;自动档但开机没探到膜
+      // (纯显示屏/排线未接)→不支持;生效中(强制开,或自动且有膜)才显示校准态。
+      if (v.touchMode == static_cast<uint8_t>(TouchModeSetting::Off)) {
+        strlcpy(value, chinese ? "已关闭" : "OFF", sizeof(value));
+      } else if (v.touchMode == static_cast<uint8_t>(TouchModeSetting::Auto) &&
+                 !s.touchPresent) {
+        strlcpy(value, chinese ? "不支持" : "N/A", sizeof(value));
+      } else {
+        strlcpy(value,
+                v.touchCalibrated ? (chinese ? "已校准" : "READY")
+                                  : (chinese ? "未校准" : "NOT SET"),
+                sizeof(value));
+      }
       break;
     case SystemSettingField::FactoryReset:
       strlcpy(value,

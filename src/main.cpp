@@ -34,16 +34,18 @@ constexpr bool HEATER_ENABLED = false;
 
 // ---- 全局外设与共享状态(各调度函数之间通过这些文件级变量传递数据) ----
 Adafruit_AHTX0 aht; // 仓内温湿度传感器(I²C)
-Adafruit_NeoPixel rgb(4, Pin::RGB, NEO_GRB + NEO_KHZ800); // 状态 RGB 灯带
-                                                          // (GPIO18 单线 DIN 串 4 颗,同显一色)
-bool ahtAvailable = false;                                // AHT20 是否在线
+Adafruit_NeoPixel rgb(4, Pin::RGB,
+                      NEO_GRB +
+                          NEO_KHZ800);   // 状态 RGB 灯带
+                                         // (GPIO18 单线 DIN 串 4 颗,同显一色)
+bool ahtAvailable = false;               // AHT20 是否在线
 float chamberTemp = NAN, humidity = NAN; // AHT20 仓温(℃)与湿度(%RH)
 float heaterBoardTemp = NAN;             // NTC 参数确认后启用
 float heaterCurrentA = NAN;              // INA226 电流比例/I2C 地址确认后启用
 float supplyVoltage = NAN;               // INA226 总线电压(V)
 Ina226Sensor ina226;
-bool inaAvailable = false;    // INA226 是否在线
-uint32_t lastSensorOk = 0;    // AHT20 最近一次成功读数时刻
+bool inaAvailable = false; // INA226 是否在线
+uint32_t lastSensorOk = 0; // AHT20 最近一次成功读数时刻
 // AHT20 读数的保持窗口:读取失败时 chamberTemp/humidity 会保留上次成功的值,
 // 用这段时间顶住偶发 I²C 失败,避免加热被单次读失败抖断。窗口外一律按无效
 // 处理(见 ahtFresh())。
@@ -58,11 +60,11 @@ FaultRecord faultRecord;
 // 上一个热控周期看到的故障码,用于检测 锁定/解除 的边沿;setup 恢复锁定后
 // 会先与 controller.faultCode() 对齐,避免把"恢复"误记成一次新故障。
 FaultCode lastSeenFault = FaultCode::None;
-TftUi tftUi;                  // 显示层
+TftUi tftUi; // 显示层
 // 最近一次执行器输出;末尾 fault 显式写成 None —— 漏写会被隐式零初始化,
 // 值恰好也对,但那样等于把正确性押在"枚举 0 就是 None"上。
-Outputs latestOutputs{0,      0,     false, false, false, ChamberState::Idle,
-                      FaultCode::None};
+Outputs latestOutputs{
+    0, 0, false, false, false, ChamberState::Idle, FaultCode::None};
 uint32_t lastUiActivityMs = 0, buzzerOffMs = 0; // 最近操作时刻 / 蜂鸣器停止时刻
 bool automaticLight = false; // 打印联动自动开关的灯(区别于手动灯)
 ChamberState previousControlState = ChamberState::Idle; // 上周期状态(边沿检测)
@@ -70,6 +72,9 @@ bool touchCalibrationActive = false;                    // 触摸校准流程进
 uint8_t touchCalibrationStep = 0;                       // 校准第几步(0=第一点)
 bool touchPanelPresent = false; // 运行时探测到的触摸膜存在与否(setup 时判定)
 bool detectTouchPanel(); // 前置声明:定义在 readTouchPoint 一节,setup 要用
+// 前置声明:综合编译期硬件闸、触摸模式设置(开/关/自动)与膜探测结果,
+// 给出触摸当前是否真正生效;定义在 detectTouchPanel 之后。
+bool touchEnabledNow();
 // ---- 注册码流程(模态,与触摸校准同构:输入在 dispatchUiAction 截获) ----
 bool registrationActive = false; // 注册页接管整屏中
 uint8_t regPos = 0;              // 当前输入位(0..7)
@@ -235,7 +240,7 @@ void updateStatusRgb(const Readings &in, const Outputs &out) {
     // 正常(待机)状态:绿色呼吸灯。3s 一个三角波周期,亮度在 15%~100%
     // 之间往返,渐亮渐暗;每 50ms 控制节拍刷新一帧,颜色缓存不会拦截。
     const uint16_t phase = millis() % 3000;
-    const uint16_t tri = phase < 1500 ? phase : 3000 - phase; // 0..1500
+    const uint16_t tri = phase < 1500 ? phase : 3000 - phase;     // 0..1500
     const uint8_t scale = 38 + (uint32_t)tri * (255 - 38) / 1500; // ≈15%..100%
     setRgb(0, (70 * scale) / 255, (18 * scale) / 255);
   }
@@ -262,9 +267,10 @@ void emergencyStop(const char *reason) {
 // 每 500ms 读一路传感器并做量程合理性检查,越界值一律置 NAN,
 // 控制器据此把对应传感器判为无效(NAN 不会参与加热决策)。
 void readSensors() {
-  // 加热模块的独立 NTC 两芯线接入 ADC_NTC(GPIO3, ADC1_CH2)，型号 ZX-NTC1.25-P2ZZ。
-  // 原理图分压上臂 R14 = 10 kΩ，故 seriesOhm = nominalOhm = 10000.0f。
-  // 实物 NTC 阻值/β 不同时，以万用表实测 25 ℃ 阻值为准改正后再开启加热。
+  // 加热模块的独立 NTC 两芯线接入 ADC_NTC(GPIO3, ADC1_CH2)，型号
+  // ZX-NTC1.25-P2ZZ。 原理图分压上臂 R14 = 10 kΩ，故 seriesOhm = nominalOhm =
+  // 10000.0f。 实物 NTC 阻值/β 不同时，以万用表实测 25 ℃
+  // 阻值为准改正后再开启加热。
   heaterBoardTemp = readNtcCelsius(Pin::ADC_NTC, 10000.0f, 10000.0f, 3950.0f);
   if (ahtAvailable) {
     sensors_event_t h, t;
@@ -406,8 +412,9 @@ void setup() {
   // 触摸轮询与校准入口整路关闭,杜绝浮空线的幽灵触摸。
   if (Pin::HAS_TOUCH_PANEL) {
     touchPanelPresent = detectTouchPanel();
-    Serial.printf("Touch panel: %s\n",
-                  touchPanelPresent ? "detected" : "NOT detected, touch disabled");
+    Serial.printf("Touch panel: %s\n", touchPanelPresent
+                                           ? "detected"
+                                           : "NOT detected, touch disabled");
   }
 
   // ---- LEDC 四路 PWM:发热板/排风/背光/热风风扇 ----
@@ -469,8 +476,7 @@ void setup() {
   lastUiActivityMs = millis();
   // ---- 显示层(含渲染任务)与联网子系统,放最后启动 ----
   tftUi.begin();
-  network.begin(controller, ui,
-                settings,
+  network.begin(controller, ui, settings,
                 faultRecord); // 联网:WiFi 配网门户 + Web/MQTT/NTP/OTA
                               // (faultRecord 供 /api/state 回传故障记忆)
   // ---- 注册码:未注册先弹注册页(提示但不限制 —— 长按编码器即可跳过,
@@ -609,13 +615,13 @@ void dispatchUiAction(UiAction action) {
     Serial.printf("Settings: %s\n", saved ? "saved" : "save failed");
   }
   if (ui.takeTouchCalibrationRequest()) {
-    if (touchPanelPresent) {
+    if (touchEnabledNow()) {
       touchCalibrationActive = true;
       touchCalibrationStep = 0;
       Serial.println("Touch calibration: hold top-left, click EC11; then "
                      "bottom-right, click EC11");
     } else {
-      Serial.println("Touch calibration: no panel detected, ignored");
+      Serial.println("Touch calibration: touch off or no panel, ignored");
     }
   }
   if (ui.takeRegistrationRequest()) {
@@ -669,6 +675,23 @@ bool detectTouchPanel() {
   return xSheet && ySheet;
 }
 
+// 触摸是否实际生效:在编译期硬件能力(Pin::HAS_TOUCH_PANEL)之上,再综合用户
+// 在系统设置页选的触摸模式与开机电阻膜探测结果:
+//   关   → 一律禁用,只用编码器;
+//   开   → 一律启用(用户自负,用于探测不准/特殊排线的屏);
+//   自动 → 仅开机探测到电阻膜(touchPanelPresent)才启用。
+// 系统设置改的是全局 settings 本身,所以切模式保存前后这里下一帧即读到新值,
+// 无需重启;自动档的膜探测结果沿用开机那次(电阻膜不支持热插拔)。
+bool touchEnabledNow() {
+  if (!Pin::HAS_TOUCH_PANEL)
+    return false; // 该硬件版本根本没编译触摸采样
+  if (settings.touchMode == static_cast<uint8_t>(TouchModeSetting::On))
+    return true;
+  if (settings.touchMode == static_cast<uint8_t>(TouchModeSetting::Off))
+    return false;
+  return touchPanelPresent; // 自动:有膜才开
+}
+
 // 采样一次触摸并换算成屏幕像素坐标(480x320 横屏,留 28px 边距)。
 // 映射目标 28..452 / 28..292 与校准两个采点位置(左上/右下)一致;
 // 限幅也钳在同一区间,防止触摸超出校准角点时线性外推出框。
@@ -699,8 +722,7 @@ void pollTouchUi() {
   static bool held = false;          // 当前手指仍按住,去重连续触发
   static uint8_t releaseSamples = 0; // 连续无触点采样计数(消抖)
   const uint32_t now = millis();
-  if (!Pin::HAS_TOUCH_PANEL || !touchPanelPresent ||
-      now - lastSampleMs < 35 || touchCalibrationActive)
+  if (!touchEnabledNow() || now - lastSampleMs < 35 || touchCalibrationActive)
     return;
   lastSampleMs = now;
   int16_t x = 0, y = 0;
@@ -935,10 +957,14 @@ void loop() {
     // 与热控节拍用同一个有效性判据(ahtFresh),并且无效时把值也传成 NAN:
     // 显示层的约定是 NaN 显示 "--",这样 AHT20 掉线后屏上不会继续挂着旧温度。
     const bool ahtOk = ahtFresh();
-    Readings in{ahtOk ? chamberTemp : NAN,  heaterBoardTemp,
-                heaterCurrentA,            supplyVoltage,
-                temperatureRead(),         digitalRead(Pin::PIR) == HIGH,
-                ahtOk,                     !isnan(heaterBoardTemp),
+    Readings in{ahtOk ? chamberTemp : NAN,
+                heaterBoardTemp,
+                heaterCurrentA,
+                supplyVoltage,
+                temperatureRead(),
+                digitalRead(Pin::PIR) == HIGH,
+                ahtOk,
+                !isnan(heaterBoardTemp),
                 !isnan(heaterCurrentA)};
     UiSnapshot screen = ui.snapshot(controller, in, latestOutputs);
     screen.touchCalibrationActive = touchCalibrationActive;
