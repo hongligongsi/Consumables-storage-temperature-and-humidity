@@ -600,9 +600,9 @@ Gerber 飞针网表确认本板上的 ST7796 为 SPI 连接：`RST=GPIO9`、`MIS
 | # | 项目 | 固件当前设定 | 依据位置 | 需要确认的动作 |
 | --- | --- | --- | --- | --- |
 | 1 | 加热总开关 | `HEATER_ENABLED = false` | `src/main.cpp` | 复核 GPIO40 PWM、NTC 引脚与 MOSFET 有效电平后改为 `true` |
-| 2 | 热板 NTC 型号/分压 | 10 kΩ / 10 kΩ / B3950（R14 = 10 kΩ） | `readSensors()`、`readNtcCelsius()` | 万用表测常温阻值，按实物参数改写 |
+| 2 | 热板 NTC 型号/分压 | 10 kΩ / 10 kΩ / B3950（R14 = 10 kΩ） | `src/main.cpp` 的 `readSensors()`、`readNtcCelsius()` | 万用表测常温阻值，按实物参数改写 |
 | 3 | 热板 NTC 引脚 | `ADC_NTC = GPIO3` | `include/pins.h` | 对照原理图网络名与 PCB 焊盘 |
-| 4 | INA226 地址与分流 | `0x40`、R15 = 10 mΩ、1 mA/LSB | `src/ina226_sensor.cpp` | 核对实物丝印与分流电阻，必要时调整地址 |
+| 4 | INA226 地址与分流 | `0x40`、R15 = 10 mΩ、1 mA/LSB | `src/ina226_sensor.cpp`（`SHUNT_OHMS`）、`include/ina226_sensor.h`（默认地址/LSB） | 核对实物丝印与分流电阻，必要时调整地址 |
 | 5 | 仓温传感器安装位 | AHT20（I²C） | `src/main.cpp` | 确认位于仓内且具代表性，避开热风直吹 |
 | 6 | 电阻触摸 | `HAS_TOUCH_PANEL = true`（硬件具备） | `include/pins.h` | 运行时启停改走设置页「触摸模式」（自动/开/关，出厂默认自动）；「开」用于探测不准或特殊排线，之后用「触摸屏校准」做两点采点。仅当硬件根本没有触摸走线时才把此常量改为 `false` |
 | 7 | 状态输出负载 | GPIO8 / GPIO47 独立 3.3 V | `include/pins.h` | 外接负载须经光耦或驱动器 |

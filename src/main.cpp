@@ -171,8 +171,9 @@ void applyRuntimeSettings() {
   lastUiActivityMs = millis();
 }
 
-// 10 kΩ NTC、10 kΩ 上拉、B=3950 的常用模型；原理图热端 NTC 为 100 kΩ
-// 时请改这里。
+// 10 kΩ NTC、10 kΩ 分压上臂(R14)、B=3950 的常用模型。若实物 NTC 标称阻值或
+// β 与此不同(例如 100 kΩ/B3435),按万用表实测的 25 ℃ 阻值改写这里的
+// seriesOhm / nominalOhm / beta,否则整条温度曲线都会偏移。
 float readNtcCelsius(int pin, float seriesOhm = 10000.0f,
                      float nominalOhm = 10000.0f, float beta = 3950.0f) {
   const int raw = analogRead(pin);
