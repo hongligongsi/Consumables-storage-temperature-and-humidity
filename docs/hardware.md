@@ -195,9 +195,14 @@ heaterBoardTemp = readNtcCelsius(Pin::ADC_NTC, 10000.0f, 10000.0f, 3950.0f);
 
 ### 3. INA226 地址与分流电阻
 
-主板按原理图 R15 = 10 mΩ、I²C 地址 0x40 接入，量程 1 mA/LSB（
-[src/ina226_sensor.cpp](../src/ina226_sensor.cpp)
-中 `SHUNT_OHMS = 0.01f`）。实物地址不同则改 `ina226.begin(Wire)`。
+主板按原理图 **R15 = 5 mΩ**、I²C 地址 0x40（图纸 A1/A0 均接 GND）接入，量程
+1 mA/LSB（[include/ina226_sensor.h](../include/ina226_sensor.h) 中
+`kShuntOhms = 0.005f`）。实物地址不同则改 `ina226.begin(Wire)`。
+
+⚠️ **分流电阻不能写错**：电流换算依赖 Rshunt，校准寄存器 = `0.00512 / (Current_LSB ×
+Rshunt)`。实物 5 mΩ 却按 10 mΩ 写码，写进芯片的校准值只有一半，**电流读数就只有真实值
+的一半**——"限流 8 A"实际要 16 A 才动作，硬过流保护（1.5 倍）也整体延后一倍。量一次实物
+R15 的阻值，与 `kShuntOhms` 对齐，再用串口 `d` 自检打印的 `cal` 值复核。
 
 INA226 用于加热电流软降功率；读取失败会在加热状态下触发故障保护。
 

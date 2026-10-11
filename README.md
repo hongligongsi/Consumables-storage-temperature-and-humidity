@@ -70,7 +70,7 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 │  ├─ network.h              NetworkManager 接口 / NetState
 │  ├─ web_page.h             内置 Web 管理页 HTML
 │  ├─ wifi_portal_page.h     WiFi 配网门户定制页 HTML
-│  ├─ ina226_sensor.h        INA226 采样接口（17 行）
+│  ├─ ina226_sensor.h        INA226 采样接口与分流常量 kShuntOhms/kCurrentLsbA（28 行）
 │  ├─ font_cn16.h            16 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 402 KB）
 │  └─ font_cn26.h            26 px 中文 + ASCII VLW 字库（genvlw.py 生成，约 964 KB）
 ├─ src/                      实现
@@ -594,7 +594,7 @@ Gerber 飞针网表确认本板上的 ST7796 为 SPI 连接：`RST=GPIO9`、`MIS
 
 仓温闭环采用 I²C 上的 AHT20。接线图显示加热模块有独立两芯 NTC，因此 `ADC_NTC`（GPIO3）已接入热板保护链，按原理图 R14 = 10 kΩ 分压、10 kΩ/B3950 模型换算。确认实际 NTC 阻值/β 前不可开启加热。
 
-主板 INA226 已按原理图 R15=10 mΩ、I²C 0x40 和 1 mA/LSB 接入 `Ina226Sensor`；若实物地址不同，可在 `ina226.begin(Wire)` 中调整。它用于加热电流的软降功率，读取失败会在加热状态触发故障保护。
+主板 INA226 已按原理图 **R15 = 5 mΩ**、I²C 0x40（图纸 A1/A0 均接 GND）和 1 mA/LSB 接入 `Ina226Sensor`。⚠️ 分流电阻直接决定电流换算（校准寄存器 = `0.00512 / (Current_LSB × Rshunt)`）：5 mΩ 与 10 mΩ 会让电流读数整整差一倍，于是"限流 8 A"实际要 16 A 才动作、硬过流保护也整体延后——**改实物参数时只改 `include/ina226_sensor.h` 的 `kShuntOhms` 一处**，再用串口 `d` 自检里的 `cal` 值与实物比对。地址不同则改 `ina226.begin(Wire)`。它用于加热电流的软降功率，读取失败会在加热状态触发故障保护。
 
 ### 待验证项清单
 
@@ -607,7 +607,7 @@ Gerber 飞针网表确认本板上的 ST7796 为 SPI 连接：`RST=GPIO9`、`MIS
 | 1 | 加热总开关 | `HEATER_ENABLED = false` | `src/main.cpp` | 复核 GPIO40 PWM、NTC 引脚与 MOSFET 有效电平后改为 `true` |
 | 2 | 热板 NTC 型号/分压 | 10 kΩ / 10 kΩ / B3950（R14 = 10 kΩ） | `src/main.cpp` 的 `readSensors()`、`readNtcCelsius()` | 万用表测常温阻值，按实物参数改写 |
 | 3 | 热板 NTC 引脚 | `ADC_NTC = GPIO3` | `include/pins.h` | 对照原理图网络名与 PCB 焊盘 |
-| 4 | INA226 地址与分流 | `0x40`、R15 = 10 mΩ、1 mA/LSB | `src/ina226_sensor.cpp`（`SHUNT_OHMS`）、`include/ina226_sensor.h`（默认地址/LSB） | 核对实物丝印与分流电阻，必要时调整地址 |
+| 4 | INA226 地址与分流 | `0x40`、R15 = **5 mΩ**（原理图值）、1 mA/LSB | `include/ina226_sensor.h` 的 `kShuntOhms` / `kCurrentLsbA`、`ina226.begin()` | 量实物 R15（原理图为 5 mΩ，曾按 10 mΩ 写码 = 读数差一倍）；按串口 `d` 自检的 `cal` 值核对 |
 | 5 | 仓温传感器安装位 | AHT20（I²C） | `src/main.cpp` | 确认位于仓内且具代表性，避开热风直吹 |
 | 6 | 电阻触摸 | `HAS_TOUCH_PANEL = true`（硬件具备） | `include/pins.h` | 运行时启停改走设置页「触摸模式」（自动/开/关，出厂默认自动）；「开」用于探测不准或特殊排线，之后用「触摸屏校准」做两点采点。仅当硬件根本没有触摸走线时才把此常量改为 `false` |
 | 7 | 状态输出负载 | GPIO8 / GPIO47 独立 3.3 V | `include/pins.h` | 外接负载须经光耦或驱动器 |

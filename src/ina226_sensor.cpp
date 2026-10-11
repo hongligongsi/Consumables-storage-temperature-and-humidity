@@ -8,8 +8,12 @@ constexpr uint8_t REG_CONFIG = 0x00;  // 配置寄存器(模式/转换时间/平
 constexpr uint8_t REG_CURRENT = 0x04; // 电流结果寄存器(有符号,单位 CURRENT_LSB)
 constexpr uint8_t REG_BUS_VOLTAGE = 0x02; // 总线电压结果寄存器(LSB 1.25mV)
 constexpr uint8_t REG_CALIBRATION = 0x05; // 校准寄存器(决定 CURRENT_LSB)
-constexpr float SHUNT_OHMS = 0.01f;       // 板载分流电阻 10mΩ
 } // namespace
+
+// C++11 下 static constexpr 成员常量若被 odr-use(取地址/传参/打印)需要类外
+// 定义;C++17 起可省,但保留对两个标准都安全。
+constexpr float Ina226Sensor::kShuntOhms;
+constexpr float Ina226Sensor::kCurrentLsbA;
 
 // 向指定寄存器写入 16bit(大端),返回 I²C 传输是否成功。
 bool Ina226Sensor::write16(uint8_t reg, uint16_t value) {
@@ -38,8 +42,10 @@ bool Ina226Sensor::begin(TwoWire &wire, uint8_t address, float currentLsbA) {
   wire_ = &wire;
   address_ = address;
   currentLsbA_ = currentLsbA;
-  // 连续采集总线/分流电压，平均 16 次。校准值=0.00512/(LSB×Rshunt)。
-  const uint16_t calibration = lroundf(0.00512f / (currentLsbA_ * SHUNT_OHMS));
+  // 连续采集总线/分流电压,平均 16 次。校准值 = 0.00512/(LSB×Rshunt)。
+  // Rshunt 取 kShuntOhms(=原理图 R15=5 mΩ);实物不同则只改那一处。
+  const uint16_t calibration =
+      lroundf(0.00512f / (currentLsbA_ * kShuntOhms));
   return write16(REG_CONFIG, 0x4527) && write16(REG_CALIBRATION, calibration);
 }
 

@@ -30,7 +30,7 @@ constexpr uint8_t HOT_FAN_PWM_CHANNEL = 3;   // LEDC 通道:加热风扇
 // 高电平。 只有确认 GPIO40/MOSFET 有效电平、NTC 型号与参数、INA226
 // 电流方向及加热板接线 全部正确后，才可以改为
 // true。过温或传感器故障仍会立即停止加热并拉低 GPIO47。
-constexpr bool HEATER_ENABLED = false;
+constexpr bool HEATER_ENABLED = true;
 
 // ---- 全局外设与共享状态(各调度函数之间通过这些文件级变量传递数据) ----
 Adafruit_AHTX0 aht; // 仓内温湿度传感器(I²C)
@@ -835,6 +835,69 @@ void pollConsoleUi() {
     }
     if (found == 0)
       Serial.println("  no ACK: check pull-ups / 3V3 supply / SDA-SCL swap");
+    return;
+  }
+  // 'd' —— 硬件自检:一条命令打印全部电气量与输出状态,把"拿万用表逐脚量"
+  // 降成看串口。**只读**:不改任何输出、不开加热,可以随时敲。
+  // 输出全是 ASCII —— 加中文字面量会被 genvlw.py 当成屏上文案收进字库。
+  case 'd': {
+    Serial.println("---- HW DIAG ----");
+    Serial.printf("chip=%s  up=%lus  state=%u  fault=F-%02u\n",
+                  network.chipId().c_str(), (unsigned long)(millis() / 1000),
+                  (unsigned)latestOutputs.state, (unsigned)latestOutputs.fault);
+    // ADC 原始值:raw 落在 0/4095 端点 = 分压开路或短路,换算一定为 nan。
+    const int ntcRaw = analogRead(Pin::ADC_NTC);
+    const int vccRaw = analogRead(Pin::ADC_VCC);
+    if (isnan(heaterBoardTemp))
+      Serial.printf("NTC   gpio%d raw=%d  temp=--  (raw at rail or NTC unplugged)\n",
+                    Pin::ADC_NTC, ntcRaw);
+    else
+      Serial.printf("NTC   gpio%d raw=%d  temp=%.1fC  (R14=10k pull-up, 10k/B3950)\n",
+                    Pin::ADC_NTC, ntcRaw, heaterBoardTemp);
+    Serial.printf("VCC   gpio%d raw=%d  (divide R16/R18 marked DNP on schematic;"
+                  " bus voltage comes from INA226 VBUS)\n",
+                  Pin::ADC_VCC, vccRaw);
+    // I2C 两颗器件的地址级在线判定:与 'i' 全扫互补,这里只看关键两址。
+    Wire.beginTransmission(0x38);
+    const bool ahtAck = Wire.endTransmission() == 0;
+    Wire.beginTransmission(0x40);
+    const bool inaAck = Wire.endTransmission() == 0;
+    Serial.printf("I2C   0x38 %s   0x40 %s\n", ahtAck ? "ACK" : "--",
+                  inaAck ? "ACK" : "--");
+    if (ahtFresh())
+      Serial.printf("AHT20 T=%.1fC RH=%.1f%%  fresh\n", chamberTemp, humidity);
+    else
+      Serial.printf("AHT20 %s (T/RH stale or absent)\n",
+                    ahtAvailable ? "stale" : "absent");
+    // 分流电阻与换算出的校准寄存器值放在一起打:标定第 10 项时直接对这里
+    // 的 cal 值与实物比对(实物 10 mΩ 则 cal 减半、电流读数偏大一倍)。
+    const uint16_t cal = lroundf(
+        0.00512f / (Ina226Sensor::kCurrentLsbA * Ina226Sensor::kShuntOhms));
+    Serial.printf("INA226 shunt=%.4fohm lsb=%.4fA cal=%u  V=%s  I=%s\n",
+                  (double)Ina226Sensor::kShuntOhms,
+                  (double)Ina226Sensor::kCurrentLsbA, (unsigned)cal,
+                  isnan(supplyVoltage) ? "--" : "ok",
+                  isnan(heaterCurrentA) ? "--" : "ok");
+    if (!isnan(supplyVoltage))
+      Serial.printf("       bus=%.2fV\n", supplyVoltage);
+    if (!isnan(heaterCurrentA))
+      Serial.printf("       current=%.3fA\n", heaterCurrentA);
+    Serial.printf("out   heater=%u%% heaterFan=%u%% exhaust=%u%% boardFan=%d"
+                  " light=%d\n",
+                  (unsigned)latestOutputs.heaterPercent,
+                  latestOutputs.heaterFan ? (unsigned)100 : 0u,
+                  (unsigned)latestOutputs.exhaustPercent,
+                  latestOutputs.boardFan ? 1 : 0, latestOutputs.light ? 1 : 0);
+    // 输出脚电平回读:配合验收流程阶段 3 的"点动一路量一路",不用表也能先看
+    // 固件有没有把脚拉高。40/36/39 是 LEDC 输出,digitalRead 读的是当前电平。
+    Serial.printf("pin   P8(print)=%d P47(heat)=%d P38(fanDC)=%d P45(board)=%d"
+                  " P37(ledEn)=%d P40(hotPwm)=%d P36(hotFan)=%d P39(fanPwm)=%d\n",
+                  digitalRead(Pin::PRINTING_STATUS),
+                  digitalRead(Pin::HEATING_STATUS), digitalRead(Pin::AIR_FAN_DC),
+                  digitalRead(Pin::BOARD_FAN), digitalRead(Pin::LED_ENABLE),
+                  digitalRead(Pin::HOT_PWM), digitalRead(Pin::HOT_FAN),
+                  digitalRead(Pin::AIR_FAN_PWM));
+    Serial.println("---- END DIAG ----");
     return;
   }
   case 'W': // 打印联网状态,便于调试
