@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | 固件功能开发 | 92% | 状态机 / 双 PID / 安全联锁 / 12 耗材预设 / 联网全链路 / 30 项设置 / 三档主题，全部有实现；`pio run` 16.8s 成功，RAM 16.2%（52972/327680）、Flash 19.7%（1287857/6553600） |
 | 文档 | 95% | README 556 行 + docs 5 篇 888 行，引脚表、REST 接口、状态转移、30 项设置均逐条成表，质量属可交付水平 |
-| 硬件验证与标定 | 35% | README「待验证项清单」12 项**全部未闭环**；AHT20 / INA226 实机报 `not detected`；`HEATER_ENABLED=false` |
+| 硬件验证与标定 | 35% | README「待验证项清单」12 项**全部未闭环**；AHT20 / INA226 实机报 `not detected`；`HEATER_ENABLED=false`。逐项的工具/步骤/判据见 [docs/hardware-acceptance.md](docs/hardware-acceptance.md) |
 | 上机验证 | 25% | 最后两次功能改动（`232afce` Web 管理页改版、`2620f35` 三档主题）**均未烧录**，设备当时未插 USB（COM4 不存在） |
 | 工程化 | 30% | 无单元测试、无集成测试、无 CI（无 `test/`、无 `.github/`）；随仓库分发的 `firmware/firmware.bin` 已过期 |
 | 量产/交付物 | 40% | 无外壳设计、无 BOM、无装配说明；`hardware/` 仅有原理图与接线图 PNG |

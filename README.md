@@ -35,7 +35,7 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 
 ## 详细文档
 
-见 [docs/](docs/README.md)：[硬件接线](docs/hardware.md) · [编译烧录](docs/build-and-flash.md) · [联网功能](docs/networking.md) · [系统设置](docs/settings.md) · [温控与功率安全](docs/control.md) · [开发与测试](docs/development.md) · [第三方软件声明](THIRD_PARTY_NOTICES.md)。
+见 [docs/](docs/README.md)：[硬件接线](docs/hardware.md) · [硬件验收流程](docs/hardware-acceptance.md) · [编译烧录](docs/build-and-flash.md) · [联网功能](docs/networking.md) · [系统设置](docs/settings.md) · [温控与功率安全](docs/control.md) · [开发与测试](docs/development.md) · [第三方软件声明](THIRD_PARTY_NOTICES.md)。
 
 ## 工程目录结构
 
@@ -50,6 +50,7 @@ Gerber 飞针网表已确认 `GPIO8`（打印中）和 `GPIO47`（加热中）�
 ├─ docs/                     详细文档
 │  ├─ README.md              文档索引
 │  ├─ hardware.md            硬件接线与引脚
+│  ├─ hardware-acceptance.md 12 项待验证项的逐项验收流程（工具 / 步骤 / 判据 / 改哪一行）
 │  ├─ build-and-flash.md     编译与烧录细节
 │  ├─ networking.md          WiFi / Web 管理页 / REST / MQTT / NTP / OTA
 │  ├─ control.md             双 PID 协同、过流软降、斜率限制与安全停机
@@ -596,6 +597,10 @@ Gerber 飞针网表确认本板上的 ST7796 为 SPI 连接：`RST=GPIO9`、`MIS
 主板 INA226 已按原理图 R15=10 mΩ、I²C 0x40 和 1 mA/LSB 接入 `Ina226Sensor`；若实物地址不同，可在 `ina226.begin(Wire)` 中调整。它用于加热电流的软降功率，读取失败会在加热状态触发故障保护。
 
 ### 待验证项清单
+
+这 12 项都要实物/仪器才能闭环，固件改不出结论。**逐项的工具、操作步骤、通过判据和
+"不通过改哪一行"见 [docs/hardware-acceptance.md](docs/hardware-acceptance.md)**，
+其中含一张可勾选的验收记录表。下面这张表只作速查。
 
 | # | 项目 | 固件当前设定 | 依据位置 | 需要确认的动作 |
 | --- | --- | --- | --- | --- |

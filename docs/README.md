@@ -5,6 +5,7 @@ ESP32-S3 N16R8 3D 打印耗材干燥/恒温仓控制器。Arduino 框架 + Platf
 | 文档 | 内容 |
 | --- | --- |
 | [hardware.md](hardware.md) | 引脚映射、传感器接线、上电前必须复核的项 |
+| [hardware-acceptance.md](hardware-acceptance.md) | 12 项待验证项的逐项验收流程（工具 / 步骤 / 判据 / 改哪一行） |
 | [build-and-flash.md](build-and-flash.md) | 编译、烧录、预编译固件、分区表与 OTA |
 | [networking.md](networking.md) | WiFi 配网、REST API、MQTT 主题、NTP、OTA |
 | [settings.md](settings.md) | 系统设置 32 项逐条说明与取值范围 |

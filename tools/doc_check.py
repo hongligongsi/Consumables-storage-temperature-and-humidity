@@ -224,18 +224,25 @@ def check_settings_count(report: Report) -> None:
             f"补全成 1..{count} 连续序号",
         )
 
-    # 各处"N 项"字样
+    # 各处"N 项"字样。只校验设置语境的行:README 里还有「12 项待验证项」这类
+    # 无关计数,全文件扫会把它当成设置项数报错(2026-10-11 加 hardware-acceptance.md
+    # 时踩到)。docs/settings.md 通篇都是设置语境,故整篇校验。
     for path in (README, DOCS_DIR / "README.md", SETTINGS_DOC):
         if not path.exists():
             continue
-        for claimed in set(re.findall(r"(\d+)\s*项", path.read_text(encoding="utf-8"))):
-            if int(claimed) != count:
-                report.error(
-                    f"{path.name} 里写的「{claimed} 项」与枚举的 {count} 项不符",
-                    f"改成「{count} 项」",
-                )
-            else:
-                report.ok()
+        settings_only = path.name != SETTINGS_DOC.name
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if settings_only and "设置" not in line:
+                continue
+            for claimed in set(re.findall(r"(\d+)\s*项", line)):
+                if int(claimed) != count:
+                    report.error(
+                        f"{path.name} 里写的「{claimed} 项」与枚举的 {count} 项不符:"
+                        f"{line.strip()[:40]}",
+                        f"改成「{count} 项」",
+                    )
+                else:
+                    report.ok()
 
 
 # --------------------------- 3. 固件台账一致性 ---------------------------
